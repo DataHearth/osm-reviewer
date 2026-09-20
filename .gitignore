@@ -10,3 +10,4 @@ playwright-report
 .env.*
 !.env.example
 data
+/.claude/settings.local.json
