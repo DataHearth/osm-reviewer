@@ -48,6 +48,8 @@
               pnpm
               biome
               nixfmt
+              kubernetes-helm
+              git-cliff
             ];
 
             env = [
@@ -98,6 +100,39 @@
                 command = ''pnpm test:e2e "$@"'';
                 category = "quality";
               }
+              {
+                name = "build";
+                help = "Build the app package with Nix (result/bin/osm-reviewer)";
+                command = ''nix build .#osm-reviewer "$@"'';
+                category = "package";
+              }
+              {
+                name = "image";
+                help = "Build the OCI image with Nix and load it into podman or docker";
+                command = ''
+                  runtime=$(command -v podman || command -v docker) || {
+                    echo "image: neither podman nor docker is on PATH" >&2
+                    exit 1
+                  }
+                  "$(nix build .#image --no-link --print-out-paths "$@")" | "$runtime" load
+                '';
+                category = "package";
+              }
+              {
+                name = "chart-push";
+                help = "Package the Helm chart with Nix and push it (after helm registry login)";
+                command = ''
+                  chart=$(nix build .#chart --no-link --print-out-paths) || exit 1
+                  helm push "$chart"/*.tgz "''${1:-oci://ghcr.io/datahearth/charts}"
+                '';
+                category = "package";
+              }
+              {
+                name = "release";
+                help = "Cut an app (v*) or chart (chart-v*) release; run without arguments for usage";
+                command = ''"$PRJ_ROOT/scripts/release.sh" "$@"'';
+                category = "package";
+              }
             ];
           };
         }
@@ -110,6 +145,8 @@
       };
 
       nixosModules.default = import ./nix/modules/nixos.nix self;
+      nixosModules.container = import ./nix/modules/nixos-container.nix self;
       homeModules.default = import ./nix/modules/home-manager.nix self;
+      homeModules.container = import ./nix/modules/home-manager-container.nix self;
     };
 }

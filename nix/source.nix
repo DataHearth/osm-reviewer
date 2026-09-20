@@ -40,7 +40,15 @@ in
   app = mkSource {
     name = "osm-reviewer-source";
     exclude = [
+      ".dockerignore"
+      ".github"
+      "CHANGELOG.md"
       "CLAUDE.md"
+      "Dockerfile"
+      "chart"
+      "cliff.chart.toml"
+      "cliff.toml"
+      "scripts"
       "e2e"
       "flake.lock"
       "flake.nix"

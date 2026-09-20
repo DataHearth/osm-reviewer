@@ -55,6 +55,16 @@ in
     touch $out
   '';
 
+  chart = pkgs.runCommand "osm-reviewer-chart" { nativeBuildInputs = [ pkgs.kubernetes-helm ]; } ''
+    export HOME=$(mktemp -d)
+    helm lint --strict ${../chart} --set origin=https://review.example.test,image.tag=0.0.0
+    helm template ${../chart} --set origin=https://review.example.test,image.tag=0.0.0 \
+      --set admin.email=a@example.test,admin.password=x \
+      --set ingress.enabled=true,httpRoute.enabled=true \
+      --set 'httpRoute.parentRefs[0].name=gw' > /dev/null
+    touch $out
+  '';
+
   formatting = pkgs.runCommand "osm-reviewer-nixfmt" { nativeBuildInputs = [ pkgs.nixfmt ]; } ''
     nixfmt --check $(find ${sources.nixFiles} -name '*.nix')
     touch $out
