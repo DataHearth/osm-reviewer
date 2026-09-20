@@ -1,0 +1,103 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Release chart
+
+# The chart versions independently of the app: a values/template fix ships without an
+# app release, and an app release ships without a chart bump. App releases are v*.*.*
+# (image.yml); cut this one with `release chart <version>`.
+on:
+  push:
+    tags: ["chart-v*.*.*"]
+
+permissions: {}
+
+jobs:
+  # Its own job, holding nothing, for the reason image.yml gives: the notes step
+  # pipes an unpinned installer into bash.
+  notes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Version
+        run: echo "version=${GITHUB_REF_NAME#chart-v}" >> "$GITHUB_ENV"
+
+      - name: Build release notes
+        id: notes
+        uses: ./.github/actions/release-notes
+        with:
+          changelog: chart/CHANGELOG.md
+          version: ${{ env.version }}
+          subject: the osm-reviewer Helm chart
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          footer: |
+
+            ---
+            Install: `helm install osm-reviewer oci://ghcr.io/datahearth/charts/osm-reviewer --version ${{ env.version }} --set origin=<url> --set image.tag=<app version>`
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-notes
+          path: ${{ steps.notes.outputs.file }}
+          if-no-files-found: error
+
+  publish:
+    needs: notes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      # The tag names the release; Chart.yaml is what actually gets packaged. If they
+      # disagree the push lands on a version nobody asked for.
+      - name: Verify tag matches Chart.yaml
+        run: |
+          chart_version=$(sed -n 's/^version: *//p' chart/Chart.yaml)
+          tag_version="${GITHUB_REF_NAME#chart-v}"
+          if [ "$chart_version" != "$tag_version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} wants chart ${tag_version}, but Chart.yaml says ${chart_version}"
+            exit 1
+          fi
+          echo "version=${chart_version}" >> "$GITHUB_ENV"
+
+      - name: Package and push
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          helm lint --strict chart --set origin=https://example.test,image.tag=0.0.0
+          helm package chart
+          echo "$GH_TOKEN" | helm registry login ghcr.io --username "${{ github.actor }}" --password-stdin
+          helm push "osm-reviewer-${version}.tgz" "oci://ghcr.io/${owner}/charts"
+
+      - name: Download release notes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes
+
+      # --latest=false, or a chart release displaces the app release as the repo's
+      # "Latest": the two version lines share one releases page.
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Helm chart v${version}" \
+            --notes-file "${{ runner.temp }}/notes/release-notes.md" \
+            --verify-tag \
+            --latest=false
