@@ -1,0 +1,66 @@
+/* Design tokens — the single source of the palette. src/app.css maps these onto
+   Tailwind's @theme; values live here only. */
+:root {
+	color-scheme: dark;
+
+	/* grounds */
+	--bg: #1a1a1c;
+	--panel: #1f1f23;
+	--bar: #24242a;
+	--head: #212126;
+	--raised: #2b2b32;
+	--sel: #292930;
+
+	/* rules */
+	--line: #35353d;
+	--line-soft: #2b2b32;
+	--line-faint: #26262c;
+	--line-row: #2a2a30;
+	--edge: #3d3d46;
+	--edge-strong: #45454f;
+	--edge-soft: #2f2f36;
+
+	/* ink */
+	--ink: #e8e6e3;
+	--ink-2: #c9c9d4;
+	--key: #9d9da9;
+	--muted: #a8a8b4;
+	--faint: #8f8f9c;
+	--dim: #5a5a63;
+	--was: #a58c86;
+	--box-off: #a6a6b2;
+
+	/* accent */
+	--accent: #e0a33c;
+	--accent-ink: #1a1a1c;
+
+	/* status */
+	--ok: #5fa872;
+	--ok-ink: #7cc48e;
+	--ok-bg: #243026;
+	--ok-line: #33543c;
+	--warn: #e0a33c;
+	--warn-ink: #c9b183;
+	--warn-bg: #2a2620;
+	--warn-line: #433a28;
+	--bad: #e07a5f;
+	--bad-ink: #d4795f;
+	--bad-bg: #2b1a1c;
+	--bad-deep: #301f1d;
+	--bad-line: #43292b;
+
+	/* diff ops */
+	--add: #5fa872;
+	--add-bg: #1d2a20;
+	--mod: #e0a33c;
+	--mod-bg: #28241a;
+	--del: #c26049;
+	--del-bg: #2a1c1d;
+	--quarantine: #c8452a;
+	--quarantine-ink: #e78d76;
+	--mark-bg: #35422f;
+	--mark-ink: #f3f0ec;
+
+	--font-mono: "IBM Plex Mono", ui-monospace, monospace;
+	--font-sans: "IBM Plex Sans", system-ui, sans-serif;
+}

@@ -1,0 +1,100 @@
+/* Motion. Six named animations, all short: this is a tool for clearing a queue
+   with the keyboard, so motion says what appeared, what left and what is now
+   covered — never more.
+
+   Deliberately CSS, not Svelte transitions. A Svelte outro holds the element in
+   the DOM until its animation reports finished; in a throttled or backgrounded
+   view that report never arrives and the overlay is stuck there forever. Here
+   the animation is decoration only: mounting and unmounting are driven by state
+   and a timer, so an animation that never paints costs nothing.
+
+   Every exit class is paired with a timeout in the component of the same
+   length. Keep the two in step. */
+
+@keyframes om-fade-in {
+	from {
+		opacity: 0;
+	}
+}
+@keyframes om-fade-out {
+	to {
+		opacity: 0;
+	}
+}
+@keyframes om-pop-in {
+	from {
+		opacity: 0;
+		transform: scale(0.96);
+	}
+}
+@keyframes om-pop-out {
+	to {
+		opacity: 0;
+		transform: scale(0.97);
+	}
+}
+@keyframes om-rise-in {
+	from {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+}
+@keyframes om-lift-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+}
+@keyframes om-sheet-in {
+	from {
+		transform: translateY(100%);
+	}
+}
+@keyframes om-sheet-out {
+	to {
+		transform: translateY(100%);
+	}
+}
+
+/* 110ms — scrims, menus, pane swaps */
+.m-fade {
+	animation: om-fade-in 110ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.m-fade-out {
+	animation: om-fade-out 110ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.m-pop {
+	animation: om-pop-in 110ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.m-pop-out {
+	animation: om-pop-out 110ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+/* 150ms — inline notes and banners arriving in the flow */
+.m-rise {
+	animation: om-rise-in 150ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.m-lift {
+	animation: om-lift-in 150ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+/* 200–240ms — the phone sheet, which travels the furthest */
+.m-sheet {
+	animation: om-sheet-in 240ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.m-sheet-out {
+	animation: om-sheet-out 200ms cubic-bezier(0.32, 0, 0.67, 0) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.m-fade,
+	.m-fade-out,
+	.m-pop,
+	.m-pop-out,
+	.m-rise,
+	.m-lift,
+	.m-sheet,
+	.m-sheet-out {
+		animation: none;
+	}
+}

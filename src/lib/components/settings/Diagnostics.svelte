@@ -1,0 +1,73 @@
+<script lang="ts">
+import { ghost, toneDot } from "$lib/format";
+import { settings } from "$lib/stores/settings.svelte";
+import type { MetricRow } from "$lib/types";
+import Pane from "./Pane.svelte";
+
+let {
+	instance,
+	health,
+	sso,
+}: {
+	instance: {
+		version: string;
+		sha: string;
+		built: string;
+		image: string;
+		runtime: string;
+		uptime: string;
+		db: string;
+	};
+	health: MetricRow[];
+	sso: { provider: string; host: string; clientId: string; scopes: string };
+} = $props();
+
+const facts = $derived([
+	["version", instance.version + " · " + instance.sha],
+	["built", instance.built],
+	["image", instance.image],
+	["runtime", instance.runtime],
+	["uptime", instance.uptime],
+	["database", instance.db],
+	["identity provider", sso.provider + " · " + sso.host],
+	["oidc client", sso.clientId + " · " + sso.scopes],
+]);
+</script>
+
+<Pane title="diagnostics" desc="What the container reports about itself. Admin only — everything here is instance-wide.">
+	<div class="grid gap-x-3 gap-y-1.5 text-[12px] md:grid-cols-[168px_minmax(0,1fr)]">
+		{#each facts as f (f[0])}
+			<span class="text-faint">{f[0]}</span>
+			<span class="break-all text-ink-2">{f[1]}</span>
+		{/each}
+	</div>
+
+	<div class="overflow-hidden rounded-md border border-line">
+		<div class="border-b border-line-soft bg-head px-3 py-2 text-[10.5px] tracking-[0.08em] text-muted">HEALTH</div>
+		{#each health as h (h[0])}
+			<div
+				class="grid items-baseline gap-x-3 gap-y-0.5 border-b border-line-faint px-3 py-2 last:border-b-0 md:grid-cols-[168px_150px_minmax(0,1fr)]"
+			>
+				<span class="flex items-center gap-2 text-[12px] text-faint">
+					<span class="h-[6px] w-[6px] shrink-0 rounded-full {toneDot(h[3] ?? null)}"></span>{h[0]}
+				</span>
+				<span class="text-[12px] text-ink">{h[1]}</span>
+				<span class="text-[11.5px] text-faint">{h[2] ?? ""}</span>
+			</div>
+		{/each}
+	</div>
+
+	<div class="flex flex-wrap items-center gap-2.5 border-t border-line-faint pt-4">
+		<button class="{ghost(false)} max-md:min-h-[44px]" onclick={() => settings.runHealthCheck()}>run health check</button>
+		<button class="{ghost(false)} max-md:min-h-[44px]" onclick={() => settings.makeBundle(instance.version)}>build diagnostics bundle</button>
+	</div>
+
+	{#if settings.healthChecked}
+		<div class="m-rise text-[11.5px] text-ok-ink">
+			checked {settings.healthChecked} · 4 ok, 2 warnings — unchanged since the last run
+		</div>
+	{/if}
+	{#if settings.bundle}
+		<div class="m-rise text-[11.5px] break-all text-ink-2">{settings.bundle}</div>
+	{/if}
+</Pane>

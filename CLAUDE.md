@@ -1,0 +1,265 @@
+# osm-reviewer
+
+A review queue for OpenStreetMap POI candidates produced by an extraction pipeline.
+Reviewers work a queue of candidates, accept or reject the proposed tag changes, and
+the accepted ones are composed into OSM changesets.
+
+Dates display as DD-MM-YYYY everywhere, times as HH:MM — `14-09-2026 06:12`. Never ISO.
+
+## Stack
+
+SvelteKit 2 on Svelte 5 (runes), Tailwind v4, Leaflet for the maps, SQLite through
+Drizzle, sveltekit-superforms + Zod for forms, `@sveltejs/adapter-node` for the build.
+Biome is the formatter and linter; Vitest and Playwright are the test suites. Nix
+supplies the toolchain, packages the app, and ships a NixOS and a home-manager module.
+
+The design came from a Claude Design project and is still iterated on there. The screens
+are considered settled: change where data and validation live, not how a screen looks.
+
+## Layout
+
+- `src/routes/**` — one `+page.svelte` per screen with its `+page.server.ts` beside it.
+  `+layout.svelte` is the shell and the keyboard map; `+layout.server.ts` is the auth
+  guard — every route but `/login` needs a session and remembers where it bounced from.
+- `src/lib/components/**` — shared markup. `areas/`, `sources/` and `settings/` hold the
+  pieces of those screens.
+- `src/lib/server/db/` — schema, client, migration runner, seed. Server-only: nothing
+  under `src/lib/server/` may be imported from a component.
+- `src/lib/server/auth/` — password hashing and session handling.
+- `src/lib/schemas/` — the Zod schemas the forms validate against, shared by the server
+  action and the client `superForm`.
+- `src/lib/stores/*.svelte.ts` — client view state (selection, filters, open sheets,
+  optimistic updates). These are not the source of truth; the database is.
+- `src/lib/data.ts` — the original fixtures. **Seed data only.** Nothing at runtime reads
+  it; `src/lib/server/db/seed.ts` does.
+- `src/styles/tokens.css` — the palette, and the only place hex values live.
+- `nix/` — package, checks, source filtering and the two modules. `flake.nix` holds the
+  inputs, the per-system wiring and the devShell itself.
+
+## Data flow
+
+Reads are server `load`s; writes are form actions. Nothing in a component queries the
+database, and nothing outside `src/lib/server/` can.
+
+- `src/lib/server/queries.ts` — the `load` half. Every screen's data comes from here, and
+  `loadCounts` is on all of them, because the top bar and the phone nav show the pending
+  and staged counts everywhere.
+- `src/lib/server/mutations.ts`, `review.ts`, `actions.ts` — the action half: drafts, link
+  syncing, accept/reject/undo, upload. The accept gate is enforced against the rows, not
+  against anything the client sent.
+- `src/lib/post.ts` — the one helper for writes behind controls that are already plain
+  buttons (checkboxes, sliders, toggles). They hit the same named actions and the same Zod
+  schemas; they simply have no meaningful no-JS path, unlike the forms, which do.
+
+Forms whose fields are not flat strings — a `Record<id, boolean>` of checkboxes, a
+`[lat, lon]` tuple, a `string[]` of tags — run `superForm(..., { dataType: "json" })`.
+`FormData` cannot carry those shapes; superforms posts the form as devalue-encoded JSON
+and `superValidate` reassembles it.
+
+Two bits of state are derived rather than stored, so a flag can never disagree with the
+table it describes: a candidate is **staged** when its decision is `accepted` and its
+`changeset_id` is null, and it is **in conflict** when `head_version` is not null.
+
+Demo affordances are gated behind `dev` and built server-side — the "clear lock" button on
+the login screen and the seeded-credentials hint. Neither exists in a production build, and
+the hint reads the address from the database so the fixture users, which carry cleartext
+passwords, never reach the client bundle.
+
+## What the app fetches at runtime
+
+One external request, deliberately: **OSM raster tiles** from `tile.openstreetmap.org`,
+via `darkMap()` in `src/lib/leaflet.ts`, on `/review` and the three area maps. It is the
+basemap a reviewer judges a POI's position against, so it earns its place — but it does
+tell the tile CDN which areas are being reviewed and when. If that ever matters, PMTiles
+through `protomaps-leaflet` serves the same basemap from this origin without changing
+Leaflet; dropping the tile layer entirely is cheaper but guts `/review`, whose whole job is
+locating a POI at zoom 17.
+
+Everything else is local and should stay that way:
+
+- **Fonts are self-hosted** — `@fontsource/ibm-plex-{sans,mono}`, weights 400/500/600,
+  latin subset, imported at the top of `src/app.css`. Do not reintroduce the Google Fonts
+  `<link>`: it is render-blocking, it fails silently on a LAN with no internet (the app
+  then falls back to system fonts and stops looking like the design), and it reports every
+  page load to a third party.
+- **Leaflet is bundled**, and its marker sprites are inlined as `data:` URIs.
+- **The server makes no outbound requests at all.** Changeset upload and the
+  ntfy/webhook/email channels are configured and stored but never called — still simulated.
+- Links to `openstreetmap.org` on `/review` and `/history` are anchors; they fetch nothing
+  until clicked.
+
+## Conventions
+
+**Duplication goes into `src/lib/` (logic) or `src/lib/components/` (markup).** If the
+same thing appears twice, factor it. Equally: do not build the abstraction before the
+second use exists. YAGNI applies to helpers, wrappers and options alike.
+
+**Comments only where the code cannot speak for itself.** A comment earns its place for a
+non-obvious choice, a workaround, an ordering constraint, or a trap — not for restating
+what the line does. If a better name would remove the question, rename instead.
+
+**Styling is Tailwind utilities over the tokens.** No hex values in components. A missing
+colour means a new token in `src/styles/tokens.css` and a mapping in the `@theme` block in
+`src/app.css`; the hex lives in the token file only.
+
+**A repeated class string is declared once, through Tailwind's own pipeline.** When the
+same run of utilities describes the same thing in more than one place — a section label, a
+rail row, a status pill — it becomes an `@utility` in `src/app.css` built on the tokens,
+not a string copied into each component. `no-scrollbar` is the existing example; written as
+`@utility`, it still takes the responsive and state variants, which a plain class in a
+`<style>` block would not.
+
+Where the variation is behavioural rather than visual — on/off, ready/not — it belongs in
+`src/lib/format.ts` as a helper returning the class string (`ghost`, `boxBtn`,
+`primaryBtn`, `INPUT`). Same rule as everywhere else: `@utility` for a thing that looks the
+same in several places, a `format.ts` helper for a thing whose classes depend on state, and
+neither until it actually repeats.
+
+**Motion comes from `src/styles/motion.css`** — `m-fade`/`m-pop` (110ms), `m-rise`/`m-lift`
+(150ms), `m-sheet` (240ms), each with an `-out` partner, all disabled under
+`prefers-reduced-motion`.
+
+**Do not use Svelte `transition:` directives.** An outro holds the node in the DOM until
+its animation reports finished, and in a throttled or backgrounded tab that report never
+arrives — the overlay is then stuck and the app is unusable. Mount and unmount on state;
+where an exit needs to be seen, set a `closing` flag, apply the `-out` class, and drop the
+state on a `setTimeout` of the same length. `TopBar`, `BottomNav` and `QueueFilterSheet`
+are the worked examples.
+
+**Three layouts, not one**: phone (402), tablet (834), desktop. The queue row, the review
+pane and the sources/areas rails each change shape between them, and the evidence gutter
+exists only at `lg`. A change to a screen is not done until it has been looked at in all
+three. JS width reads go through `$lib/stores/viewport.svelte`, never `window.innerWidth`.
+
+## Working on it
+
+Everything runs from the devShell (`direnv allow`, or `nix develop`). The shell prints its
+own menu: `dev`, `check`, `lint`, `fmt`, `test`, `e2e`.
+
+| | |
+|---|---|
+| `pnpm dev` | dev server |
+| `pnpm build` | production build into `build/` |
+| `pnpm check` | `svelte-check` |
+| `pnpm lint` / `pnpm format` | Biome, check and write |
+| `pnpm test` | Vitest unit suite |
+| `pnpm test:e2e` | Playwright |
+| `pnpm db:generate` / `db:migrate` / `db:seed` / `db:studio` | Drizzle |
+
+Dependencies are kept at latest; install with bare `pnpm add` rather than hand-written
+ranges. There is no pre-commit; the quality gates are the flake checks.
+
+### Things that will trip you up
+
+**TypeScript needs both 6 and 7 installed.** `svelte-check` refuses TS 7 alone, so the repo
+has `typescript@~6` plus `@typescript/native` (TS 7) and checks run with `--tsgo`. Dropping
+either one breaks `pnpm check`.
+
+**Biome reads the `<script>` block of a `.svelte` file and nothing else.** It formats that
+block as a standalone document, which is why script contents sit flush against the left
+margin rather than indented under the tag. Because it never parses the markup, the
+usage-based correctness rules (`noUnusedVariables`, `noUnusedImports`,
+`noUnusedFunctionParameters`) are switched off for `.svelte` in `biome.json` — otherwise
+every prop used only in the template is reported as dead.
+
+**The migration-copy plugin must stay last in `vite.config.ts`.** The node server applies
+migrations at boot, so `build/` has to carry `drizzle/`. The adapter wipes and rewrites
+`build/` from its own `closeBundle`, and Vite runs those hooks in plugin order — put the
+copy plugin before `sveltekit()` and the migrations vanish from the output.
+
+**`biome.json` skips `src/app.css`.** Biome's CSS parser does not understand Tailwind v4's
+`@theme` and `@utility` at-rules and reports them as syntax errors. The other stylesheets
+are plain CSS and are checked normally.
+
+**A settings pane must never write another pane's fields.** They all save into one
+`user_settings` row, independently, so every column carries a default — an insert triggered
+by one pane cannot be allowed to decide another's values. `Pane.svelte` keeps each pane's
+save bar wired to its own form through the HTML `form=` attribute rather than by nesting,
+because wrapping the pane in a form breaks the `min-h-full` chain its sticky footer needs.
+
+**A build sandbox has no fonts, and Chromium then measures every glyph as zero wide.**
+Anything sized by its own text collapses to an empty box, which Playwright reports as
+`hidden` — the element is in the DOM with the right text and simply never becomes visible.
+Elements with padding survive, which makes the failure look arbitrary. The `e2e` check
+therefore sets `FONTCONFIG_FILE` to a fonts.conf carrying IBM Plex, and `e2e/global-setup.ts`
+measures a string before the suite runs so a fontless environment fails in one sentence
+instead of fourteen timeouts. `playwright-driver.browsers` ships no fonts of its own.
+
+**`nix build` only sees what jj has snapshotted.** The flake source is the git tree, so a
+file that exists only in the working copy is invisible to a check — it fails with something
+misleading like "No tests found". Any `jj` command snapshots and exports. Rule out a stale
+sandbox source before concluding a fix "didn't apply".
+
+**`@playwright/test` is pinned to the exact version of the Nix `playwright-driver`.** The
+browsers come from the Nix store via `PLAYWRIGHT_BROWSERS_PATH`, and Playwright rejects
+browsers whose revisions do not match its driver. Bumping one means bumping the other.
+
+**`better-sqlite3` ships prebuilt binaries in its tarball** — it must not be built from
+source. `pnpm-workspace.yaml` sets `allowBuilds.better-sqlite3: false` deliberately: the
+node-gyp rebuild fails here and buys nothing, because the bundled prebuild is what loads.
+When drizzle-orm 1.0 ships with its `node-sqlite` driver, this dependency and that entry
+can both go.
+
+**A rune store must not hold server data in `$state`.** The stores expose getters over
+`page.data`; they do not copy it into `$state` from an `$effect`. Two things break if they
+do: effects never run during SSR, so the first paint renders empty (`0 shown`, `rows 1–0 of
+0`), and a module-level `$state` singleton populated on the server is shared between
+concurrent requests — one visitor's queue can be served to another. `$state` in these
+stores is for genuinely client-side things only: selection, filters, which sheet is open,
+the in-flight drag buffer.
+
+**`!**/build` in `biome.json` matches absolute paths.** Inside a Nix build the working
+directory *is* `/build`, so the pattern swallows the entire tree and Biome reports that no
+files were processed while still exiting non-zero. The `lint` check therefore runs Biome
+against the store path in place rather than against a copy.
+
+## Database
+
+SQLite, one file, path from `DATABASE_PATH` (dev default `./data/osm-reviewer.db`). WAL is
+on, so the directory must be writable — not just the file. Migrations are generated with
+`pnpm db:generate` and committed; they are applied at server startup from
+`src/hooks.server.ts`, so a deployment has no separate migration step.
+
+Two fields are derived rather than stored, because storing them twice would let them
+disagree: a user is SSO-only when `passwordHash` is null, and a candidate is in conflict
+when `headVersion` is not null.
+
+Real timestamps are `integer({ mode: "timestamp" })` and come back as `Date` — format them
+at the edge. Fixture strings that were never dates (`"12d"`, `"41 min"`, `"06:12 today"`)
+stayed text.
+
+## Nix
+
+`nix develop` for the shell, `nix build` for the app, `nix flake check` for the gates
+(`formatting`, `lint`, `types`, `unit`, `e2e`). Three inputs and no flake framework:
+`nixpkgs`, `numtide/flake-utils` for the per-system iteration, and `numtide/devshell` for
+the shell — which is defined inline in `flake.nix`. The rest lives in `nix/`, with
+`nix/source.nix` providing three filtered views of the tree: the dependency fetch sees only
+the manifests, so editing app code does not invalidate it.
+
+The systems are named (`eachSystem`, not `eachDefaultSystem`) because the package is
+`meta.platforms = linux` and both modules are Linux-only — emitting darwin attributes would
+only give `nix flake check --all-systems` things it cannot evaluate.
+
+Each check runs the project's own script rather than a Nix re-spelling of it, so there is
+one definition of "typechecks" and it lives in `package.json`.
+
+`nixosModules.default` runs the app as a hardened systemd service under `DynamicUser` with
+a `StateDirectory` for the database; `homeModules.default` is the user-level equivalent
+under `$XDG_STATE_HOME`. Two hardening settings are deliberate and commented in the
+module: `MemoryDenyWriteExecute` is **off**, because V8 maps JIT pages write-then-execute
+and turning it on kills Node at startup, and `RestrictAddressFamilies` includes
+`AF_NETLINK`, because glibc's `getaddrinfo` opens a netlink socket to probe IPv6.
+
+There is a NixOS VM test that boots the unit and curls it, but it is **not** registered as
+a flake check — `nix flake check` would then require `/dev/kvm` and fail on machines
+without it. Run it deliberately instead.
+
+The package carries no `meta.license`: there is no LICENSE file in the repo, and one was
+not invented. Add the file and the attribute together.
+
+## Version control
+
+This repo uses **jj**, not git. `jj st`, `jj diff`, `jj describe`, `jj new`, `jj squash`,
+`jj split`, `jj rebase`, `jj git fetch` / `jj git push`. The `.git` directory exists only
+because the repo is colocated.
