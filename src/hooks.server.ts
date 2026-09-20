@@ -1,10 +1,12 @@
 import type { Handle, ServerInit } from "@sveltejs/kit";
 import { clearSessionCookie, resolveSession, SESSION_COOKIE } from "$lib/server/auth/session";
 import { db } from "$lib/server/db";
+import { bootstrapAdmin } from "$lib/server/db/bootstrap";
 import { runMigrations } from "$lib/server/db/migrate";
 
-export const init: ServerInit = () => {
+export const init: ServerInit = async () => {
 	runMigrations(db);
+	await bootstrapAdmin(db);
 };
 
 export const handle: Handle = ({ event, resolve }) => {

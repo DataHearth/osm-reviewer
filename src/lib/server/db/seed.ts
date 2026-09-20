@@ -1,5 +1,8 @@
 import { AREAS, CANDIDATES, HISTORY, RELS, SETTINGS, SOURCES, USERS, YIELDS } from "../../data";
 import { hashPassword } from "../auth/password";
+import { seedAdmin } from "../config";
+import { loadEnvFiles } from "../env";
+import { initialsOf } from "./bootstrap";
 import { createDb, type Db } from "./client";
 import { runMigrations } from "./migrate";
 import * as t from "./schema";
@@ -24,8 +27,12 @@ function at(value: string): Date {
 	return new Date(+m[3], +m[2] - 1, +m[1], +(m[4] ?? 0), +(m[5] ?? 0));
 }
 
+/** An SSO-only fixture has no password to override, so the environment cannot adopt one. */
+const overridden = (u: (typeof USERS)[number]) => u.role === "admin" && !u.ssoOnly;
+
 async function seed(db: Db): Promise<void> {
 	const passwordHash = await hashPassword(FIXTURE_PASSWORD);
+	const adminHash = seedAdmin.password ? await hashPassword(seedAdmin.password) : passwordHash;
 
 	db.transaction((tx) => {
 		for (const table of [
@@ -55,16 +62,19 @@ async function seed(db: Db): Promise<void> {
 
 		tx.insert(t.users)
 			.values(
-				USERS.map((u) => ({
-					id: u.id,
-					name: u.name,
-					email: u.email,
-					role: u.role,
-					initials: u.initials,
-					passwordHash: u.ssoOnly ? null : passwordHash,
-					osm: u.osm ?? null,
-					lastSeen: at(u.lastSeen),
-				})),
+				USERS.map((u) => {
+					const name = (overridden(u) && seedAdmin.name) || u.name;
+					return {
+						id: u.id,
+						name,
+						email: (overridden(u) && seedAdmin.email) || u.email,
+						role: u.role,
+						initials: name === u.name ? u.initials : initialsOf(name),
+						passwordHash: u.ssoOnly ? null : overridden(u) ? adminHash : passwordHash,
+						osm: u.osm ?? null,
+						lastSeen: at(u.lastSeen),
+					};
+				}),
 			)
 			.run();
 
@@ -279,6 +289,7 @@ async function seed(db: Db): Promise<void> {
 	});
 }
 
+loadEnvFiles();
 const db = createDb(process.env.DATABASE_PATH);
 runMigrations(db);
 await seed(db);
