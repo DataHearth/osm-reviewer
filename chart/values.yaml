@@ -1,0 +1,54 @@
+image:
+  repository: ghcr.io/datahearth/osm-reviewer
+  # Required: the app release to run, e.g. 0.9.3.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Required. The address reviewers open, e.g. https://osm-review.example.net. adapter-node
+# checks form posts against it, the session cookie is Secure only when it is https, and
+# the Ingress and HTTPRoute take their hostname from it.
+origin: ""
+
+# The first admin, created at boot only while the users table is empty. Changing these
+# later does nothing; change the password from the app's settings instead.
+admin:
+  email: ""
+  password: ""
+  name: ""
+  # Use a Secret you manage instead, with keys SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD and
+  # optionally SEED_ADMIN_NAME. The three values above are then ignored.
+  existingSecret: ""
+
+# Extra environment. The app also reads SSO_* (see .env.example) and adapter-node's
+# BODY_SIZE_LIMIT. The SSO sign-in is still a stub, hence off by default.
+env:
+  SSO_ENABLED: "false"
+
+persistence:
+  size: 1Gi
+  storageClass: ""
+  # Mount a claim you manage instead of creating one.
+  existingClaim: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # Secret holding the certificate for the origin's host; leave empty to serve without TLS.
+  tlsSecretName: ""
+
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs: []
+  # - name: gateway
+  #   namespace: gateway-system
+  #   sectionName: https
+
+resources: {}

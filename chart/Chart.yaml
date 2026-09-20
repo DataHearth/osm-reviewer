@@ -1,0 +1,7 @@
+apiVersion: v2
+name: osm-reviewer
+description: Review queue for OpenStreetMap POI candidates
+type: application
+# Released on its own `chart-v*` tags. There is no appVersion: the chart does not pin an
+# app release, the installer chooses one through image.tag.
+version: 0.1.0

@@ -1,0 +1,32 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "osm-reviewer.fullname" . }}
+  labels:
+    {{- include "osm-reviewer.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tlsSecretName }}
+  tls:
+    - hosts: [{{ include "osm-reviewer.host" $ | quote }}]
+      secretName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ include "osm-reviewer.host" . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "osm-reviewer.fullname" . }}
+                port:
+                  name: http
+{{- end }}
