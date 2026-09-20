@@ -4,6 +4,7 @@
   fetchPnpmDeps,
   makeWrapper,
   nodejs,
+  nodejs-slim,
   pnpm,
   pnpmConfigHook,
   sources,
@@ -45,6 +46,10 @@ let
       runHook preInstall
       mkdir -p $out
       cp -r node_modules $out/node_modules
+      # pnpmConfigHook points the CLI shebangs at the full nodejs it installed with, which
+      # would pull npm and corepack into the runtime closure for scripts the server never
+      # runs. Same version, so nodejs-slim serves them identically.
+      grep -rlF --null ${nodejs} $out | xargs -0 -r sed -i "s|${nodejs}|${nodejs-slim}|g"
       runHook postInstall
     '';
   };
@@ -74,7 +79,7 @@ stdenv.mkDerivation {
     cp -r build package.json $out/lib/osm-reviewer/
     cp -r ${prodModules}/node_modules $out/lib/osm-reviewer/node_modules
 
-    makeWrapper ${lib.getExe' nodejs "node"} $out/bin/osm-reviewer \
+    makeWrapper ${lib.getExe' nodejs-slim "node"} $out/bin/osm-reviewer \
       --chdir $out/lib/osm-reviewer \
       --add-flags $out/lib/osm-reviewer/build/index.js \
       --set-default NODE_ENV production
