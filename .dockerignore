@@ -1,0 +1,17 @@
+.git
+.jj
+.direnv
+.claude
+.github
+.svelte-kit
+node_modules
+build
+data
+result
+result-*
+test-results
+playwright-report
+chart
+nix
+.env
+.env.*
