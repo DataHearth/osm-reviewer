@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 import { z } from "zod";
-import { HEALTH, INSTANCE, KEYMAP, PIPELINE, SSO } from "$lib/data";
+import { HEALTH, INSTANCE, KEYMAP, PIPELINE } from "$lib/data";
 import {
 	accountSchema,
 	keysSchema,
@@ -12,6 +12,7 @@ import {
 	passwordSchema,
 } from "$lib/schemas/settings";
 import { hashPassword, verifyPassword } from "$lib/server/auth/password";
+import { sso } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { users } from "$lib/server/db/schema";
 import { loadCounts } from "$lib/server/queries";
@@ -48,7 +49,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		user: { role: user.role, email: user.email, ssoOnly: user.ssoOnly === true },
 		instance: INSTANCE,
 		health: HEALTH,
-		sso: SSO,
+		sso,
 		keymap: KEYMAP,
 		counts,
 	};

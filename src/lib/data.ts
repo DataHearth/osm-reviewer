@@ -838,15 +838,6 @@ export const SETTINGS = {
 	showHints: true,
 };
 
-export const SSO = {
-	provider: "Authelia",
-	host: "auth.lan",
-	issuer: "https://auth.lan/.well-known/openid-configuration",
-	clientId: "candidate-review",
-	scopes: "openid profile email groups",
-	group: "osm-reviewers",
-};
-
 export const INSTANCE = {
 	host: "review.lan",
 	version: "0.9.3",

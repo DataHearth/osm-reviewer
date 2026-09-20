@@ -1,6 +1,5 @@
 import { invalidateAll } from "$app/navigation";
 import { page } from "$app/state";
-import { SSO } from "$lib/data";
 import type { Session, User } from "$lib/types";
 
 /**
@@ -9,8 +8,6 @@ import type { Session, User } from "$lib/types";
  * a row, and every guard that matters runs before a page load does.
  */
 class AuthView {
-	readonly sso = SSO;
-
 	get user(): User | null {
 		return page.data.user ?? null;
 	}

@@ -1,7 +1,7 @@
 <script lang="ts">
 import { superForm } from "sveltekit-superforms";
 import { dev } from "$app/environment";
-import { INSTANCE, SSO } from "$lib/data";
+import { INSTANCE } from "$lib/data";
 import { INPUT } from "$lib/format";
 import { LOCKOUT_MINUTES, MAX_TRIES, SESSION_DAYS } from "$lib/schemas/auth";
 
@@ -39,7 +39,7 @@ const facts = $derived([
 	["version", INSTANCE.version + " · " + INSTANCE.sha],
 	["uptime", INSTANCE.uptime],
 	["pipeline worker", "running · last run " + INSTANCE.built.slice(0, 10)],
-	["identity provider", SSO.host + " · reachable"],
+	["identity provider", data.sso.enabled ? data.sso.host + " · reachable" : "disabled"],
 ]);
 </script>
 
@@ -120,25 +120,27 @@ const facts = $derived([
 				</button>
 			</form>
 
-			<div class="my-5 flex items-center gap-3">
-				<span class="h-px flex-1 bg-line"></span>
-				<span class="text-[10.5px] tracking-[0.1em] text-muted">or</span>
-				<span class="h-px flex-1 bg-line"></span>
-			</div>
+			{#if data.sso.enabled}
+				<div class="my-5 flex items-center gap-3">
+					<span class="h-px flex-1 bg-line"></span>
+					<span class="text-[10.5px] tracking-[0.1em] text-muted">or</span>
+					<span class="h-px flex-1 bg-line"></span>
+				</div>
 
-			<button
-				class="flex w-full cursor-pointer flex-col items-start gap-[3px] rounded-md border border-edge bg-raised px-3.5 py-2.5 text-left max-md:min-h-[48px] disabled:cursor-not-allowed disabled:opacity-60"
-				type="submit"
-				form="login"
-				formaction="?/sso"
-				formnovalidate
-				disabled={busy || locked}
-			>
-				<span class="text-[12.5px] text-ink"
-					>{pending === "sso" ? "waiting for " + SSO.host + "…" : "continue with " + SSO.provider}</span
+				<button
+					class="flex w-full cursor-pointer flex-col items-start gap-[3px] rounded-md border border-edge bg-raised px-3.5 py-2.5 text-left max-md:min-h-[48px] disabled:cursor-not-allowed disabled:opacity-60"
+					type="submit"
+					form="login"
+					formaction="?/sso"
+					formnovalidate
+					disabled={busy || locked}
 				>
-				<span class="text-[11px] text-faint">{SSO.host} · group {SSO.group}</span>
-			</button>
+					<span class="text-[12.5px] text-ink"
+						>{pending === "sso" ? "waiting for " + data.sso.host + "…" : "continue with " + data.sso.provider}</span
+					>
+					<span class="text-[11px] text-faint">{data.sso.host} · group {data.sso.group}</span>
+				</button>
+			{/if}
 
 			{#if data.adminEmail}
 				<p class="mt-6 text-[11px] leading-relaxed text-faint">

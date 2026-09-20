@@ -3,7 +3,6 @@ import { eq, isNull, sql } from "drizzle-orm";
 import { type Infer, message, type SuperValidated, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 import { dev } from "$app/environment";
-import { SSO } from "$lib/data";
 import { LOCKOUT_MINUTES, type LoginMessage, loginSchema } from "$lib/schemas/auth";
 import {
 	clearFailures,
@@ -19,6 +18,7 @@ import {
 	SESSION_COOKIE,
 	setSessionCookie,
 } from "$lib/server/auth/session";
+import { sso } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { users } from "$lib/server/db/schema";
 import type { Actions, PageServerLoad } from "./$types";
@@ -61,6 +61,7 @@ const demoAdminEmail = () =>
 
 export const load: PageServerLoad = async ({ url }) => ({
 	adminEmail: demoAdminEmail(),
+	sso: { enabled: sso.enabled, provider: sso.provider, host: sso.host, group: sso.group },
 	form: await superValidate<LoginData, LoginMessage>(
 		{ redirectTo: safePath(url.searchParams.get("redirectTo")) },
 		adapter,
@@ -90,7 +91,9 @@ export const actions: Actions = {
 			return message(
 				form,
 				{
-					text: `That account is provisioned through ${SSO.provider} — sign in with SSO instead.`,
+					text: sso.enabled
+						? `That account is provisioned through ${sso.provider} — sign in with SSO instead.`
+						: `That account is provisioned through ${sso.provider}, which is switched off on this instance.`,
 					tone: "warn",
 				},
 				{ status: 401 },
@@ -117,7 +120,7 @@ export const actions: Actions = {
 
 	/**
 	 * Stubbed provider round trip: no discovery, no authorization redirect, no code
-	 * exchange. The real one leaves for SSO.issuer here and comes back on a callback
+	 * exchange. The real one leaves for sso.issuer here and comes back on a callback
 	 * route that maps the claims onto a row in `users`; everything after that — the
 	 * session row, the cookie, the bounce-back — is already what this does.
 	 *
@@ -125,6 +128,7 @@ export const actions: Actions = {
 	 * schema requires for the credentials action.
 	 */
 	sso: async ({ request, cookies, url }) => {
+		if (!sso.enabled) error(404);
 		const form = await superValidate<LoginData, LoginMessage>(request, adapter, { errors: false });
 
 		const email = normalizeEmail(form.data.email);
@@ -136,7 +140,7 @@ export const actions: Actions = {
 		if (!account) {
 			return message(
 				form,
-				{ text: `${SSO.provider} returned no account for that address.`, tone: "bad" },
+				{ text: `${sso.provider} returned no account for that address.`, tone: "bad" },
 				{ status: 401 },
 			);
 		}
