@@ -134,7 +134,9 @@ three. JS width reads go through `$lib/stores/viewport.svelte`, never `window.in
 ## Working on it
 
 Everything runs from the devShell (`direnv allow`, or `nix develop`). The shell prints its
-own menu: `dev`, `check`, `lint`, `fmt`, `test`, `e2e`.
+own menu: `dev`, `check`, `lint`, `fmt`, `test`, `e2e`, and `build` / `image` /
+`chart-push` for the Nix package, the Nix-built OCI image (loaded into podman or docker) and
+the Nix-packaged Helm chart, and `release` to cut a release (see "Container and chart").
 
 | | |
 |---|---|
@@ -220,6 +222,23 @@ on, so the directory must be writable — not just the file. Migrations are gene
 `pnpm db:generate` and committed; they are applied at server startup from
 `src/hooks.server.ts`, so a deployment has no separate migration step.
 
+`.env.example` lists the whole environment surface — `DATABASE_PATH`, adapter-node's
+`HOST`/`PORT`/`ORIGIN`/`BODY_SIZE_LIMIT`, the `SSO_*` identity-provider facts and the
+`SEED_ADMIN_*` overrides — `SSO_ENABLED=false` hides the SSO button and makes its action a
+404, which leaves an account with no local password no way in. `src/lib/server/config.ts`
+is where the identity-provider and seed values are read, with
+the former fixture values as defaults; everything else about the instance — version, sha,
+uptime, the health rows, the keymap — is fixture text and stays in `src/lib/data.ts`.
+Vite loads `.env*` for `pnpm dev`; the scripts
+that run outside it (drizzle-kit, `db:seed`) get the same files through `loadEnvFiles` in
+`src/lib/server/env.ts`. Precedence is shell over `.env.<mode>` over `.env`, which is why
+the e2e seed, handed its path through the environment, is not redirected by a local file.
+
+A production build has no seed, so the first account comes from `bootstrapAdmin`
+(`src/lib/server/db/bootstrap.ts`): at boot, after migrations, it creates one admin from
+`SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` — but only while the users table is empty, so leaving
+them set never resets a password changed in the app.
+
 Two fields are derived rather than stored, because storing them twice would let them
 disagree: a user is SSO-only when `passwordHash` is null, and a candidate is in conflict
 when `headVersion` is not null.
@@ -231,7 +250,7 @@ stayed text.
 ## Nix
 
 `nix develop` for the shell, `nix build` for the app, `nix flake check` for the gates
-(`formatting`, `lint`, `types`, `unit`, `e2e`). Three inputs and no flake framework:
+(`formatting`, `lint`, `types`, `unit`, `e2e`, `chart`). Three inputs and no flake framework:
 `nixpkgs`, `numtide/flake-utils` for the per-system iteration, and `numtide/devshell` for
 the shell — which is defined inline in `flake.nix`. The rest lives in `nix/`, with
 `nix/source.nix` providing three filtered views of the tree: the dependency fetch sees only
@@ -257,6 +276,61 @@ without it. Run it deliberately instead.
 
 The package carries no `meta.license`: there is no LICENSE file in the repo, and one was
 not invented. Add the file and the attribute together.
+
+## Container and chart
+
+There are two images on purpose. `packages.image` (`nix/image.nix`) is built from the Nix
+package and is what the container modules run: `nixosModules.container` adds
+`services.osm-reviewer.container`, which defines `virtualisation.oci-containers.containers.osm-reviewer`,
+and `homeModules.container` defines the same as a rootless `services.podman.containers` quadlet.
+Both load the Nix image before start (`imageStream`; home-manager has no equivalent, so its
+unit gets an `ExecStartPre` that pipes the stream into `podman load`) and accept a registry
+image instead with `imageStream = null`. They refuse to be enabled alongside the native
+`services.osm-reviewer`.
+
+`Dockerfile` builds the OCI image on `node:<version>-alpine`, independently of the Nix package —
+`better-sqlite3` ships `linuxmusl` prebuilds, so nothing compiles. The base is pinned by
+`NODE_VERSION` **and** `NODE_DIGEST` (the digest is what resolves, so bump both), at the same
+node version as the flake's nixpkgs. On top of the pin, the runtime stage runs `apk upgrade` so
+OS security fixes are not held back, and deletes npm, corepack and yarn: the server never calls
+them, and their vendored dependencies are what the CVE scan fails on. `chart/` is the Helm chart:
+one replica with `Recreate`, fixed rather than configurable, because SQLite on a
+ReadWriteOnce volume allows exactly one writer; `origin` is required and the Ingress and
+HTTPRoute take their hostname from it. The PVC is annotated `helm.sh/resource-policy: keep`.
+The app and the chart are released separately, on their own versions, and both are cut
+with `release` (`scripts/release.sh`; no arguments prints the usage). `release app X.Y.Z`
+regenerates `CHANGELOG.md` and sets `version` in `package.json`, commits both as
+`docs(changelog): vX.Y.Z` on their own revision, advances `main`, then tags `vX.Y.Z` and pushes
+`main` and the tag. `release chart X.Y.Z` does the same with `chart/Chart.yaml` and
+`chart/CHANGELOG.md` as `chore(chart): chart vX.Y.Z`, tagged `chart-vX.Y.Z`. Each is two halves
+(`app-changelog`/`app-tag`, `chart-bump`/`chart-tag`); run them apart to read the changelog
+before the tag goes out. The script refuses a non-empty working copy, since that revision
+becomes the release commit, and the tag halves check `main`, not the working copy.
+
+Changelogs are generated by git-cliff from conventional commits — never hand-write entries.
+`cliff.toml` is the app's (`v*` tags, `chart/**` excluded by path and `(chart)`-scoped commits
+skipped), `cliff.chart.toml` the chart's (`chart-v*` tags, `chart/**` only, `chore(chart)` and
+`chore(deps)` listed). They are separate files only because `commit_parsers` differs and git-cliff
+takes it from no flag or env var; the templates are duplicated, so keep them in sync. The
+repository URL is written into the templates rather than taken from `[remote.github]`: that
+section makes git-cliff call the GitHub API, which 404s on this private repo without a token.
+
+`image.yml` builds the image on every push to `main` (tag `edge`) and on `v*` tags (semver
+tags and `latest`, then the GitHub release, which waits for signing so it never announces an
+image that is not there). Each platform builds on its own native runner and is pushed by digest
+only; grype then gates it on fixable high/critical CVEs before any tag points at it. The merged
+manifest is signed keyless with cosign and carries an SPDX SBOM attestation. A `chart-v*` tag
+runs `release-chart.yml` (chart to
+`oci://ghcr.io/datahearth/charts`, failing unless the tag matches `Chart.yaml`, then a GitHub
+release with `--latest=false` so it never displaces the app's). Both release bodies come from
+`.github/actions/release-notes`, the same composite action as `../streamline`: it extracts the
+version's changelog section and has the Claude CLI rewrite it, in a `notes` job holding only a
+read-only token because the CLI installer is an unpinned `curl | bash`. The model is never
+load-bearing — without the `CLAUDE_CODE_OAUTH_TOKEN` secret, or on empty output, the raw section
+ships — but a missing section fails the release. The chart has no `appVersion` and does not pin
+an app release: `image.tag` is required, so the installer always picks one. `packages.chart`
+(`nix/chart.nix`) runs the same `helm package` in the sandbox, and `chart-push` builds it and
+pushes it, after a `helm registry login ghcr.io`.
 
 ## Version control
 
