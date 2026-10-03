@@ -45,6 +45,12 @@ test("the area picker scopes the queue and the choice outlives a reload", async 
 	await page.reload();
 	await expect(page.getByRole("button", { name: "Area: Bordeaux" })).toBeVisible();
 
+	await page.goto("/review");
+	await expect(
+		page.getByText("No candidates loaded for Bordeaux yet — 88 pending there."),
+	).toBeVisible();
+	await page.goto("/");
+
 	await page.getByRole("button", { name: "Show all areas" }).click();
 	await expect(page.getByRole("button", { name: "Area: All areas" })).toContainText("343 pending");
 	await expect(page.getByText("10 shown · 343 pending")).toBeVisible();

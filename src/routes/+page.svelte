@@ -1,5 +1,6 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
+import EmptyState from "$lib/components/EmptyState.svelte";
 import QueueFilterSheet from "$lib/components/QueueFilterSheet.svelte";
 import {
 	CHIP,
@@ -80,27 +81,16 @@ function openRow(c: Candidate, i: number) {
 
 <section class="flex min-h-0 flex-1 flex-col font-sans">
 	{#if review.empty}
-		<div class="m-fade flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-4 py-10 md:py-14">
-			<div class="w-full max-w-[560px] overflow-hidden rounded-xl border border-line bg-panel">
-				<div class="flex items-center gap-2.5 border-b border-line px-4 py-3">
-					<span class="h-[9px] w-[9px] rounded-full bg-ok"></span>
-					<span class="text-[14px] font-semibold text-ink">Queue empty</span>
-				</div>
-				<div class="flex flex-col gap-3 px-4 py-4 text-[13.5px] leading-relaxed">
-					<div class="text-ink-2">Nothing pending. Every queued candidate has been reviewed.</div>
-					<div class="grid gap-x-3 gap-y-1 text-[12.5px] text-muted max-md:gap-y-2 md:grid-cols-[170px_1fr]">
-						<span class="text-faint">Candidates reviewed</span><span class="font-mono text-[12px]">{review.total}</span>
-						<span class="text-faint">Pipeline</span><span class="text-faint">not implemented — nothing refills the queue</span>
-					</div>
-					<div class="mt-1 flex gap-2 max-md:flex-col">
-						<button
-							class="cursor-pointer rounded-lg border border-edge bg-raised px-3.5 py-1.5 text-[13px] font-medium text-ink max-md:min-h-[46px]"
-							onclick={() => goto("/history")}>History</button
-						>
-					</div>
-				</div>
+		<EmptyState title="Queue empty">
+			<div class="text-ink-2">Nothing pending. Every queued candidate has been reviewed.</div>
+			<div class="grid gap-x-3 gap-y-1 text-[12.5px] text-muted max-md:gap-y-2 md:grid-cols-[170px_1fr]">
+				<span class="text-faint">Candidates reviewed</span><span class="font-mono text-[12px]">{review.total}</span>
+				<span class="text-faint">Pipeline</span><span class="text-faint">not implemented — nothing refills the queue</span>
 			</div>
-		</div>
+			<div class="mt-1 flex gap-2 max-md:flex-col">
+				<button class="btn-secondary" onclick={() => goto("/history")}>History</button>
+			</div>
+		</EmptyState>
 	{:else}
 		<!-- Phone: the filter trigger is in the title bar; the sheet is mounted below. -->
 		<div class="hidden shrink-0 flex-wrap items-center gap-[14px] border-b border-line bg-panel px-4 py-2.5 md:flex">
@@ -136,9 +126,7 @@ function openRow(c: Candidate, i: number) {
 				{#if !rows.length && review.scopeArea}
 					<div class="m-rise flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-4 text-[13px] text-muted">
 						<span>No candidates loaded for {review.scopeArea.name} yet.</span>
-						<button
-							class="cursor-pointer rounded-lg border border-edge bg-raised px-3 py-1.5 text-[13px] font-medium text-ink max-md:min-h-[44px]"
-							onclick={() => review.setScope(null)}>Show all areas</button
+						<button class="btn-secondary" onclick={() => review.setScope(null)}>Show all areas</button
 						>
 					</div>
 				{/if}

@@ -142,3 +142,8 @@ select {
 		display: none;
 	}
 }
+
+/* The quiet companion to the accent button: an empty state's way out. */
+@utility btn-secondary {
+	@apply cursor-pointer rounded-lg border border-edge bg-raised px-3.5 py-1.5 text-[13px] font-medium text-ink max-md:min-h-[46px];
+}
