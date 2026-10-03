@@ -2,7 +2,18 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { fmtDate, stamp } from "$lib/format";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
-import type { Area, Candidate, Changeset, Decision, Rel, Source, Staged, Tag } from "$lib/types";
+import type {
+	Area,
+	Candidate,
+	Changeset,
+	Counts,
+	Decision,
+	Rel,
+	ScopeArea,
+	Source,
+	Staged,
+	Tag,
+} from "$lib/types";
 
 /** How much of the queue one screen holds; the rest is counted, not fetched. */
 const QUEUE_PAGE = 50;
@@ -92,11 +103,13 @@ export async function loadRels(db: Db): Promise<Rel[]> {
 	}));
 }
 
-/** The queue is one area's: whichever the loaded candidates belong to. */
-export async function loadQueue(db: Db): Promise<{
+/** The queue is the scoped area's, or every area's when the scope is null. */
+export async function loadQueue(
+	db: Db,
+	scope: string | null,
+): Promise<{
 	candidates: Candidate[];
 	decided: Record<string, Decision>;
-	area: { id: string; name: string; pending: number } | null;
 }> {
 	const rows = await db.query.candidates.findMany({
 		with: {
@@ -107,8 +120,8 @@ export async function loadQueue(db: Db): Promise<{
 			nearby: { orderBy: (x) => asc(x.position) },
 			conflictTags: { orderBy: (x) => asc(x.position) },
 			decision: true,
-			area: true,
 		},
+		where: scope ? (x) => eq(x.areaId, scope) : undefined,
 		orderBy: (x) => [asc(x.areaId), desc(x.conf)],
 		limit: QUEUE_PAGE,
 	});
@@ -168,16 +181,7 @@ export async function loadQueue(db: Db): Promise<{
 		} satisfies Candidate;
 	});
 
-	return { candidates, decided, area: await queueArea(db) };
-}
-
-/**
- * The queue is scoped to one area. Nothing on screen picks it, so it is the area
- * with the most waiting — which is also the only one the pipeline has filled.
- */
-async function queueArea(db: Db) {
-	const a = await db.query.areas.findFirst({ orderBy: (x) => desc(x.pending) });
-	return a ? { id: a.id, name: a.name, pending: a.pending } : null;
+	return { candidates, decided };
 }
 
 export async function loadStaged(db: Db): Promise<Staged[]> {
@@ -208,26 +212,58 @@ export async function loadStaged(db: Db): Promise<Staged[]> {
 	});
 }
 
-/** Pending and staged, which the top bar and the phone nav show on every screen. */
-export async function loadCounts(db: Db): Promise<{
-	pending: number;
-	staged: number;
-	total: number;
-	area: { id: string; name: string } | null;
-}> {
-	const area = await queueArea(db);
-	const [done] = await db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(t.decisions);
+/**
+ * Every area the top bar's picker offers, most waiting first. `areas.pending` is what
+ * the pipeline queued; decisions taken since are subtracted per area.
+ */
+async function loadScopeAreas(db: Db): Promise<(ScopeArea & { queued: number })[]> {
+	const [rows, done] = await Promise.all([
+		db.query.areas.findMany({ with: { sources: true } }),
+		db
+			.select({ areaId: t.candidates.areaId, n: sql<number>`count(*)`.mapWith(Number) })
+			.from(t.decisions)
+			.innerJoin(t.candidates, eq(t.decisions.candidateId, t.candidates.id))
+			.groupBy(t.candidates.areaId),
+	]);
+	const decided = new Map(done.map((d) => [d.areaId, d.n]));
+
+	return rows
+		.map((a) => ({
+			id: a.id,
+			name: a.name,
+			def: a.def,
+			radius: a.radius ?? undefined,
+			status: a.status,
+			lastRun: a.lastRun,
+			sources: a.sources.length,
+			queued: a.pending,
+			pending: Math.max(0, a.pending - (decided.get(a.id) ?? 0)),
+		}))
+		.sort((x, y) => y.pending - x.pending);
+}
+
+/**
+ * Pending and staged, which the top bar and the phone nav show on every screen, for the
+ * area the session reviews. `wanted` is the `scope` cookie the picker sets — an area id,
+ * or "all". Without one, or naming an area since removed, the scope is the area with the
+ * most waiting, which is where the pipeline has filled the queue.
+ */
+export async function loadCounts(db: Db, wanted: string | undefined): Promise<Counts> {
+	const all = await loadScopeAreas(db);
+	const scope =
+		wanted === "all" ? null : ((all.find((a) => a.id === wanted) ?? all[0])?.id ?? null);
+	const inScope = scope ? all.filter((a) => a.id === scope) : all;
 	const [staged] = await db
 		.select({ n: sql<number>`count(*)`.mapWith(Number) })
 		.from(t.decisions)
 		.where(and(eq(t.decisions.kind, "accepted"), isNull(t.decisions.changesetId)));
 
-	const total = area?.pending ?? 0;
 	return {
-		pending: Math.max(0, total - done.n),
+		pending: inScope.reduce((n, a) => n + a.pending, 0),
 		staged: staged.n,
-		total,
-		area: area && { id: area.id, name: area.name },
+		total: inScope.reduce((n, a) => n + a.queued, 0),
+		scope,
+		areas: all.map(({ queued: _queued, ...a }) => a),
 	};
 }
 

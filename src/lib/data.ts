@@ -800,6 +800,13 @@ export const SETTINGS = {
 	osmSourceTag: "https://sirene.fr; operator website",
 	osmHashtag: "#poi-review",
 	osmPerChangeset: 50,
+	vim: true,
+	confirmAccept: false,
+	showHints: true,
+};
+
+/** The notification channels a new instance starts with. */
+export const NOTIFICATIONS = {
 	ntfyOn: true,
 	ntfyServer: "https://ntfy.lan",
 	ntfyTopic: "osm-review",
@@ -814,7 +821,4 @@ export const SETTINGS = {
 	eventSourceFailed: true,
 	eventUploadFailed: true,
 	eventRunFinished: false,
-	vim: true,
-	confirmAccept: false,
-	showHints: true,
 };

@@ -5,22 +5,21 @@ import { zod4 } from "sveltekit-superforms/adapters";
 import { acceptSchema, candidateSchema } from "$lib/schemas/review";
 import { db } from "$lib/server/db";
 import { rebase } from "$lib/server/mutations";
-import { loadCounts, loadQueue } from "$lib/server/queries";
+import { loadQueue } from "$lib/server/queries";
 import { accept, RefusedError, reject, undo } from "$lib/server/review";
 import { requireUser } from "$lib/server/user";
 import type { Actions, PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async () => {
-	const [queue, counts, acceptForm, rejectForm] = await Promise.all([
-		loadQueue(db),
-		loadCounts(db),
+export const load: PageServerLoad = async ({ parent }) => {
+	const { counts } = await parent();
+	const [queue, acceptForm, rejectForm] = await Promise.all([
+		loadQueue(db, counts?.scope ?? null),
 		superValidate(zod4(acceptSchema), { id: "accept" }),
 		superValidate(zod4(candidateSchema), { id: "reject" }),
 	]);
 	return {
 		candidates: queue.candidates,
 		decided: queue.decided,
-		counts,
 		acceptForm,
 		rejectForm,
 	};

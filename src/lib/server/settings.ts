@@ -8,7 +8,6 @@ import type { OsmIdentity } from "$lib/types";
 export interface SettingsPanes {
 	account: AccountForm;
 	osm: OsmForm;
-	notif: NotifForm;
 	keys: KeysForm;
 	identity: OsmIdentity | null;
 }
@@ -40,18 +39,6 @@ export async function loadSettings(db: Db, userId: string): Promise<SettingsPane
 			hashtag: s.osmHashtag,
 			perChangeset: s.osmPerChangeset,
 		},
-		notif: {
-			ntfy: { on: s.ntfyOn, server: s.ntfyServer, topic: s.ntfyTopic },
-			webhook: { on: s.webhookOn, url: s.webhookUrl, secret: s.webhookSecret },
-			email: { on: s.emailOn, to: s.emailTo, relay: s.emailRelay },
-			queueOver: s.queueOver,
-			events: {
-				queue: s.eventQueue,
-				sourceFailed: s.eventSourceFailed,
-				uploadFailed: s.eventUploadFailed,
-				runFinished: s.eventRunFinished,
-			},
-		},
 		keys: { vim: s.vim, confirmAccept: s.confirmAccept, showHints: s.showHints },
 		identity:
 			user?.osm && s.osmConnected
@@ -78,9 +65,35 @@ export async function saveOsm(db: Db, userId: string, v: OsmForm) {
 		.run();
 }
 
-export async function saveNotif(db: Db, userId: string, v: NotifForm) {
-	await rowFor(db, userId);
-	db.update(t.userSettings)
+/** The instance's one row, created from the column defaults on first read. */
+async function instanceRow(db: Db) {
+	const existing = await db.query.instanceSettings.findFirst();
+	if (existing) return existing;
+	await db.insert(t.instanceSettings).values({ id: 1 }).onConflictDoNothing().run();
+	const created = await db.query.instanceSettings.findFirst();
+	if (!created) throw new Error("no instance settings row");
+	return created;
+}
+
+export async function loadNotif(db: Db): Promise<NotifForm> {
+	const s = await instanceRow(db);
+	return {
+		ntfy: { on: s.ntfyOn, server: s.ntfyServer, topic: s.ntfyTopic },
+		webhook: { on: s.webhookOn, url: s.webhookUrl, secret: s.webhookSecret },
+		email: { on: s.emailOn, to: s.emailTo, relay: s.emailRelay },
+		queueOver: s.queueOver,
+		events: {
+			queue: s.eventQueue,
+			sourceFailed: s.eventSourceFailed,
+			uploadFailed: s.eventUploadFailed,
+			runFinished: s.eventRunFinished,
+		},
+	};
+}
+
+export async function saveNotif(db: Db, v: NotifForm) {
+	await instanceRow(db);
+	db.update(t.instanceSettings)
 		.set({
 			ntfyOn: v.ntfy.on,
 			ntfyServer: v.ntfy.server,
@@ -97,7 +110,6 @@ export async function saveNotif(db: Db, userId: string, v: NotifForm) {
 			eventUploadFailed: v.events.uploadFailed,
 			eventRunFinished: v.events.runFinished,
 		})
-		.where(eq(t.userSettings.userId, userId))
 		.run();
 }
 

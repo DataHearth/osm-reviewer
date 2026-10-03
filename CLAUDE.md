@@ -20,7 +20,11 @@ are considered settled: change where data and validation live, not how a screen 
 
 - `src/routes/**` — one `+page.svelte` per screen with its `+page.server.ts` beside it.
   `+layout.svelte` is the shell and the keyboard map; `+layout.server.ts` is the auth
-  guard — every route but `/login` needs a session and remembers where it bounced from.
+  guard — every route but `/login` needs a session and remembers where it bounced from —
+  and loads the counts the top bar shows everywhere. `/settings` is the signed-in
+  account's own (account, OSM account, shortcuts), opened from the account menu;
+  `/server` is everything instance-wide (sources, areas, notifications, users,
+  diagnostics), behind the gear. `/server?s=<section>` opens a section directly.
 - `src/lib/components/**` — shared markup. `areas/`, `sources/` and `settings/` hold the
   pieces of those screens.
 - `src/lib/server/db/` — schema, client, migration runner, seed. Server-only: nothing
@@ -42,10 +46,10 @@ are considered settled: change where data and validation live, not how a screen 
 Reads are server `load`s; writes are form actions. Nothing in a component queries the
 database, and nothing outside `src/lib/server/` can.
 
-- `src/lib/server/queries.ts` — the `load` half. Every screen's data comes from here, and
-  `loadCounts` is on all of them, because the top bar and the phone nav show the pending
-  and staged counts everywhere.
-- `src/lib/server/mutations.ts`, `review.ts`, `actions.ts` — the action half: drafts, link
+- `src/lib/server/queries.ts` — the `load` half. Every screen's data comes from here.
+  `loadCounts` runs in the root layout load, because the top bar and the phone nav show
+  the pending and staged counts everywhere.
+- `src/lib/server/mutations.ts`, `review.ts` — the action half: drafts, link
   syncing, accept/reject/undo, upload. The accept gate is enforced against the rows, not
   against anything the client sent.
 - `src/lib/post.ts` — the one helper for writes behind controls that are already plain
@@ -56,6 +60,11 @@ Forms whose fields are not flat strings — a `Record<id, boolean>` of checkboxe
 `[lat, lon]` tuple, a `string[]` of tags — run `superForm(..., { dataType: "json" })`.
 `FormData` cannot carry those shapes; superforms posts the form as devalue-encoded JSON
 and `superValidate` reassembles it.
+
+The session reviews one area at a time, picked from the top bar. The choice is view state,
+not data, so it rides in a `scope` cookie (an area id, or `all`) that the picker writes and
+`loadCounts` reads; the queue and review loads take the resolved scope from `parent()`. No
+cookie, or one naming a removed area, falls back to the area with the most pending.
 
 Two bits of state are derived rather than stored, so a flag can never disagree with the
 table it describes: a candidate is **staged** when its decision is `accepted` and its
@@ -76,7 +85,7 @@ a local account. Nobody matched means a new reviewer is created on the spot. Eve
 travels back to `/login` as `?sso=<reason>`, which the load turns into the form's one
 error line.
 
-Admins manage accounts in the settings **users** pane: create (an empty password makes an
+Admins manage accounts in the **users** pane on `/server`: create (an empty password makes an
 SSO-only account that links on first sign-in), promote/demote, disable — which also
 deletes the account's sessions — and delete. Delete is refused for anyone with decisions,
 because `candidate_decisions.user_id` has no cascade and the audit trail needs the row;
@@ -142,8 +151,8 @@ same in several places, a `format.ts` helper for a thing whose classes depend on
 neither until it actually repeats.
 
 **Motion comes from `src/styles/motion.css`** — `m-fade`/`m-pop` (110ms), `m-rise`/`m-lift`
-(150ms), `m-sheet` (240ms), each with an `-out` partner, all disabled under
-`prefers-reduced-motion`.
+(150ms), `m-sheet` (240ms), `m-push`/`m-back` (200ms, a rail drilling into a list and
+backing out), each with an `-out` partner, all disabled under `prefers-reduced-motion`.
 
 **Do not use Svelte `transition:` directives.** An outro holds the node in the DOM until
 its animation reports finished, and in a throttled or backgrounded tab that report never
@@ -199,9 +208,10 @@ copy plugin before `sveltekit()` and the migrations vanish from the output.
 `@theme` and `@utility` at-rules and reports them as syntax errors. The other stylesheets
 are plain CSS and are checked normally.
 
-**A settings pane must never write another pane's fields.** They all save into one
-`user_settings` row, independently, so every column carries a default — an insert triggered
-by one pane cannot be allowed to decide another's values. `Pane.svelte` keeps each pane's
+**A settings pane must never write another pane's fields.** The account's panes save into
+one `user_settings` row, and the notifications pane into the single `instance_settings` row,
+independently, so every column carries a default — an insert triggered by one pane cannot be
+allowed to decide another's values. `Pane.svelte` keeps each pane's
 save bar wired to its own form through the HTML `form=` attribute rather than by nesting,
 because wrapping the pane in a form breaks the `min-h-full` chain its sticky footer needs.
 

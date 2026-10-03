@@ -2,15 +2,16 @@ import { expect, test } from "@playwright/test";
 import { ADMIN, signIn } from "./helpers";
 
 /**
- * Every pane but the account one writes the same `user_settings` row, so a save
- * that set the whole row from one pane's form would quietly revert the others.
- * The test therefore edits two panes in turn and checks both survive a reload.
+ * The OSM pane writes the account's `user_settings` row and the notifications pane
+ * the instance's own, from two screens; a save that wrote either whole from the
+ * wrong form would quietly revert the other. The test edits both in turn and
+ * checks both survive a reload.
  *
  * Values are derived from what is on screen rather than written as literals: a
  * retry re-runs against the row the previous attempt already changed.
  */
 test("saving one pane leaves the fields of the others alone", async ({ page }) => {
-	await signIn(page, ADMIN.email, "/settings");
+	await signIn(page, ADMIN.email, "/server");
 
 	const save = page.getByRole("button", { name: "save", exact: true });
 	const saved = page.getByText(/^saved \d{2}-\d{2}-\d{4} \d{2}:\d{2}$/);
@@ -24,6 +25,7 @@ test("saving one pane leaves the fields of the others alone", async ({ page }) =
 	await save.click();
 	await expect(saved).toBeVisible();
 
+	await page.goto("/settings");
 	await osmAccount.click();
 	const comment = page.locator("textarea");
 	const marker = `reviewed by e2e ${Date.now()}`;
@@ -39,6 +41,7 @@ test("saving one pane leaves the fields of the others alone", async ({ page }) =
 	await osmAccount.click();
 	await expect(page.locator("textarea")).toHaveValue(marker);
 
+	await page.goto("/server");
 	await notifications.click();
 	await expect(page.getByRole("spinbutton")).toHaveValue(raised);
 	// The channel summaries: ntfy still addressed, the webhook still the one

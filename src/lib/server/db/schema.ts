@@ -1,5 +1,6 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
+	check,
 	index,
 	integer,
 	primaryKey,
@@ -74,24 +75,36 @@ export const userSettings = sqliteTable("user_settings", {
 	osmSourceTag: text().notNull().default(""),
 	osmHashtag: text().notNull().default("#poi-review"),
 	osmPerChangeset: integer().notNull().default(50),
-	ntfyOn: integer({ mode: "boolean" }).notNull().default(false),
-	ntfyServer: text().notNull().default(""),
-	ntfyTopic: text().notNull().default(""),
-	webhookOn: integer({ mode: "boolean" }).notNull().default(false),
-	webhookUrl: text().notNull().default(""),
-	webhookSecret: text().notNull().default(""),
-	emailOn: integer({ mode: "boolean" }).notNull().default(false),
-	emailTo: text().notNull().default(""),
-	emailRelay: text().notNull().default(""),
-	queueOver: integer().notNull().default(250),
-	eventQueue: integer({ mode: "boolean" }).notNull().default(true),
-	eventSourceFailed: integer({ mode: "boolean" }).notNull().default(true),
-	eventUploadFailed: integer({ mode: "boolean" }).notNull().default(true),
-	eventRunFinished: integer({ mode: "boolean" }).notNull().default(false),
 	vim: integer({ mode: "boolean" }).notNull().default(true),
 	confirmAccept: integer({ mode: "boolean" }).notNull().default(false),
 	showHints: integer({ mode: "boolean" }).notNull().default(true),
 });
+
+/**
+ * Settings that belong to the instance rather than to an account: the notification
+ * channels. One row, pinned to id 1 by the check; reading creates it from the defaults.
+ */
+export const instanceSettings = sqliteTable(
+	"instance_settings",
+	{
+		id: integer().primaryKey().default(1),
+		ntfyOn: integer({ mode: "boolean" }).notNull().default(false),
+		ntfyServer: text().notNull().default(""),
+		ntfyTopic: text().notNull().default(""),
+		webhookOn: integer({ mode: "boolean" }).notNull().default(false),
+		webhookUrl: text().notNull().default(""),
+		webhookSecret: text().notNull().default(""),
+		emailOn: integer({ mode: "boolean" }).notNull().default(false),
+		emailTo: text().notNull().default(""),
+		emailRelay: text().notNull().default(""),
+		queueOver: integer().notNull().default(250),
+		eventQueue: integer({ mode: "boolean" }).notNull().default(true),
+		eventSourceFailed: integer({ mode: "boolean" }).notNull().default(true),
+		eventUploadFailed: integer({ mode: "boolean" }).notNull().default(true),
+		eventRunFinished: integer({ mode: "boolean" }).notNull().default(false),
+	},
+	(t) => [check("instance_settings_single_row", sql`${t.id} = 1`)],
+);
 
 export const sourceAllowedTags = sqliteTable(
 	"source_allowed_tags",

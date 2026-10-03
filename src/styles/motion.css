@@ -1,4 +1,4 @@
-/* Motion. Six named animations, all short: this is a tool for clearing a queue
+/* Motion. A handful of named animations, all short: this is a tool for clearing a queue
    with the keyboard, so motion says what appeared, what left and what is now
    covered — never more.
 
@@ -55,6 +55,28 @@
 		transform: translateY(100%);
 	}
 }
+@keyframes om-push-in {
+	from {
+		transform: translateX(100%);
+	}
+}
+@keyframes om-push-out {
+	to {
+		opacity: 0;
+		transform: translateX(-28%);
+	}
+}
+@keyframes om-back-in {
+	from {
+		opacity: 0;
+		transform: translateX(-28%);
+	}
+}
+@keyframes om-back-out {
+	to {
+		transform: translateX(100%);
+	}
+}
 
 /* 110ms — scrims, menus, pane swaps */
 .m-fade {
@@ -86,6 +108,21 @@
 	animation: om-sheet-out 200ms cubic-bezier(0.32, 0, 0.67, 0) both;
 }
 
+/* 200ms — a rail drilling into a list (m-push) and backing out (m-back). The
+   outgoing layer gets the -out class and is dropped on a 200ms timer. */
+.m-push {
+	animation: om-push-in 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.m-push-out {
+	animation: om-push-out 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.m-back {
+	animation: om-back-in 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.m-back-out {
+	animation: om-back-out 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.m-fade,
 	.m-fade-out,
@@ -94,7 +131,11 @@
 	.m-rise,
 	.m-lift,
 	.m-sheet,
-	.m-sheet-out {
+	.m-sheet-out,
+	.m-push,
+	.m-push-out,
+	.m-back,
+	.m-back-out {
 		animation: none;
 	}
 }

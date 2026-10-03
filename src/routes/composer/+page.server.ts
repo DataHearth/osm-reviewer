@@ -4,7 +4,7 @@ import { zod4 } from "sveltekit-superforms/adapters";
 import { uploadSchema } from "$lib/schemas/review";
 import { db } from "$lib/server/db";
 import { CREATED_BY } from "$lib/server/instance";
-import { loadCounts, loadStaged } from "$lib/server/queries";
+import { loadStaged } from "$lib/server/queries";
 import { RefusedError, upload } from "$lib/server/review";
 import { loadSettings } from "$lib/server/settings";
 import { requireUser } from "$lib/server/user";
@@ -12,9 +12,8 @@ import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const settings = await loadSettings(db, requireUser(locals).id);
-	const [staged, counts, form] = await Promise.all([
+	const [staged, form] = await Promise.all([
 		loadStaged(db),
-		loadCounts(db),
 		superValidate(
 			{
 				comment: settings.osm.comment,
@@ -24,7 +23,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			zod4(uploadSchema),
 		),
 	]);
-	return { staged, counts, form, createdBy: CREATED_BY };
+	return { staged, form, createdBy: CREATED_BY };
 };
 
 export const actions: Actions = {

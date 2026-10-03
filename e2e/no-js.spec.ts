@@ -28,9 +28,9 @@ test("signing in and accepting a candidate work with JavaScript off", async ({ p
 	// as well: without JS there is no row to click through from the queue.
 	await page.goto("/review");
 	await expect(page.getByRole("button", { name: "Deselect shop" })).toBeVisible();
-	await page.getByRole("button", { name: "accept 2" }).click();
+	await page.getByRole("button", { name: /^Accept 2/ }).click();
 
 	await page.goto("/");
 	await expect(onScreen(page.getByText(CANDIDATE.name, { exact: true }))).toHaveCount(0);
-	await expect(page.getByText("9 shown · 242 pending · area: Toulouse")).toBeVisible();
+	await expect(page.getByText("9 shown · 242 pending")).toBeVisible();
 });

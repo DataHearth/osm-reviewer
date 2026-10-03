@@ -105,6 +105,27 @@ export interface Area {
 	sources: string[];
 }
 
+/** An area as the top bar's picker lists it, with what is still waiting in it. */
+export interface ScopeArea {
+	id: string;
+	name: string;
+	def: Area["def"];
+	radius?: number;
+	status: string;
+	lastRun: string;
+	sources: number;
+	pending: number;
+}
+
+/** What the top bar and the phone nav show on every screen. `scope` null is every area. */
+export interface Counts {
+	pending: number;
+	staged: number;
+	total: number;
+	scope: string | null;
+	areas: ScopeArea[];
+}
+
 /** An OSM admin relation offered by the area picker. */
 export interface Rel {
 	name: string;

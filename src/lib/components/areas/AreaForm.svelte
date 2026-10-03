@@ -75,7 +75,7 @@ const estimate = $derived.by(() => {
 });
 </script>
 
-<form method="POST" action="?/save" use:enhance class="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
+<form method="POST" action="?/areaSave" use:enhance class="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
 	<div class="flex shrink-0 flex-wrap items-baseline justify-between gap-4 border-b border-line bg-bar px-[18px] py-3">
 		<span class="shrink-0 text-[14px] font-medium whitespace-nowrap text-ink">{editing ? "Edit area" : "New area"}</span>
 		<span class="text-[11.5px] text-faint">

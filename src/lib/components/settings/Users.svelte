@@ -6,7 +6,7 @@ import { ghost, INPUT } from "$lib/format";
 import { post } from "$lib/post";
 import { newUserSchema, ROLES } from "$lib/schemas/settings";
 import type { ManagedUser } from "$lib/types";
-import type { PageData } from "../../../routes/settings/$types";
+import type { PageData } from "../../../routes/server/$types";
 import Field from "./Field.svelte";
 import Pane from "./Pane.svelte";
 

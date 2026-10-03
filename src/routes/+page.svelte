@@ -1,64 +1,76 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import QueueFilterSheet from "$lib/components/QueueFilterSheet.svelte";
-import { confBg, confText, OP_SIGN, typeLabel, typeText } from "$lib/format";
+import {
+	CHIP,
+	confBg,
+	confText,
+	FLAG_BAD,
+	FLAG_WARN,
+	KBD,
+	OP_SIGN,
+	pct,
+	typeDot,
+	typeLabel,
+	typeText,
+} from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Candidate } from "$lib/types";
-import type { PageData } from "./$types";
-
-let { data }: { data: PageData } = $props();
 
 // A row has too many fields to line up in columns at 402px, so phone gets
 // cards and md gets the table. Both are rendered and the CSS breakpoint
 // picks one, rather than a JS width read choosing which to mount.
 const rows = $derived(review.visible);
-let sheet = $state(false);
+const rowsLabel = $derived(
+	rows.length
+		? "Rows 1–" + rows.length + " of " + review.pendingCount
+		: "No rows loaded · " + review.pendingCount + " pending",
+);
 
-const chip = (on: boolean) =>
-	"cursor-pointer rounded-full whitespace-nowrap px-[10px] py-[3px] text-[11.5px] " +
-	(on
-		? "border border-edge-strong bg-line text-accent"
-		: "border border-edge-soft bg-transparent text-faint hover:text-ink");
+const seg = (on: boolean) =>
+	"cursor-pointer rounded-md border-0 px-[11px] py-1 text-[12.5px] whitespace-nowrap transition-colors " +
+	(on ? "bg-raised text-ink" : "bg-transparent text-muted hover:text-ink");
 
-const types = ["all", "new", "update", "closure"] as const;
+const types = [
+	["all", "All types"],
+	["new", "New"],
+	["update", "Update"],
+	["closure", "Closure"],
+] as const;
 const confs = [
-	["all", "all"],
-	["high", "≥.85"],
-	["mid", ".60–.85"],
-	["low", "<.60"],
+	["all", "Any confidence"],
+	["high", "≥85%"],
+	["mid", "60–85%"],
+	["low", "<60%"],
 ] as const;
 
-const headers = [
-	["type", "TYPE"],
-	["name", "OBJECT"],
-	["tags", "TAGS"],
-	["source", "SOURCE"],
-	["conf", "CONF"],
-	["age", "AGE"],
-	["flags", "FLAGS"],
+// Type, source and tags fold into the object column, so their sort keys sit
+// in that column's header.
+const objectSorts = [
+	["name", "Object"],
+	["type", "Type"],
+	["source", "Source"],
+	["tags", "Tags"],
 ] as const;
 
 const cols =
-	"grid items-center grid-cols-[22px_78px_minmax(0,1fr)_140px_74px_70px_46px_84px] " +
-	"lg:grid-cols-[26px_92px_minmax(0,1fr)_210px_96px_74px_62px_90px]";
+	"grid items-center gap-x-[14px] grid-cols-[10px_minmax(0,1fr)_112px_92px_44px] " +
+	"lg:grid-cols-[10px_minmax(0,1fr)_150px_120px_56px]";
 
-const filterLabel = $derived(
-	[
-		review.typeFilter === "all" ? null : review.typeFilter,
-		review.confFilter === "all" ? null : "conf " + review.confFilter,
-	]
-		.filter(Boolean)
-		.join(" · ") || "all candidates",
-);
-
-function flag(c: Candidate): [string, string] {
-	if (c.conflict) return ["conflict", "text-bad"];
-	if (c.hasInvalid) return ["invalid", "text-bad"];
-	if (c.allQuarantined) return ["quarantined", "text-bad"];
-	if (c.hasNoEv) return ["1 unevidenced", "text-warn-ink"];
-	if (c.stale) return ["stale " + c.stale + "d", "text-warn"];
-	return ["—", "text-faint"];
+function flag(c: Candidate): [string, string] | null {
+	if (c.conflict) return ["Conflict", FLAG_BAD];
+	if (c.hasInvalid) return ["Invalid", FLAG_BAD];
+	if (c.allQuarantined) return ["Quarantined", FLAG_BAD];
+	if (c.hasNoEv) return ["1 unevidenced", FLAG_WARN];
+	if (c.stale) return ["Stale " + c.stale + "d", FLAG_WARN];
+	return null;
 }
+
+const sortMark = (k: string) =>
+	review.sortKey === k ? (review.sortDir === "asc" ? "▲" : "▼") : "";
+const sortBtn = (k: string) =>
+	"flex cursor-pointer items-center gap-[5px] border-0 bg-transparent p-0 text-left text-[12px] font-medium whitespace-nowrap " +
+	(review.sortKey === k ? "text-accent" : "text-faint hover:text-muted");
 
 function openRow(c: Candidate, i: number) {
 	review.open(c, i);
@@ -66,119 +78,120 @@ function openRow(c: Candidate, i: number) {
 }
 </script>
 
-<section class="flex min-h-0 flex-1 flex-col">
+<section class="flex min-h-0 flex-1 flex-col font-sans">
 	{#if review.empty}
 		<div class="m-fade flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-4 py-10 md:py-14">
-			<div class="w-full max-w-[560px] overflow-hidden rounded-lg border border-line bg-panel">
-				<div class="border-b border-line px-[14px] py-[10px] text-[12px] tracking-[0.06em] text-ok">QUEUE EMPTY</div>
-				<div class="flex flex-col gap-[10px] px-[14px] py-4 text-[13px] leading-relaxed">
-					<div class="text-ink">Nothing pending. Every queued candidate has been reviewed.</div>
-					<div class="grid gap-x-3 gap-y-0.5 text-[12px] text-muted max-md:gap-y-2 md:grid-cols-[170px_1fr]">
-						<span class="max-md:text-faint">candidates reviewed</span><span>{review.total}</span>
-						<span class="max-md:text-faint">pipeline</span><span class="text-faint">not implemented — nothing refills the queue</span>
+			<div class="w-full max-w-[560px] overflow-hidden rounded-xl border border-line bg-panel">
+				<div class="flex items-center gap-2.5 border-b border-line px-4 py-3">
+					<span class="h-[9px] w-[9px] rounded-full bg-ok"></span>
+					<span class="text-[14px] font-semibold text-ink">Queue empty</span>
+				</div>
+				<div class="flex flex-col gap-3 px-4 py-4 text-[13.5px] leading-relaxed">
+					<div class="text-ink-2">Nothing pending. Every queued candidate has been reviewed.</div>
+					<div class="grid gap-x-3 gap-y-1 text-[12.5px] text-muted max-md:gap-y-2 md:grid-cols-[170px_1fr]">
+						<span class="text-faint">Candidates reviewed</span><span class="font-mono text-[12px]">{review.total}</span>
+						<span class="text-faint">Pipeline</span><span class="text-faint">not implemented — nothing refills the queue</span>
 					</div>
 					<div class="mt-1 flex gap-2 max-md:flex-col">
 						<button
-							class="cursor-pointer rounded-sm border border-edge bg-raised px-3 py-[5px] text-ink max-md:min-h-[46px]"
-							onclick={() => goto("/history")}>history</button
+							class="cursor-pointer rounded-lg border border-edge bg-raised px-3.5 py-1.5 text-[13px] font-medium text-ink max-md:min-h-[46px]"
+							onclick={() => goto("/history")}>History</button
 						>
 					</div>
 				</div>
 			</div>
 		</div>
 	{:else}
-		<!-- Phone: filters and sort collapse into one summary button. -->
-		<div class="flex shrink-0 items-center gap-2 border-b border-line-soft bg-panel px-3 py-2 md:hidden">
-			<button
-				class="flex min-h-[40px] flex-1 cursor-pointer items-center gap-2 rounded-md border border-edge-soft bg-transparent px-3 text-left text-[12px] text-muted"
-				onclick={() => (sheet = true)}
-			>
-				<span class="text-faint">filter</span>
-				<span class="truncate text-ink">{filterLabel}</span>
-				<span class="ml-auto text-[10px] text-faint">▾</span>
-			</button>
-			<span class="shrink-0 text-[11.5px] tabular-nums text-faint">{rows.length}</span>
-		</div>
-
-		<div class="hidden shrink-0 flex-wrap items-center gap-[14px] border-b border-line-soft bg-panel px-4 py-[10px] md:flex">
-			<span class="text-[11px] text-faint">type</span>
-			{#each types as t (t)}
-				<button
-					class={chip(review.typeFilter === t)}
-					onclick={() => {
-						review.typeFilter = t;
-						review.qIdx = 0;
-					}}>{t}</button
-				>
-			{/each}
-			<span class="h-4 w-px bg-line"></span>
-			<span class="text-[11px] text-faint">conf</span>
-			{#each confs as c (c[0])}
-				<button
-					class={chip(review.confFilter === c[0])}
-					onclick={() => {
-						review.confFilter = c[0];
-						review.qIdx = 0;
-					}}>{c[1]}</button
-				>
-			{/each}
-			<span class="ml-auto text-[11px] whitespace-nowrap text-faint">
-				{rows.length} shown · {review.pendingCount} pending · area: {data.area?.name ?? "—"}
+		<!-- Phone: the filter trigger is in the title bar; the sheet is mounted below. -->
+		<div class="hidden shrink-0 flex-wrap items-center gap-[14px] border-b border-line bg-panel px-4 py-2.5 md:flex">
+			<div class="flex rounded-lg border border-line p-[2px]">
+				{#each types as t (t[0])}
+					<button
+						class={seg(review.typeFilter === t[0])}
+						onclick={() => {
+							review.typeFilter = t[0];
+							review.qIdx = 0;
+						}}>{t[1]}</button
+					>
+				{/each}
+			</div>
+			<div class="flex rounded-lg border border-line p-[2px]">
+				{#each confs as c (c[0])}
+					<button
+						class="{seg(review.confFilter === c[0])} {c[0] === 'all' ? '' : 'font-mono !text-[12px]'}"
+						onclick={() => {
+							review.confFilter = c[0];
+							review.qIdx = 0;
+						}}>{c[1]}</button
+					>
+				{/each}
+			</div>
+			<span class="ml-auto text-[12px] whitespace-nowrap text-faint">
+				{rows.length} shown · {review.pendingCount} pending
 			</span>
 		</div>
 
 		<div class="flex min-h-0 flex-1 flex-col">
 			<div class="min-h-0 flex-1 overflow-y-auto">
+				{#if !rows.length && review.scopeArea}
+					<div class="m-rise flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-4 text-[13px] text-muted">
+						<span>No candidates loaded for {review.scopeArea.name} yet.</span>
+						<button
+							class="cursor-pointer rounded-lg border border-edge bg-raised px-3 py-1.5 text-[13px] font-medium text-ink max-md:min-h-[44px]"
+							onclick={() => review.setScope(null)}>Show all areas</button
+						>
+					</div>
+				{/if}
 				<div class="md:hidden">
 					{#each rows as c, i (c.id)}
 						{@const f = flag(c)}
 						<button
 							type="button"
-							class="flex w-full cursor-pointer flex-col gap-[7px] border-b border-line-row px-[14px] py-[13px] text-left {i ===
+							class="grid w-full cursor-pointer grid-cols-[9px_minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 border-b border-line-row px-4 py-3 text-left {i ===
 							review.qIdx
 								? 'bg-sel shadow-[inset_2px_0_0_var(--accent)]'
 								: 'bg-transparent'}"
 							onclick={() => openRow(c, i)}
 						>
-							<div class="flex items-baseline gap-2">
-								<b class="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{c.name}</b>
-								<span class="shrink-0 text-[12.5px] tabular-nums {confText(c.conf)}">{c.conf.toFixed(2)}</span>
-							</div>
-							<div class="flex items-center gap-2 text-[11.5px]">
-								<span class="rounded-xs bg-raised px-[6px] py-px {typeText(c.type)}">{typeLabel(c.type)}</span>
-								<span class="truncate text-faint">{c.source}</span>
-								<span class="ml-auto shrink-0 {c.stale ? 'text-warn' : 'text-faint'}">{c.age}</span>
-							</div>
-							<div class="truncate text-[12px] text-faint">{c.tags.map((t) => OP_SIGN[t.op] + t.k).join(" ")}</div>
-							{#if f[0] !== "—"}
-								<div class="text-[11.5px] {f[1]}">{f[0]}</div>
+							<span class="h-[9px] w-[9px] self-center rounded-full {typeDot(c.type)}"></span>
+							<span class="flex min-w-0 items-baseline gap-2">
+								<b class="min-w-0 truncate text-[15px] font-medium text-ink">{c.name}</b>
+								<span class="shrink-0 text-[12px] {typeText(c.type)}">{typeLabel(c.type)}</span>
+							</span>
+							<span class="text-right font-mono text-[14px] tabular-nums {confText(c.conf)}">{pct(c.conf)}</span>
+							<span class="col-start-2 truncate font-mono text-[11.5px] text-faint"
+								><span class="text-link">{c.osmId}</span> · {c.source} · {c.tags.map((t) => OP_SIGN[t.op] + t.k).join(" ")}</span
+							>
+							<span class="text-right font-mono text-[11.5px] {c.stale ? 'text-warn' : 'text-faint'}">{c.age}</span>
+							{#if f}
+								<span class="col-start-2 col-end-4 mt-1"><span class="{CHIP} {f[1]}">{f[0]}</span></span>
 							{/if}
 						</button>
 					{/each}
-					<div class="px-[14px] py-3 text-[11px] text-faint">
-						{rows.length} of {review.total} · {review.pendingCount} pending
+					<div class="px-4 py-3 text-[12px] text-faint">
+						{rows.length} of {review.pendingCount} pending
 					</div>
 				</div>
 
 				<div class="max-md:hidden">
-					<div
-						class="sticky top-0 z-1 border-b border-line-soft bg-head px-4 py-2 font-sans text-[10.5px] tracking-[0.08em] text-muted {cols}"
-					>
+					<div class="sticky top-0 z-1 border-b border-line bg-head px-4 py-2 {cols}">
 						<span></span>
-						{#each headers as h (h[0])}
-							<button
-								title="sort"
-								class="flex cursor-pointer items-center gap-[5px] border-0 bg-transparent p-0 text-left font-sans text-[10.5px] tracking-[0.08em] whitespace-nowrap {review.sortKey ===
-								h[0]
-									? 'text-accent'
-									: 'text-muted'}"
-								onclick={() => review.sortBy(h[0])}
-							>
-								{h[1]}<span class="text-[9px] leading-none"
-									>{review.sortKey === h[0] ? (review.sortDir === "asc" ? "▲" : "▼") : ""}</span
+						<span class="flex items-center gap-4">
+							{#each objectSorts as s (s[0])}
+								<button title="Sort" class={sortBtn(s[0])} onclick={() => review.sortBy(s[0])}
+									>{s[1]}<span class="text-[9px] leading-none">{sortMark(s[0])}</span></button
 								>
-							</button>
-						{/each}
+							{/each}
+						</span>
+						<button title="Sort" class={sortBtn("flags")} onclick={() => review.sortBy("flags")}
+							>Flags<span class="text-[9px] leading-none">{sortMark("flags")}</span></button
+						>
+						<button title="Sort" class={sortBtn("conf")} onclick={() => review.sortBy("conf")}
+							>Confidence<span class="text-[9px] leading-none">{sortMark("conf")}</span></button
+						>
+						<button title="Sort" class="{sortBtn('age')} justify-end" onclick={() => review.sortBy("age")}
+							><span class="text-[9px] leading-none">{sortMark("age")}</span>Age</button
+						>
 					</div>
 
 					{#each rows as c, i (c.id)}
@@ -186,37 +199,47 @@ function openRow(c: Candidate, i: number) {
 						{@const f = flag(c)}
 						<button
 							type="button"
-							class="w-full cursor-pointer border-b border-line-row px-4 py-[9px] text-left {cols}
+							class="w-full cursor-pointer border-b border-line-row px-4 py-2.5 text-left {cols}
 							{on ? 'bg-sel shadow-[inset_2px_0_0_var(--accent)]' : 'bg-transparent hover:bg-panel'}"
 							onclick={() => openRow(c, i)}
 						>
-							<span class="text-[11px] text-accent">{on ? "›" : ""}</span>
-							<span class="text-[12px] {typeText(c.type)}">{typeLabel(c.type)}</span>
-							<span class="truncate pr-3">
-								<b class="font-medium text-ink">{c.name}</b> <span class="text-faint">{c.osmId}</span>
-							</span>
-							<span class="truncate pr-3 text-[12px] text-faint">
-								{c.tags.map((t) => OP_SIGN[t.op] + t.k).join(" ")}
-							</span>
-							<span class="truncate text-[12px] text-faint">{c.source}</span>
-							<span class="flex items-center gap-1.5 pr-2.5">
-								<span class="block h-[5px] w-7 rounded-[3px] bg-line">
-									<span class="block h-[5px] rounded-[3px] {confBg(c.conf)}" style="width: {Math.round(c.conf * 28)}px"></span>
+							<span class="h-[9px] w-[9px] rounded-full {typeDot(c.type)}"></span>
+							<span class="flex min-w-0 flex-col gap-[2px]">
+								<span class="flex min-w-0 items-baseline gap-2">
+									<b class="min-w-0 truncate text-[14px] font-medium text-ink">{c.name}</b>
+									<span class="shrink-0 text-[12px] {typeText(c.type)}">{typeLabel(c.type)}</span>
 								</span>
-								<span class="text-[12px] {confText(c.conf)}">{c.conf.toFixed(2)}</span>
+								<span class="truncate font-mono text-[11.5px] text-faint"
+									><span class="text-link">{c.osmId}</span> &nbsp;·&nbsp; {c.source} &nbsp;·&nbsp; {c.tags
+										.map((t) => OP_SIGN[t.op] + t.k)
+										.join(" ")}</span
+								>
 							</span>
-							<span class="pr-2 text-[12px] {c.stale ? 'text-warn' : 'text-faint'}">{c.age}</span>
-							<span class="truncate text-[11.5px] {f[1]}">{f[0]}</span>
+							<span class="min-w-0">
+								{#if f}<span class="{CHIP} max-w-full truncate {f[1]}">{f[0]}</span>{/if}
+							</span>
+							<span class="flex flex-col gap-1">
+								<span class="font-mono text-[14px] tabular-nums {confText(c.conf)}">{pct(c.conf)}</span>
+								<span class="block h-[3px] rounded-full bg-line">
+									<span class="block h-[3px] rounded-full {confBg(c.conf)}" style="width: {Math.round(c.conf * 100)}%"></span>
+								</span>
+							</span>
+							<span class="text-right font-mono text-[12px] {c.stale ? 'text-warn' : 'text-faint'}">{c.age}</span>
 						</button>
 					{/each}
 				</div>
 			</div>
 
-			<footer class="hidden shrink-0 border-t border-line-soft px-4 py-[9px] text-[11px] text-faint md:block">
-				rows 1–{rows.length} of {review.total}<span class="hidden lg:inline"> · j/k move · enter open · esc back</span>
+			<footer class="hidden shrink-0 items-center gap-2 border-t border-line px-4 py-[9px] text-[12px] text-faint md:flex">
+				<span>{rowsLabel}</span>
+				<span class="ml-auto hidden items-center gap-1.5 lg:flex">
+					<span class={KBD}>J K</span><span class="mr-3">move</span>
+					<span class={KBD}>Enter</span><span class="mr-3">open</span>
+					<span class={KBD}>Esc</span><span>back</span>
+				</span>
 			</footer>
 		</div>
 
-		<QueueFilterSheet bind:open={sheet} />
+		<QueueFilterSheet bind:open={review.filterSheet} />
 	{/if}
 </section>

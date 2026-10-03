@@ -1,36 +1,24 @@
 <script lang="ts">
 import Account from "$lib/components/settings/Account.svelte";
-import Diagnostics from "$lib/components/settings/Diagnostics.svelte";
-import Notifications from "$lib/components/settings/Notifications.svelte";
 import OsmAccount from "$lib/components/settings/OsmAccount.svelte";
 import Shortcuts from "$lib/components/settings/Shortcuts.svelte";
-import Users from "$lib/components/settings/Users.svelte";
 import { railRow } from "$lib/format";
 import { settings } from "$lib/stores/settings.svelte";
 import type { PageData } from "./$types";
 
 let { data }: { data: PageData } = $props();
 
-// Same two-pane shape as sources: a rail of sections beside the open one,
-// and on a phone the two are screens rather than columns.
+// The signed-in account's own settings, in the account menu. Instance-wide ones
+// live at /server, behind the gear. A rail of sections beside the open one, and
+// on a phone the two are screens rather than columns.
 let sec = $state("account");
 let pane = $state<"rail" | "detail">("rail");
 
-const SECTIONS = [
+const sections = [
 	["account", "account", "name, email, password"],
 	["osm", "OSM account", "changeset identity"],
-	["notif", "notifications", "ntfy, webhook, email"],
 	["keys", "shortcuts", "the keyboard map"],
-	["users", "users", "accounts, roles, access"],
-	["diag", "diagnostics", "version, health, bundle"],
 ];
-
-// Users and diagnostics are instance-wide, so reviewers do not get them.
-const sections = $derived(
-	data.user.role === "admin"
-		? SECTIONS
-		: SECTIONS.filter((s) => s[0] !== "users" && s[0] !== "diag"),
-);
 const current = $derived(sections.find((s) => s[0] === sec) ?? sections[0]);
 
 function open(id: string) {
@@ -57,7 +45,7 @@ function open(id: string) {
 			</button>
 		{/each}
 		<p class="px-[14px] py-3 text-[11px] leading-relaxed text-faint">
-			Sources and areas have their own screens — this is the account and the instance.
+			These follow your account. Sources, areas, notifications and users are instance-wide — under the gear in the title bar.
 		</p>
 	</div>
 
@@ -76,14 +64,8 @@ function open(id: string) {
 					<Account {data} />
 				{:else if sec === "osm"}
 					<OsmAccount {data} />
-				{:else if sec === "notif"}
-					<Notifications form={data.forms.notif} />
-				{:else if sec === "keys"}
+				{:else}
 					<Shortcuts form={data.forms.keys} keymap={data.keymap} />
-				{:else if sec === "users"}
-					<Users {data} />
-				{:else if data.instance}
-					<Diagnostics instance={data.instance} health={data.health} sso={data.sso} />
 				{/if}
 			</div>
 		{/key}

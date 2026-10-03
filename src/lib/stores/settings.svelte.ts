@@ -17,8 +17,13 @@ class SettingsState {
 	healthChecked = $state<string | null>(null);
 	disconnected = $state(false);
 
-	get anyDirty() {
-		return Object.values(this.dirty).some(Boolean);
+	/** The account menu's sections (/settings) and the gear's (/server) flag apart. */
+	get userDirty() {
+		return !!(this.dirty.account || this.dirty.osm || this.dirty.keys);
+	}
+
+	get serverDirty() {
+		return !!this.dirty.notif;
 	}
 
 	mark(s: Section, on = true) {

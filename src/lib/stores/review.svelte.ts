@@ -1,8 +1,9 @@
+import { invalidateAll } from "$app/navigation";
 import { page } from "$app/state";
 import { post } from "$lib/post";
 import type { AreaDraft } from "$lib/schemas/area";
 import type { SourceDraft } from "$lib/schemas/source";
-import type { Area, Candidate, Decision, Rel, Source, Staged } from "$lib/types";
+import type { Area, Candidate, Counts, Decision, Rel, ScopeArea, Source, Staged } from "$lib/types";
 
 /** Which form a rail opened. The fields themselves live in the form's own store. */
 export interface DraftMark {
@@ -12,14 +13,7 @@ export interface DraftMark {
 /** Tags start selected unless they are unevidenced, invalid, or under conflict. */
 const freshSel = (c: Candidate) => c.tags.map((t) => !!t.ev && !t.invalid && !c.conflict);
 
-type Counts = {
-	pending: number;
-	staged: number;
-	total: number;
-	area: { id: string; name: string } | null;
-};
-
-const NO_COUNTS: Counts = { pending: 0, staged: 0, total: 0, area: null };
+const NO_COUNTS: Counts = { pending: 0, staged: 0, total: 0, scope: null, areas: [] };
 
 /**
  * The review session as the browser holds it: which candidate is open, what is
@@ -38,6 +32,8 @@ class ReviewState {
 	confFilter = $state<"all" | "high" | "mid" | "low">("all");
 	sortKey = $state("type");
 	sortDir = $state<"asc" | "desc">("asc");
+	/** Phone filter sheet. Its trigger lives in the title bar, the sheet on the queue. */
+	filterSheet = $state(false);
 
 	upload = $state<"idle" | "failed" | "retry" | "sent">("idle");
 	uploadConflict = $state<{
@@ -109,9 +105,21 @@ class ReviewState {
 		return this.counts.staged;
 	}
 
-	/** The area the queue is drawn from, which the top bar names. */
-	get queueArea() {
-		return this.counts.area;
+	/** The area the session reviews; null reviews every area at once. */
+	get scope() {
+		return this.counts.scope;
+	}
+
+	get scopeAreas(): ScopeArea[] {
+		return this.counts.areas;
+	}
+
+	get scopeArea() {
+		return this.scopeAreas.find((a) => a.id === this.scope) ?? null;
+	}
+
+	get activeFilters() {
+		return (this.typeFilter !== "all" ? 1 : 0) + (this.confFilter !== "all" ? 1 : 0);
 	}
 
 	get empty() {
@@ -279,6 +287,19 @@ class ReviewState {
 	}
 
 	// ── review ──────────────────────────────────────────────────────────────
+	/**
+	 * The scope is view state, not data, so it rides in a cookie rather than a form
+	 * action: every load reads it, and nothing about it needs validating beyond the
+	 * load falling back when it names no area.
+	 */
+	async setScope(id: string | null) {
+		// biome-ignore lint/suspicious/noDocumentCookie: a plain view preference the server reads back
+		document.cookie = `scope=${id ?? "all"}; path=/; max-age=31536000; samesite=lax`;
+		this.qIdx = 0;
+		this.idx = 0;
+		await invalidateAll();
+	}
+
 	sortBy(key: string) {
 		if (this.sortKey === key) this.sortDir = this.sortDir === "asc" ? "desc" : "asc";
 		else this.sortDir = key === "type" || key === "name" || key === "source" ? "asc" : "desc";

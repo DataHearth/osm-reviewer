@@ -15,8 +15,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("the queue is cards on a phone and a table from md up", async ({ page }) => {
-	const columnHeader = page.getByRole("button", { name: "OBJECT" });
-	const phoneFilter = page.getByRole("button", { name: /^filter/ });
+	const columnHeader = page.getByRole("button", { name: "Object", exact: true });
+	const phoneFilter = page.getByRole("button", { name: /^Filter/ });
 
 	await page.setViewportSize(PHONE);
 	await expect(phoneFilter).toBeVisible();
@@ -36,8 +36,8 @@ test("the evidence gutter is a column beside the tag only on desktop", async ({ 
 
 	// Below lg the quote stacks under its tag and needs a caption to say what it
 	// is; at lg it becomes the gutter and the caption goes away.
-	const caption = page.getByText("EVIDENCE", { exact: true }).first();
-	const paneSwitch = page.getByRole("button", { name: /^tags \d+\// });
+	const caption = page.getByText("Evidence", { exact: true }).first();
+	const paneSwitch = page.getByRole("button", { name: /^Tags \d+\// });
 	const tag = page.getByRole("button", { name: "Deselect shop" });
 	const quote = page.getByText("commerce de détail de fleurs", { exact: true });
 

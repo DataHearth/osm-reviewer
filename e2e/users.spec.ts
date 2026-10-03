@@ -5,7 +5,7 @@ test("an admin adds, disables and deletes a local account", async ({ page, brows
 	const email = `local-${Date.now()}@example.test`;
 	const password = "a-long-enough-password";
 
-	await signIn(page, ADMIN.email, "/settings");
+	await signIn(page, ADMIN.email, "/server");
 	await page.getByRole("button", { name: /^users/ }).click();
 
 	const own = page.getByRole("listitem").filter({ hasText: ADMIN.email });
@@ -26,9 +26,9 @@ test("an admin adds, disables and deletes a local account", async ({ page, brows
 	await other.goto("/login");
 	await submitCredentials(other, email, password);
 	await expect(other).toHaveURL("/");
-	await other.goto("/settings");
+	await other.goto("/server");
 	await expect(other.getByRole("button", { name: /^users/ })).toHaveCount(0);
-	const refused = await postAction(other, "/settings?/userRole", { id: "anyone", role: "admin" });
+	const refused = await postAction(other, "/server?/userRole", { id: "anyone", role: "admin" });
 	expect(refused.status()).toBe(403);
 
 	await row.getByRole("button", { name: "disable" }).click();

@@ -24,19 +24,19 @@ test("a candidate opens with its tags and evidence", async ({ page }) => {
 	await expect(page.getByText("commerce de détail de fleurs", { exact: true })).toBeVisible();
 	await expect(page.getByText("FLEURISTE DES MINIMES", { exact: true })).toBeVisible();
 
-	await expect(page.getByText("PASS all tags evidenced")).toBeVisible();
-	await expect(page.getByText(`fetched ${CANDIDATE.fetched}`)).toBeVisible();
+	await expect(page.getByText("all tags evidenced")).toBeVisible();
+	await expect(page.getByText(CANDIDATE.fetched, { exact: true })).toBeVisible();
 });
 
 test("accepting a candidate outlives a reload and takes it out of the queue", async ({ page }) => {
 	await onScreen(page.getByText(CANDIDATE.name, { exact: true })).click();
-	await page.getByRole("button", { name: "accept 2" }).click();
+	await page.getByRole("button", { name: /^Accept 2/ }).click();
 	await expect(page.getByText(`accepted ${CANDIDATE.name} · u to undo`)).toBeVisible();
 
 	await page.goto("/");
 	await page.reload();
 	await expect(onScreen(page.getByText(CANDIDATE.name, { exact: true }))).toHaveCount(0);
-	await expect(page.getByText("9 shown · 242 pending · area: Toulouse")).toBeVisible();
+	await expect(page.getByText("9 shown · 242 pending")).toBeVisible();
 
 	// The two tags it was accepted with are what the composer would upload.
 	await page.goto("/composer");
@@ -45,8 +45,9 @@ test("accepting a candidate outlives a reload and takes it out of the queue", as
 
 test("a candidate in conflict cannot be accepted", async ({ page }) => {
 	await onScreen(page.getByText("Le Bibent", { exact: true })).click();
+	await expect(page).toHaveURL("/review");
 
-	await expect(page.getByText("CONFLICT", { exact: true })).toBeVisible();
-	await expect(page.getByRole("button", { name: /accept/ })).toBeDisabled();
+	await expect(page.getByText("Conflict", { exact: true })).toBeVisible();
+	await expect(page.getByRole("button", { name: /^Accept/ })).toBeDisabled();
 	await expect(page.getByText("accept blocked — version conflict unresolved")).toBeVisible();
 });

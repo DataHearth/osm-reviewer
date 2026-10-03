@@ -92,7 +92,7 @@ function allowKeydown(e: KeyboardEvent) {
 }
 </script>
 
-<form method="POST" action="?/save" use:enhance>
+<form method="POST" action="?/sourceSave" use:enhance>
 	<div class="flex flex-wrap items-baseline justify-between gap-4 border-b border-line bg-bar px-[18px] py-3">
 		<span class="shrink-0 text-[14px] font-medium whitespace-nowrap text-ink">{d.editId ? "Edit source" : "New source"}</span>
 		<span class="text-[11.5px] text-faint">{d.editId ? "changes apply from the next run" : "nothing is fetched until you create it"}</span>

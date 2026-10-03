@@ -1,4 +1,14 @@
-import { AREAS, CANDIDATES, HISTORY, RELS, SETTINGS, SOURCES, USERS, YIELDS } from "../../data";
+import {
+	AREAS,
+	CANDIDATES,
+	HISTORY,
+	NOTIFICATIONS,
+	RELS,
+	SETTINGS,
+	SOURCES,
+	USERS,
+	YIELDS,
+} from "../../data";
 import { hashPassword } from "../auth/password";
 import { seedAdmin } from "../config";
 import { loadEnvFiles } from "../env";
@@ -55,6 +65,7 @@ async function seed(db: Db): Promise<void> {
 			t.changesets,
 			t.sessions,
 			t.userSettings,
+			t.instanceSettings,
 			t.users,
 		]) {
 			tx.delete(table).run();
@@ -83,6 +94,8 @@ async function seed(db: Db): Promise<void> {
 				USERS.map((u) => ({ ...SETTINGS, userId: u.id, osmConnected: at(SETTINGS.osmConnected) })),
 			)
 			.run();
+
+		tx.insert(t.instanceSettings).values(NOTIFICATIONS).run();
 
 		tx.insert(t.sources)
 			.values(
