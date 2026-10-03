@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+	<title>osm-reviewer</title>
+	<path fill="#e0a33c" d="M16 30S6 20.5 6 13a10 10 0 0 1 20 0c0 7.5-10 17-10 17Z"/>
+	<path fill="none" stroke="#1a1a1c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="m11 13 3.5 3.5L21 10"/>
+</svg>
