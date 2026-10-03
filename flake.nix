@@ -17,6 +17,7 @@
     }:
     let
       sources = import ./nix/source.nix { inherit (nixpkgs) lib; };
+      rev = self.shortRev or self.dirtyShortRev or null;
     in
     flake-utils.lib.eachSystem
       [
@@ -30,7 +31,7 @@
             inherit system;
             overlays = [ devshell.overlays.default ];
           };
-          packages = import ./nix/packages.nix { inherit pkgs sources; };
+          packages = import ./nix/packages.nix { inherit pkgs sources rev; };
         in
         {
           packages = packages // {
@@ -141,6 +142,7 @@
       overlays.default = final: _prev: {
         osm-reviewer = final.callPackage ./nix/osm-reviewer.nix {
           sources = import ./nix/source.nix { inherit (final) lib; };
+          inherit rev;
         };
       };
 

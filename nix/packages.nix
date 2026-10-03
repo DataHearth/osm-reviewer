@@ -1,6 +1,10 @@
-{ pkgs, sources }:
+{
+  pkgs,
+  sources,
+  rev,
+}:
 let
-  osm-reviewer = pkgs.callPackage ./osm-reviewer.nix { inherit sources; };
+  osm-reviewer = pkgs.callPackage ./osm-reviewer.nix { inherit sources rev; };
 in
 {
   default = osm-reviewer;

@@ -8,6 +8,8 @@
   pnpm,
   pnpmConfigHook,
   sources,
+  # Null outside a git checkout or for a dirty tree; the app then reports the rev as unknown.
+  rev ? null,
 }:
 let
   manifest = lib.importJSON ../package.json;
@@ -82,7 +84,8 @@ stdenv.mkDerivation {
     makeWrapper ${lib.getExe' nodejs-slim "node"} $out/bin/osm-reviewer \
       --chdir $out/lib/osm-reviewer \
       --add-flags $out/lib/osm-reviewer/build/index.js \
-      --set-default NODE_ENV production
+      --set-default NODE_ENV production \
+      ${lib.optionalString (rev != null) "--set-default OSM_REVIEWER_REV ${rev}"}
 
     runHook postInstall
   '';

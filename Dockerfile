@@ -50,6 +50,10 @@ RUN apk upgrade --no-cache \
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 COPY package.json ./
+# Late, so a new commit invalidates only the layers after it. Unset in a local build: the app then
+# reports the rev as unknown.
+ARG OSM_REVIEWER_REV=
+ENV OSM_REVIEWER_REV=$OSM_REVIEWER_REV
 VOLUME ["/data"]
 # Numeric, so Kubernetes' runAsNonRoot can verify it without resolving a name; it is the
 # base image's `node` user, and the chart's securityContext runs as the same uid.

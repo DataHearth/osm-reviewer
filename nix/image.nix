@@ -22,6 +22,7 @@ dockerTools.streamLayeredImage {
       "HOST=0.0.0.0"
       "PORT=3000"
       "DATABASE_PATH=/data/osm-reviewer.db"
+      "OSM_REVIEWER_IMAGE=osm-reviewer:${osm-reviewer.version}"
     ];
     ExposedPorts."3000/tcp" = { };
     Volumes."/data" = { };
