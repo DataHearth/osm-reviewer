@@ -70,7 +70,7 @@ export async function saveOsm(db: Db, userId: string, v: OsmForm) {
 }
 
 /** The instance's one row, created from the column defaults on first read. */
-async function instanceRow(db: Db) {
+export async function instanceRow(db: Db) {
 	const existing = await db.query.instanceSettings.findFirst();
 	if (existing) return existing;
 	await db.insert(t.instanceSettings).values({ id: 1 }).onConflictDoNothing().run();

@@ -2,7 +2,8 @@
 import { untrack } from "svelte";
 import { type SuperValidated, superForm } from "sveltekit-superforms";
 import { zod4Client } from "sveltekit-superforms/adapters";
-import { boxBtn, INERT_BTN, INPUT } from "$lib/format";
+import { enhance as enhanceAction } from "$app/forms";
+import { boxBtn, ghost, INPUT } from "$lib/format";
 import { type NotifForm, notifSchema } from "$lib/schemas/settings";
 import { settings } from "$lib/stores/settings.svelte";
 import Field from "./Field.svelte";
@@ -26,6 +27,10 @@ const { form, errors, enhance, tainted } = notifications;
 $effect(() => settings.mark("notif", notifications.isTainted($tainted)));
 
 const notif = $derived($form);
+
+type TestResult = { channel: string; ok: boolean; error?: string };
+let testing = $state(false);
+let results = $state<TestResult[] | null>(null);
 
 const events = $derived([
 	["queue", "the queue passes " + notif.queueOver + " pending candidates"],
@@ -163,8 +168,35 @@ function toggleChannel(k: "ntfy" | "webhook" | "email") {
 		</Field>
 	</form>
 
-	<div class="flex flex-wrap items-center gap-3 border-t border-line-faint pt-4">
-		<button class="{INERT_BTN} max-md:min-h-[44px]" disabled>send test notification</button>
-		<span class="text-[11.5px] text-faint">sending not implemented — channels are stored, never called</span>
-	</div>
+	<form
+		method="POST"
+		action="?/notifTest"
+		class="flex flex-wrap items-center gap-3 border-t border-line-faint pt-4"
+		use:enhanceAction={() => {
+			testing = true;
+			results = null;
+			return async ({ result }) => {
+				testing = false;
+				results =
+					result.type === "success"
+						? ((result.data?.test as TestResult[] | undefined) ?? [])
+						: [{ channel: "request", ok: false, error: "the server refused it" }];
+			};
+		}}
+	>
+		<button class="{ghost(false)} max-md:min-h-[44px]" disabled={testing}>
+			{testing ? "sending…" : "send test notification"}
+		</button>
+		{#if results}
+			<span class="m-rise flex flex-wrap gap-x-3 gap-y-1 text-[11.5px]">
+				{#each results as r (r.channel)}
+					<span class={r.ok ? "text-ok-ink" : "text-bad-ink"}>{r.channel} {r.ok ? "ok" : r.error}</span>
+				{:else}
+					<span class="text-faint">no channel is on</span>
+				{/each}
+			</span>
+		{:else if notifications.isTainted($tainted)}
+			<span class="text-[11.5px] text-faint">sends with the saved settings — save first</span>
+		{/if}
+	</form>
 </Pane>

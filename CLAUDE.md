@@ -119,8 +119,13 @@ Everything else is local and should stay that way:
 - **The server talks to one host: the identity provider, and only while SSO is on.**
   Discovery happens on the first SSO sign-in rather than at boot, so a provider that is
   down never stops the server starting; token exchange, JWKS and userinfo follow during
-  each sign-in. Changeset upload and the ntfy/webhook/email channels are configured and
-  stored but never called — still simulated.
+  each sign-in. Changeset upload is still simulated.
+- **Notification channels are operator-configured hosts**: `notify()` in
+  `src/lib/server/notify.ts` posts to the ntfy server and the webhook URL and speaks SMTP to
+  the relay (`smtp://`/`smtps://`, credentials allowed, or a bare `host:port`), all from the
+  Notifications pane, and only for channels that are on. It never throws — a dead channel is
+  logged — and the `queue` event fires once per crossing of the ceiling (the latch is in
+  memory). Webhook bodies carry `X-Signature: sha256=<HMAC-SHA256 of the raw body>`.
 - **The pipeline's hosts are configuration, not code**: `OVERPASS_URL`, `NOMINATIM_URL`,
   `OSM_URL` (default the dev sandbox, so an unconfigured instance cannot write to the live
   map), the model at `LLM_URL`, and each source's own endpoint. All are read in
@@ -286,9 +291,20 @@ exception: the relay is an operator-edited instance setting, not environment.
 Nothing the running app shows is fixture text. `src/lib/server/instance.ts` measures the
 instance — version from `package.json`, uptime, the database file, free disk, source health,
 an identity-provider probe — and anything with nothing behind it yet (the pipeline, OSM
-upload, notification delivery, backups, the diagnostics bundle) says **not implemented** or
+upload) says **not implemented** or
 **not configured** on screen, through an inert `INERT_BTN` control where it was a button.
 The Claude Design prototype keeps its mock values; this app does not.
+
+Backups are `src/lib/server/backup.ts`: with `BACKUP_DIR` set, a timer (started from
+`hooks.server.ts`, off under `PIPELINE_ENABLED=false`) takes a better-sqlite3 online backup
+every `BACKUP_INTERVAL_HOURS` into `osm-reviewer-<UTC stamp>.db`, never two at once, and
+keeps the newest `BACKUP_KEEP`. The first one waits out the interval since the newest file
+on disk, so restarts do not multiply snapshots. The NixOS module and the chart do not set it;
+point `BACKUP_DIR` at a volume (a `StateDirectory` sibling, a second PVC) yourself, since a
+snapshot beside the database it protects survives nothing. The diagnostics bundle
+(`/server/diagnostics`, admin only) is instance facts, health and config as JSON, with every
+key named like a secret, token, key or password blanked and URL credentials stripped by
+`redact`: redaction is by name, so a new secret in `config.ts` is covered if it is named like one.
 Vite loads `.env*` for `pnpm dev`; the scripts
 that run outside it (drizzle-kit, `db:seed`) get the same files through `loadEnvFiles` in
 `src/lib/server/env.ts`. Precedence is shell over `.env.<mode>` over `.env`, and the e2e run

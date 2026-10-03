@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { count, sql } from "drizzle-orm";
 import { env } from "$env/dynamic/private";
 import { providerReachable } from "$lib/server/auth/oidc";
+import { backupHealth } from "$lib/server/backup";
 import { sso } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import { resolveDatabasePath } from "$lib/server/db/path";
@@ -116,6 +117,6 @@ export async function health(db: Db): Promise<MetricRow[]> {
 		sourceHealth(db),
 		await identityProvider(),
 		disk(),
-		["backup", NOT_CONFIGURED],
+		backupHealth(),
 	];
 }

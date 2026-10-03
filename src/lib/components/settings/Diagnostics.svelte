@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ghost, INERT_BTN, toneDot } from "$lib/format";
+import { ghost, toneDot } from "$lib/format";
 import { settings } from "$lib/stores/settings.svelte";
 import type { MetricRow } from "$lib/types";
 import Pane from "./Pane.svelte";
@@ -69,8 +69,8 @@ const tally = $derived.by(() => {
 
 	<div class="flex flex-wrap items-center gap-2.5 border-t border-line-faint pt-4">
 		<button class="{ghost(false)} max-md:min-h-[44px]" onclick={() => settings.runHealthCheck()}>run health check</button>
-		<button class="{INERT_BTN} max-md:min-h-[44px]" disabled>build diagnostics bundle</button>
-		<span class="text-[11.5px] text-faint">bundle not implemented</span>
+		<a class="{ghost(false)} max-md:min-h-[44px]" href="/server/diagnostics" download>build diagnostics bundle</a>
+		<span class="text-[11.5px] text-faint">JSON with every secret redacted</span>
 	</div>
 
 	{#if settings.healthChecked}

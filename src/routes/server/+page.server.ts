@@ -33,6 +33,7 @@ import {
 	setSourceEnabled,
 	setSourceFloor,
 } from "$lib/server/mutations";
+import { sendTest } from "$lib/server/notify";
 import { loadAreas, loadSources } from "$lib/server/queries";
 import { loadNotif, saveNotif } from "$lib/server/settings";
 import { requireAdmin, requireUser } from "$lib/server/user";
@@ -150,6 +151,11 @@ export const actions: Actions = {
 		if (!form.valid) return fail(400, { form });
 		await saveNotif(db, form.data);
 		return { form };
+	},
+
+	notifTest: async ({ locals }) => {
+		requireAdmin(locals);
+		return { test: await sendTest(db) };
 	},
 
 	/**
