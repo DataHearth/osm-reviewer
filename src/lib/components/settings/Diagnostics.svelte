@@ -22,13 +22,13 @@ let {
 } = $props();
 
 const facts = $derived([
-	["version", instance.version + " · " + instance.rev],
+	["version", `${instance.version} · ${instance.rev}`],
 	["image", instance.image],
 	["runtime", instance.runtime],
 	["uptime", instance.uptime],
 	["database", instance.db],
-	["identity provider", sso.enabled ? sso.provider + " · " + sso.host : "not configured"],
-	["oidc client", sso.enabled ? sso.clientId + " · " + sso.scopes : "not configured"],
+	["identity provider", sso.enabled ? `${sso.provider} · ${sso.host}` : "not configured"],
+	["oidc client", sso.enabled ? `${sso.clientId} · ${sso.scopes}` : "not configured"],
 ]);
 
 const tally = $derived.by(() => {
@@ -39,7 +39,7 @@ const tally = $derived.by(() => {
 		[n("bad"), "failing"],
 	]
 		.filter(([c]) => c)
-		.map(([c, label]) => c + " " + label)
+		.map(([c, label]) => `${c} ${label}`)
 		.join(", ");
 });
 </script>

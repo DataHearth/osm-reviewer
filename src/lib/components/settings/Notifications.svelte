@@ -33,7 +33,7 @@ let testing = $state(false);
 let results = $state<TestResult[] | null>(null);
 
 const events = $derived([
-	["queue", "the queue passes " + notif.queueOver + " pending candidates"],
+	["queue", `the queue passes ${notif.queueOver} pending candidates`],
 	["sourceFailed", "a source run fails or its key is rejected"],
 	["uploadFailed", "a changeset upload fails"],
 	["runFinished", "every pipeline run finishes"],

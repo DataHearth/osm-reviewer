@@ -5,13 +5,13 @@ export const comma = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+
 /** Read a display number back out of a formatted fixture string ("18,402"). */
 export const num = (v: string | number) => {
 	const n = parseFloat(String(v).replace(/[, ]/g, ""));
-	return isNaN(n) ? 0 : n;
+	return Number.isNaN(n) ? 0 : n;
 };
 
 export const confTone = (v: number): Tone => (v >= 0.85 ? "ok" : v >= 0.6 ? "warn" : "bad");
 export const confText = (v: number) =>
 	v >= 0.85 ? "text-ok" : v >= 0.6 ? "text-warn" : "text-bad";
-export const pct = (v: number) => Math.floor(v * 100) + "%";
+export const pct = (v: number) => `${Math.floor(v * 100)}%`;
 export const confBg = (v: number) => (v >= 0.85 ? "bg-ok" : v >= 0.6 ? "bg-warn" : "bg-bad");
 
 export const toneText = (t: Tone | undefined) =>
@@ -74,31 +74,31 @@ export const statusPill = (s: string) =>
 export const osmUrl = (osmId: string | null) =>
 	osmId === null
 		? undefined
-		: "https://www.openstreetmap.org/" + (osmId.startsWith("node/") ? osmId : "");
+		: `https://www.openstreetmap.org/${osmId.startsWith("node/") ? osmId : ""}`;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /** DD-MM-YYYY — the only date format the app displays. */
 export const fmtDate = (d: Date) =>
-	pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + d.getFullYear();
+	`${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
 
 /** DD-MM-YYYY HH:MM, in the operator's own clock — every displayed instant. */
-export const stamp = (d: Date) => fmtDate(d) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+export const stamp = (d: Date) => `${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 export const nowStamp = () => stamp(new Date());
 
 /** "2 s", "41 min", "1 h 05 min": the longest unit that keeps one or two digits. */
 export function fmtDuration(ms: number): string {
 	const s = Math.round(ms / 1000);
-	if (s < 60) return s + " s";
+	if (s < 60) return `${s} s`;
 	const m = Math.round(s / 60);
-	if (m < 60) return m + " min";
-	return Math.floor(m / 60) + " h " + pad(m % 60) + " min";
+	if (m < 60) return `${m} min`;
+	return `${Math.floor(m / 60)} h ${pad(m % 60)} min`;
 }
 
 /** 392, "3,742", "34.2M". */
 export function fmtCount(n: number): string {
-	return n >= 1_000_000 ? (n / 1_000_000).toFixed(1) + "M" : comma(n);
+	return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : comma(n);
 }
 
 /** Whole days since `then`, never negative. */

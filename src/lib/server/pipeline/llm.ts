@@ -70,9 +70,9 @@ export interface PageInput {
 function userMessage(p: PageInput) {
 	const known =
 		p.current && Object.keys(p.current).length
-			? "Current OSM tags: " + JSON.stringify(p.current) + "\n\n"
+			? `Current OSM tags: ${JSON.stringify(p.current)}\n\n`
 			: "";
-	const keys = p.allow.length ? "Allowed tag keys: " + p.allow.join(", ") + "\n\n" : "";
+	const keys = p.allow.length ? `Allowed tag keys: ${p.allow.join(", ")}\n\n` : "";
 	return `${known}${keys}Source ${p.url}\n\n<text>\n${p.text}\n</text>`;
 }
 
@@ -83,10 +83,10 @@ export function buildRequest(c: ModelConfig, p: PageInput): { url: string; init:
 	if (c.provider === "openai") {
 		const base = (c.url ?? "https://api.openai.com/v1").replace(/\/+$/, "");
 		return {
-			url: base + "/chat/completions",
+			url: `${base}/chat/completions`,
 			init: {
 				method: "POST",
-				headers: { ...json, ...(c.apiKey ? { authorization: "Bearer " + c.apiKey } : {}) },
+				headers: { ...json, ...(c.apiKey ? { authorization: `Bearer ${c.apiKey}` } : {}) },
 				body: JSON.stringify({
 					model: c.model,
 					// Measured on qwen3:14b through ollama: at the default temperature, schema-constrained
@@ -106,7 +106,7 @@ export function buildRequest(c: ModelConfig, p: PageInput): { url: string; init:
 	}
 	const base = (c.url ?? "https://api.anthropic.com").replace(/\/+$/, "").replace(/\/v1$/, "");
 	return {
-		url: base + "/v1/messages",
+		url: `${base}/v1/messages`,
 		init: {
 			method: "POST",
 			headers: {
@@ -134,7 +134,7 @@ export function readReply(provider: "openai" | "anthropic", body: unknown): Mode
 			b.choices as { message?: { content?: string; refusal?: string } }[] | undefined
 		)?.[0];
 		if (choice?.message?.refusal)
-			throw new PipelineError("the model refused: " + choice.message.refusal);
+			throw new PipelineError(`the model refused: ${choice.message.refusal}`);
 		text = choice?.message?.content;
 	} else {
 		if (b.stop_reason === "refusal") throw new PipelineError("the model refused this page");
@@ -257,7 +257,7 @@ export function vetTags(
 			conf: Math.round(conf * 100) / 100,
 			path: new URL(page.url).pathname || "/",
 			parts,
-			kind: "model extraction · " + page.model,
+			kind: `model extraction · ${page.model}`,
 		});
 	}
 	return kept;

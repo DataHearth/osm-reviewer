@@ -6,7 +6,7 @@ describe("signBody", () => {
 	it("is sha256= plus the hex HMAC of the raw body", () => {
 		const body = '{"event":"queue"}';
 		expect(signBody(body, "s")).toBe(
-			"sha256=" + createHmac("sha256", "s").update(body).digest("hex"),
+			`sha256=${createHmac("sha256", "s").update(body).digest("hex")}`,
 		);
 	});
 });

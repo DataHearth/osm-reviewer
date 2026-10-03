@@ -135,7 +135,7 @@ export async function readRegistry(
 	force: boolean,
 ): Promise<RegistryResult> {
 	const headers: Record<string, string> = source.apiKey
-		? { authorization: "Apikey " + source.apiKey }
+		? { authorization: `Apikey ${source.apiKey}` }
 		: {};
 	const file = await resolveFile(source.endpoint, headers);
 	const conditional = !force && state.etag && state.url === file.url;

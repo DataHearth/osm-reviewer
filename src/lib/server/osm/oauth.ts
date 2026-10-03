@@ -32,7 +32,7 @@ export function beginConnect(cookies: Cookies, url: URL, userId: string): URL {
 		...cookieOptions(url),
 		maxAge: PENDING_SECONDS,
 	});
-	const authorize = new URL("/oauth2/authorize", osm.url + "/");
+	const authorize = new URL("/oauth2/authorize", `${osm.url}/`);
 	authorize.search = new URLSearchParams({
 		response_type: "code",
 		client_id: osm.clientId ?? "",
@@ -68,7 +68,7 @@ export async function exchangeCode(url: URL, code: string, verifier: string): Pr
 	});
 	let res: Response;
 	try {
-		res = await fetch(osm.url + "/oauth2/token", {
+		res = await fetch(`${osm.url}/oauth2/token`, {
 			method: "POST",
 			body,
 			headers: { "User-Agent": userAgent(), Accept: "application/json" },

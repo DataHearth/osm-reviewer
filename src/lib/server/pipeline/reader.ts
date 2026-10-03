@@ -17,7 +17,7 @@ const genericReader: Reader = {
 	preset: null,
 	keyField: null,
 	key: (r) =>
-		str(r, "id", "recordid", "record_id", "identifiant", "uai") || "h:" + hash(JSON.stringify(r)),
+		str(r, "id", "recordid", "record_id", "identifiant", "uai") || `h:${hash(JSON.stringify(r))}`,
 	position: findCoords,
 };
 

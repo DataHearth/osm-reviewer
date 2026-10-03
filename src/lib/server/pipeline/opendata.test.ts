@@ -12,7 +12,7 @@ const radius = {
 	radius: 1500,
 };
 const source = {
-	endpoint: BASE + "/records",
+	endpoint: `${BASE}/records`,
 	apiKey: "secret",
 	extractor: "deterministic" as const,
 	preset: "annuaire-education",
@@ -38,9 +38,9 @@ describe("whereClause / datasetBase", () => {
 	});
 
 	it("reduces any endpoint spelling to the dataset", () => {
-		expect(datasetBase(BASE + "/records?limit=3")).toBe(BASE);
-		expect(datasetBase(BASE + "/")).toBe(BASE);
-		expect(datasetBase(BASE + "/exports/jsonl")).toBe(BASE);
+		expect(datasetBase(`${BASE}/records?limit=3`)).toBe(BASE);
+		expect(datasetBase(`${BASE}/`)).toBe(BASE);
+		expect(datasetBase(`${BASE}/exports/jsonl`)).toBe(BASE);
 	});
 });
 

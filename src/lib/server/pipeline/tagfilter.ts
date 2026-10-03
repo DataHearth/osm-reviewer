@@ -51,7 +51,7 @@ export function selectorsFromTags(tags: { k: string; v: string }[]): Selector[] 
 export function mergeSelectors(...lists: Selector[][]): Selector[] {
 	const seen = new Map<string, Selector>();
 	for (const s of lists.flat()) {
-		const key = s.k + "=" + (s.v ? [...s.v].sort().join("|") : "*");
+		const key = `${s.k}=${s.v ? [...s.v].sort().join("|") : "*"}`;
 		seen.set(key, s);
 	}
 	return [...seen.values()];
@@ -64,5 +64,5 @@ const reEscape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export function overpassFilter(s: Selector): string {
 	if (s.v === null) return `[${q(s.k)}]`;
 	if (s.v.length === 1) return `[${q(s.k)}=${q(s.v[0])}]`;
-	return `[${q(s.k)}~${q("^(" + s.v.map(reEscape).join("|") + ")$")}]`;
+	return `[${q(s.k)}~${q(`^(${s.v.map(reEscape).join("|")})$`)}]`;
 }

@@ -39,10 +39,10 @@ export function runRow(r: RunFacts, kind: SourceKind): Run {
 	return {
 		when: stamp(r.startedAt),
 		dur: fmtDuration(r.durMs),
-		fetched: fmtCount(r.fetched) + " " + unit(kind),
+		fetched: `${fmtCount(r.fetched)} ${unit(kind)}`,
 		cands: String(r.cands),
 		errors: String(r.errors),
-		result: r.result === "ok" ? (r.message ? "ok, " + r.message : "ok") : (r.message ?? r.result),
+		result: r.result === "ok" ? (r.message ? `ok, ${r.message}` : "ok") : (r.message ?? r.result),
 	};
 }
 
@@ -61,11 +61,11 @@ export function configRows(s: SourceFacts, last: RunFacts | undefined, model: st
 				: ["extractor", "no model configured", "warn"]
 			: [
 					"extractor",
-					"deterministic field map · " + (s.preset ? "preset " + s.preset : "no model"),
+					`deterministic field map · ${s.preset ? `preset ${s.preset}` : "no model"}`,
 					"code",
 				];
 	const schedule: ConfigRow = s.failing
-		? ["schedule", s.schedule + " — held after failures", "warn"]
+		? ["schedule", `${s.schedule} — held after failures`, "warn"]
 		: ["schedule", s.schedule];
 	const licence: ConfigRow[] = s.licence ? [["licence", s.licence]] : [];
 
@@ -73,7 +73,7 @@ export function configRows(s: SourceFacts, last: RunFacts | undefined, model: st
 		return [
 			["dataset", s.endpoint || "—", "code"],
 			...licence,
-			["volume", last ? fmtCount(last.fetched) + " rows last run" : "unknown until first run"],
+			["volume", last ? `${fmtCount(last.fetched)} rows last run` : "unknown until first run"],
 			schedule,
 			nextRun(s),
 			["matching", s.matching || "—"],
@@ -93,9 +93,9 @@ export function configRows(s: SourceFacts, last: RunFacts | undefined, model: st
 	const key4 = (s.apiKey ?? "").trim().slice(-4);
 	return [
 		["endpoint", s.endpoint || "—", "code"],
-		key4 ? ["api key", "••••••••••••" + key4] : ["api key", "not set", "warn"],
+		key4 ? ["api key", `••••••••••••${key4}`] : ["api key", "not set", "warn"],
 		...licence,
-		["pagination", last ? fmtCount(last.fetched) + " rows last run" : "detected on first run"],
+		["pagination", last ? `${fmtCount(last.fetched)} rows last run` : "detected on first run"],
 		schedule,
 		nextRun(s),
 		extractor,
@@ -131,7 +131,7 @@ export function metricRows(m: MetricFacts): MetricRow[] {
 			? ["accept rate", "—", "nothing reviewed"]
 			: [
 					"accept rate",
-					Math.round(rate * 100) + "%",
+					`${Math.round(rate * 100)}%`,
 					`of ${comma(m.reviewed)} reviewed`,
 					tier(rate, 0.75, 0.5),
 				],
@@ -139,7 +139,7 @@ export function metricRows(m: MetricFacts): MetricRow[] {
 			? ["unevidenced", "—", "no tags yet"]
 			: [
 					"unevidenced",
-					Math.round(gap * 100) + "%",
+					`${Math.round(gap * 100)}%`,
 					"tags without a source row",
 					gap <= 0.05 ? "ok" : gap <= 0.15 ? "warn" : "bad",
 				],
@@ -147,7 +147,7 @@ export function metricRows(m: MetricFacts): MetricRow[] {
 			? [
 					"last run",
 					fmtDate(last.startedAt),
-					stamp(last.startedAt).slice(11) + " · " + fmtDuration(last.durMs),
+					`${stamp(last.startedAt).slice(11)} · ${fmtDuration(last.durMs)}`,
 				]
 			: ["last run", "never", "first run queued", "warn"],
 		last

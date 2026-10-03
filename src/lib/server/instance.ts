@@ -21,7 +21,7 @@ export const CREATED_BY = `osm-reviewer/${version}`;
 
 const MB = 1024 * 1024;
 const size = (bytes: number) =>
-	bytes >= 1024 * MB ? (bytes / 1024 / MB).toFixed(1) + " GB" : (bytes / MB).toFixed(1) + " MB";
+	bytes >= 1024 * MB ? `${(bytes / 1024 / MB).toFixed(1)} GB` : `${(bytes / MB).toFixed(1)} MB`;
 
 function uptime() {
 	const s = Math.floor(process.uptime());
@@ -88,8 +88,8 @@ async function identityProvider(): Promise<MetricRow> {
 		timeout,
 	]);
 	return result === null
-		? ["identity provider", "reachable", sso.host + " · discovery cached", "ok"]
-		: ["identity provider", "unreachable", sso.host + " · " + result, "bad"];
+		? ["identity provider", "reachable", `${sso.host} · discovery cached`, "ok"]
+		: ["identity provider", "unreachable", `${sso.host} · ${result}`, "bad"];
 }
 
 async function osmApi(): Promise<MetricRow> {
@@ -151,7 +151,7 @@ function pipelineWorker(db: Db): MetricRow {
 	return [
 		"pipeline worker",
 		"idle",
-		next ? "next run " + stamp(next) : "no source is scheduled",
+		next ? `next run ${stamp(next)}` : "no source is scheduled",
 		"ok",
 	];
 }

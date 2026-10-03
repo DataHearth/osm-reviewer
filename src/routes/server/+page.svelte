@@ -45,8 +45,8 @@ function setDrill(v: boolean) {
 }
 
 const SECTIONS = $derived([
-	["sources", "sources", data.sources.length + " sources"],
-	["areas", "areas", data.areas.length + " areas"],
+	["sources", "sources", `${data.sources.length} sources`],
+	["areas", "areas", `${data.areas.length} areas`],
 	["notif", "notifications", "ntfy, webhook, email"],
 	["users", "users", "accounts, roles, access"],
 	["diag", "diagnostics", "version, health, bundle"],
@@ -88,7 +88,7 @@ const label = $derived(
 
 function open(id: string) {
 	cur = id;
-	if (id !== qs) goto("/server?s=" + id);
+	if (id !== qs) goto(`/server?s=${id}`);
 	if (LISTS.includes(id)) setDrill(true);
 	else pane = "detail";
 }

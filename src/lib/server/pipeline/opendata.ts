@@ -54,7 +54,7 @@ export interface ApiResult {
 /** Records inside one area, keyed by the reader's key. Pages while it can, exports when the area is too big to page. */
 export async function readApiArea(source: ApiSource, area: AreaShape): Promise<ApiResult> {
 	const headers: Record<string, string> = source.apiKey
-		? { authorization: "Apikey " + source.apiKey }
+		? { authorization: `Apikey ${source.apiKey}` }
 		: {};
 	const base = datasetBase(source.endpoint);
 	const where = whereClause(await geoField(base, headers), area);

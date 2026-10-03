@@ -38,15 +38,15 @@ const defRows = $derived(
 	(a.def === "radius"
 		? [
 				["type", "radius around a point"],
-				["centre", a.center[0].toFixed(4) + ", " + a.center[1].toFixed(4), "code"],
-				["radius", (radius / 1000).toFixed(2) + " km"],
-				["area", sqkm.toFixed(0) + " km²"],
+				["centre", `${a.center[0].toFixed(4)}, ${a.center[1].toFixed(4)}`, "code"],
+				["radius", `${(radius / 1000).toFixed(2)} km`],
+				["area", `${sqkm.toFixed(0)} km²`],
 			]
 		: [
 				["type", "OSM admin relation"],
-				["relation", "relation/" + a.rel, "code"],
-				["admin level", a.level + " — commune"],
-				["area", sqkm + " km²"],
+				["relation", `relation/${a.rel}`, "code"],
+				["admin level", `${a.level} — commune`],
+				["area", `${sqkm} km²`],
 				["boundary synced", a.lastRun === "never" ? "pending first run" : a.lastRun],
 			]) as [string, string, string?][],
 );

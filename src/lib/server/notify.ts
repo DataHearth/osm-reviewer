@@ -47,7 +47,7 @@ const sendNtfy = (s: Row, event: NotifyEvent, message: string) =>
 	});
 
 export const signBody = (body: string, secret: string) =>
-	"sha256=" + createHmac("sha256", secret).update(body).digest("hex");
+	`sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 
 const sendWebhook = (s: Row, event: NotifyEvent, message: string) => {
 	const body = JSON.stringify({ event, message, at: new Date().toISOString() });

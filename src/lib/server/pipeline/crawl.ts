@@ -127,7 +127,7 @@ export function htmlToText(html: string): string {
 		.replace(/[ \t\f\v ]+/g, " ")
 		.replace(/ *\n[ \n]*/g, "\n")
 		.trim();
-	return (text + (ld.length ? "\n\nStructured data: " + ld.join("\n") : "")).slice(0, TEXT_LIMIT);
+	return (text + (ld.length ? `\n\nStructured data: ${ld.join("\n")}` : "")).slice(0, TEXT_LIMIT);
 }
 
 const HINT = /contact|horaire|hours|infos?|pratique|acc[eè]s|about|a-propos|qui-sommes/i;
@@ -209,7 +209,7 @@ export class Crawler {
 	async fetchSeed(url: string): Promise<CrawlResult | null> {
 		let seed: URL;
 		try {
-			seed = new URL(/^https?:\/\//i.test(url) ? url : "https://" + url);
+			seed = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`);
 		} catch {
 			return null;
 		}

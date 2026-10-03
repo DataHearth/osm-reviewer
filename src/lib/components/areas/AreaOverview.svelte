@@ -22,8 +22,8 @@ const totals = $derived.by(() => ({
 const tiles = $derived([
 	{
 		label: "areas",
-		value: list.length - paused + " of " + list.length,
-		sub: paused ? paused + " paused" : "all active",
+		value: `${list.length - paused} of ${list.length}`,
+		sub: paused ? `${paused} paused` : "all active",
 		tone: (paused ? "warn" : "ok") as Tone,
 	},
 	{ label: "pending review", value: comma(totals.pending), sub: "in the queue now" },
@@ -34,7 +34,7 @@ const tiles = $derived([
 		sub: "last 30 days",
 		tone: (totals.acc ? "ok" : null) as Tone,
 	},
-	{ label: "coverage", value: comma(totals.sqkm) + " km²", sub: "total boundary area" },
+	{ label: "coverage", value: `${comma(totals.sqkm)} km²`, sub: "total boundary area" },
 ]);
 
 const card = $derived.by(() => {
@@ -54,8 +54,8 @@ const card = $derived.by(() => {
 			[
 				"boundary",
 				a.def === "radius"
-					? (review.radiusOf(a) / 1000).toFixed(1) + " km radius"
-					: "relation/" + a.rel,
+					? `${(review.radiusOf(a) / 1000).toFixed(1)} km radius`
+					: `relation/${a.rel}`,
 			],
 			["pending", String(a.pending)],
 			["POIs watched", a.pois],

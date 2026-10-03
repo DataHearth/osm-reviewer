@@ -27,8 +27,8 @@ const dot = (s: string) =>
 function meta(a: ScopeArea): [string, string | null] {
 	if (a.lastRun === "never") return [a.status, null];
 	const reach =
-		a.def === "radius" ? (a.radius ?? 2500) / 1000 + " km radius" : a.sources + " sources";
-	return [a.status, "ran " + a.lastRun + " · " + reach];
+		a.def === "radius" ? `${(a.radius ?? 2500) / 1000} km radius` : `${a.sources} sources`;
+	return [a.status, `ran ${a.lastRun} · ${reach}`];
 }
 
 function pick(id: string | null) {
@@ -49,7 +49,7 @@ function onkeydown(e: KeyboardEvent) {
 }
 
 const num = (on: boolean, n: number) =>
-	"font-mono text-[12px] tabular-nums " + (on ? "text-accent" : n ? "text-muted" : "text-dim");
+	`font-mono text-[12px] tabular-nums ${on ? "text-accent" : n ? "text-muted" : "text-dim"}`;
 const pop = (on: boolean) =>
 	"grid w-full cursor-pointer grid-cols-[14px_minmax(0,1fr)_auto] items-baseline gap-x-2.5 border-0 px-3.5 py-2 text-left " +
 	(on ? "bg-sel shadow-[inset_2px_0_0_var(--accent)]" : "bg-transparent hover:bg-sel");

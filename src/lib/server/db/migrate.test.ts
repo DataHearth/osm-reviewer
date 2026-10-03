@@ -23,7 +23,7 @@ function migrationsUpTo(last: number): string {
 	journal.entries = journal.entries.filter((e: { idx: number }) => e.idx <= last);
 	writeFileSync(join(out, "meta", "_journal.json"), JSON.stringify(journal));
 	for (const e of journal.entries as { tag: string }[])
-		copyFileSync(join(DRIZZLE, e.tag + ".sql"), join(out, e.tag + ".sql"));
+		copyFileSync(join(DRIZZLE, `${e.tag}.sql`), join(out, `${e.tag}.sql`));
 	return out;
 }
 

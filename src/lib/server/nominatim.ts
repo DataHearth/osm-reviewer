@@ -83,7 +83,7 @@ export async function searchBoundaries(q: string, fetcher: typeof fetch = fetch)
 	const hit = cache.get(key);
 	if (hit && Date.now() - hit.at < CACHE_MS) return hit.rels;
 
-	const url = new URL(nominatim.url + "/search");
+	const url = new URL(`${nominatim.url}/search`);
 	url.search = new URLSearchParams({
 		q,
 		format: "jsonv2",

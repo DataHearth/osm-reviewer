@@ -40,9 +40,9 @@ async function act(action: string, fields: Record<string, string | boolean>) {
 const signIn = (u: ManagedUser) =>
 	u.password
 		? u.sso
-			? "password · " + data.sso.provider
+			? `password · ${data.sso.provider}`
 			: "password"
-		: data.sso.provider + " only";
+		: `${data.sso.provider} only`;
 </script>
 
 <Pane

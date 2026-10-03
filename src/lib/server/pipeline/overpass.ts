@@ -46,7 +46,7 @@ interface RawElement {
 
 export function parseElements(body: { elements?: RawElement[]; remark?: string }): OsmElement[] {
 	if (body.remark && /error|timed out/i.test(body.remark))
-		throw new PipelineError("overpass: " + body.remark);
+		throw new PipelineError(`overpass: ${body.remark}`);
 	const out: OsmElement[] = [];
 	for (const e of body.elements ?? []) {
 		if (e.type !== "node" && e.type !== "way" && e.type !== "relation") continue;
@@ -73,7 +73,7 @@ async function post(query: string) {
 			{
 				method: "POST",
 				headers: { "content-type": "application/x-www-form-urlencoded" },
-				body: "data=" + encodeURIComponent(query),
+				body: `data=${encodeURIComponent(query)}`,
 				timeoutMs: (QUERY_TIMEOUT_S + 30) * 1000,
 			},
 			[429],

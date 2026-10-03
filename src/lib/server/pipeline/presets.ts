@@ -59,14 +59,14 @@ export function findCoords(row: Row): [number, number] | null {
 
 export function phoneFR(raw: string): string | null {
 	let d = raw.replace(/\(0\)/, "").replace(/[\s.\-()]/g, "");
-	if (d.startsWith("+33")) d = "0" + d.slice(3);
-	else if (d.startsWith("0033")) d = "0" + d.slice(4);
+	if (d.startsWith("+33")) d = `0${d.slice(3)}`;
+	else if (d.startsWith("0033")) d = `0${d.slice(4)}`;
 	if (!/^0[1-9]\d{8}$/.test(d)) return null;
 	return `+33 ${d[1]} ${d.slice(2, 4)} ${d.slice(4, 6)} ${d.slice(6, 8)} ${d.slice(8)}`;
 }
 
 export function website(raw: string): string | null {
-	const withScheme = /^https?:\/\//i.test(raw) ? raw : "https://" + raw;
+	const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
 	try {
 		const u = new URL(withScheme);
 		if (!u.hostname.includes(".")) return null;
@@ -103,7 +103,7 @@ class Tags {
 			path: field,
 			kind,
 			parts: [
-				{ text: field + ": ", mark: false },
+				{ text: `${field}: `, mark: false },
 				{ text: value || v, mark: true },
 			],
 		};
@@ -191,7 +191,7 @@ const irve: Preset = {
 			if (power === 0) continue;
 			const shared = carrying.some((r) => kinds(r) > 1);
 			t.add(
-				k + ":output",
+				`${k}:output`,
 				POWER_KW(power),
 				shared ? 0.7 : 0.8,
 				"puissance_nominale",

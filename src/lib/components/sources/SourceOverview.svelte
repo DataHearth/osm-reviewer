@@ -42,23 +42,23 @@ const failing = $derived(review.sources.filter((s) => s.failing && review.enable
 const tiles = $derived([
 	{
 		label: "sources",
-		value: enabledCount + " of " + review.sources.length,
+		value: `${enabledCount} of ${review.sources.length}`,
 		sub:
 			enabledCount === review.sources.length
 				? "all enabled"
-				: review.sources.length - enabledCount + " disabled",
+				: `${review.sources.length - enabledCount} disabled`,
 		tone: (enabledCount === review.sources.length ? "ok" : "warn") as Tone,
 	},
 	{ label: "candidates", value: comma(agg.cands), sub: "last run of each source" },
 	{
 		label: "accept rate",
-		value: agg.accept.toFixed(0) + "%",
-		sub: "of " + comma(agg.revTotal) + " reviewed",
+		value: `${agg.accept.toFixed(0)}%`,
+		sub: `of ${comma(agg.revTotal)} reviewed`,
 		tone: (agg.accept >= 70 ? "ok" : "warn") as Tone,
 	},
 	{
 		label: "unevidenced",
-		value: agg.uneviden.toFixed(1) + "%",
+		value: `${agg.uneviden.toFixed(1)}%`,
 		sub: "tags without a source row",
 		tone: (agg.uneviden <= 5 ? "ok" : "warn") as Tone,
 	},

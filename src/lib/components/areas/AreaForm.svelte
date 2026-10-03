@@ -54,11 +54,11 @@ let searched = $state("");
 let typed = false;
 
 const results = $derived(
-	d.picked && !found.some((r) => r.rel === d.picked!.rel) ? [d.picked, ...found] : found,
+	d.picked && !found.some((r) => r.rel === d.picked?.rel) ? [d.picked, ...found] : found,
 );
 
 const meta = (r: Rel) =>
-	[r.level ? "admin_level=" + r.level : null, "bbox ≈ " + r.sqkm + " km²", r.displayName]
+	[r.level ? `admin_level=${r.level}` : null, `bbox ≈ ${r.sqkm} km²`, r.displayName]
 		.filter(Boolean)
 		.join(" · ");
 
@@ -76,11 +76,11 @@ $effect(() => {
 	const ctl = new AbortController();
 	const timer = setTimeout(async () => {
 		try {
-			const res = await fetch("/server/boundaries?q=" + encodeURIComponent(q), {
+			const res = await fetch(`/server/boundaries?q=${encodeURIComponent(q)}`, {
 				signal: ctl.signal,
 			});
 			const body = await res.json().catch(() => ({}));
-			if (!res.ok) throw new Error(body.error ?? "Search failed (" + res.status + ").");
+			if (!res.ok) throw new Error(body.error ?? `Search failed (${res.status}).`);
 			found = body.rels;
 			failure = null;
 			searched = q;

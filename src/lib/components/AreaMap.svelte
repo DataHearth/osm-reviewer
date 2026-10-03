@@ -2,8 +2,17 @@
 // Boundaries on live OSM tiles. Three things this draws, in the order the
 // screen asks for them: the draft being defined, one saved area, or all of
 // them at once (where a click gives the summary card).
+
+import type {
+	Circle,
+	LatLng,
+	LayerGroup,
+	Map as LeafletMap,
+	LeafletMouseEvent,
+	Polygon,
+} from "leaflet";
 import { onMount } from "svelte";
-import { darkMap, ensureLeaflet, ring, token } from "$lib/leaflet";
+import { darkMap, ensureLeaflet, type Leaflet, ring, token } from "$lib/leaflet";
 import type { AreaDraft } from "$lib/schemas/area";
 import { review } from "$lib/stores/review.svelte";
 
@@ -20,20 +29,21 @@ let {
 } = $props();
 
 let el = $state<HTMLDivElement | null>(null);
-let map: any = null;
-let layer: any = null;
-let L: any = null;
+let m: { L: Leaflet; map: LeafletMap; layer: LayerGroup } | null = null;
 let drawnKey: string | null = null;
 
 onMount(() => {
 	let dead = false;
 	ensureLeaflet().then((lib) => {
 		if (dead || !el) return;
-		L = lib;
-		map = darkMap(L, el, { zoomControl: true, attributionControl: true, scrollWheelZoom: true });
+		const map = darkMap(lib, el, {
+			zoomControl: true,
+			attributionControl: true,
+			scrollWheelZoom: true,
+		});
 		map.setView([43.6045, 1.444], 11);
-		layer = L.layerGroup().addTo(map);
-		map.on("click", (e: any) => {
+		m = { L: lib, map, layer: lib.layerGroup().addTo(map) };
+		map.on("click", (e: LeafletMouseEvent) => {
 			if (draft && draft.mode === "radius") onCenter?.([e.latlng.lat, e.latlng.lng]);
 			else if (review.areaCard) review.areaCard = null;
 		});
@@ -45,8 +55,8 @@ onMount(() => {
 	});
 	return () => {
 		dead = true;
-		map?.remove();
-		map = null;
+		m?.map.remove();
+		m = null;
 	};
 });
 
@@ -56,12 +66,14 @@ function shapeStyle(ink: string, dashed: boolean, fill = 0.1) {
 		weight: 2,
 		fillColor: ink,
 		fillOpacity: fill,
-		dashArray: dashed ? "5 4" : null,
+		dashArray: dashed ? "5 4" : undefined,
 	};
 }
 
 /** Where the summary card sits: above the click, flipped below near the top edge. */
-function showCard(id: string, latlng: any, e?: any) {
+function showCard(id: string, latlng: LatLng, e?: LeafletMouseEvent) {
+	if (!m) return;
+	const { L, map } = m;
 	const p = map.latLngToContainerPoint(latlng);
 	const size = map.getSize();
 	const H = 182;
@@ -77,7 +89,8 @@ function showCard(id: string, latlng: any, e?: any) {
 }
 
 function draw() {
-	if (!map || !layer) return;
+	if (!m) return;
+	const { L, map, layer } = m;
 	const d = draft;
 
 	// A relation draft with nothing picked yet: the whole country, no shape.
@@ -95,13 +108,11 @@ function draw() {
 		const all = review.visibleAreas;
 		const key =
 			"all|" +
-			all
-				.map((a) => a.id + ":" + review.radiusOf(a) + ":" + (review.paused[a.id] ? "p" : "a"))
-				.join(",");
+			all.map((a) => `${a.id}:${review.radiusOf(a)}:${review.paused[a.id] ? "p" : "a"}`).join(",");
 		if (drawnKey !== key) {
 			drawnKey = key;
 			layer.clearLayers();
-			const shapes: any[] = [];
+			const shapes: (Circle | Polygon)[] = [];
 			for (const a of all) {
 				const ink = review.paused[a.id] ? token("--faint") : token("--accent");
 				const sh =
@@ -109,7 +120,8 @@ function draw() {
 						? L.circle(a.center, { radius: review.radiusOf(a), ...shapeStyle(ink, true) })
 						: L.polygon(ring(a.center, a.km ?? 6, a.center[1]), shapeStyle(ink, false));
 				sh.addTo(layer);
-				const show = (e: any) => showCard(a.id, e?.latlng ?? L.latLng(a.center[0], a.center[1]), e);
+				const show = (e?: LeafletMouseEvent) =>
+					showCard(a.id, e?.latlng ?? L.latLng(a.center[0], a.center[1]), e);
 				sh.on("click", show).on("dblclick", () => {
 					review.areaId = a.id;
 					review.draft = null;
@@ -138,11 +150,11 @@ function draw() {
 
 	const a = d ? null : review.area(review.areaId);
 	const mode = d ? d.mode : a?.def;
-	const center = d ? (d.mode === "radius" ? d.center : d.picked!.center) : a?.center;
+	const center = d ? (d.mode === "radius" ? d.center : d.picked?.center) : a?.center;
 	if (!center) return;
 	const radius = d ? d.radius : a ? review.radiusOf(a) : 2500;
 	const km = d ? (d.picked ? d.picked.km : 0) : (a?.km ?? 0);
-	const key = [d ? "draft" : a!.id, mode, center[0], center[1], radius, km].join("|");
+	const key = [d ? "draft" : a?.id, mode, center[0], center[1], radius, km].join("|");
 	if (drawnKey !== key) {
 		drawnKey = key;
 		layer.clearLayers();

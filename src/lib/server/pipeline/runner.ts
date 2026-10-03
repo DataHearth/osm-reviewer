@@ -142,7 +142,7 @@ async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Da
 
 const hostOf = (u: string) => {
 	try {
-		return new URL(/^https?:\/\//i.test(u) ? u : "https://" + u).host.replace(/^www\./, "");
+		return new URL(/^https?:\/\//i.test(u) ? u : `https://${u}`).host.replace(/^www\./, "");
 	} catch {
 		return null;
 	}
@@ -365,7 +365,7 @@ async function announce(
 		await notify(
 			db,
 			"runFinished",
-			`${name}: ${result}, ${exec.cands} candidates${message ? " — " + message : ""}`,
+			`${name}: ${result}, ${exec.cands} candidates${message ? ` — ${message}` : ""}`,
 		);
 		const over = (await loadNotif(db)).queueOver;
 		const now = pendingCount(db);
