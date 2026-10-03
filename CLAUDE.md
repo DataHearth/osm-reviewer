@@ -127,6 +127,12 @@ Everything else is local and should stay that way:
   `src/lib/server/config.ts`, and `PIPELINE_ENABLED=false` switches off the scheduler and
   every fetch at boot — the e2e run sets it so the suite stays offline. Every call carries a
   timeout, and a failure is a recorded run or upload failure, never a crash.
+- **Boundary search goes through the server.** The area form's relation picker calls
+  `GET /server/boundaries`, which asks `NOMINATIM_URL` (`src/lib/server/nominatim.ts`) — the
+  browser never does, so the visitor's address stays off Nominatim and one process-wide
+  throttle (1 request/s, plus a five-minute cache) keeps the instance inside the usage policy.
+  The area's size is the bounding box's, which overstates the boundary; the picker says
+  "bbox", and POI counts stay "—" until a run counts them.
 - Links to `openstreetmap.org` on `/review` and `/history` are anchors; they fetch nothing
   until clicked.
 

@@ -8,6 +8,7 @@ import AreaMap from "$lib/components/AreaMap.svelte";
 import { boxBtn, ghost, INPUT, primaryBtn } from "$lib/format";
 import { type AreaDraft, areaDraftSchema } from "$lib/schemas/area";
 import { type DraftMark, review } from "$lib/stores/review.svelte";
+import type { Rel } from "$lib/types";
 
 let { form: initial }: { form: SuperValidated<AreaDraft> } = $props();
 
@@ -32,6 +33,11 @@ $effect(() => {
 	const mark = review.draft;
 	if (!mark || mark === opened) return;
 	opened = mark;
+	typed = false;
+	found = [];
+	failure = null;
+	searching = false;
+	searched = "";
 	form.set(review.areaDraftFor(mark.editId));
 });
 
@@ -39,10 +45,58 @@ const d = $derived($form);
 const sqkm = $derived((Math.PI * d.radius * d.radius) / 1e6);
 const editing = $derived(!!d.editId);
 const ready = $derived(areaDraftSchema.safeParse(d).success);
-const results = $derived([
-	...d.extraRels,
-	...review.rels.filter((r) => !d.extraRels.some((x) => x.rel === r.rel)),
-]);
+
+const DEBOUNCE_MS = 450;
+let found = $state<Rel[]>([]);
+let searching = $state(false);
+let failure = $state<string | null>(null);
+let searched = $state("");
+let typed = false;
+
+const results = $derived(
+	d.picked && !found.some((r) => r.rel === d.picked!.rel) ? [d.picked, ...found] : found,
+);
+
+const meta = (r: Rel) =>
+	[r.level ? "admin_level=" + r.level : null, "bbox ≈ " + r.sqkm + " km²", r.displayName]
+		.filter(Boolean)
+		.join(" · ");
+
+$effect(() => {
+	const q = d.query.trim();
+	if (d.mode !== "relation" || !typed) return;
+	if (q.length < 2) {
+		found = [];
+		failure = null;
+		searching = false;
+		searched = "";
+		return;
+	}
+	searching = true;
+	const ctl = new AbortController();
+	const timer = setTimeout(async () => {
+		try {
+			const res = await fetch("/server/boundaries?q=" + encodeURIComponent(q), {
+				signal: ctl.signal,
+			});
+			const body = await res.json().catch(() => ({}));
+			if (!res.ok) throw new Error(body.error ?? "Search failed (" + res.status + ").");
+			found = body.rels;
+			failure = null;
+			searched = q;
+			searching = false;
+		} catch (e) {
+			if (ctl.signal.aborted) return;
+			found = [];
+			failure = e instanceof Error ? e.message : "Search failed.";
+			searching = false;
+		}
+	}, DEBOUNCE_MS);
+	return () => {
+		clearTimeout(timer);
+		ctl.abort();
+	};
+});
 
 const MODES: [AreaDraft["mode"], string][] = [
 	["relation", "OSM admin relation"],
@@ -54,24 +108,9 @@ const grid =
 
 const estimate = $derived.by(() => {
 	if (!ready) return "pick a relation first";
-	const radiusPois = Math.round(sqkm * 130).toLocaleString("en-US");
-	if (editing)
-		return (
-			(d.mode === "radius" ? "≈" + radiusPois : "≈" + d.picked!.pois) +
-			" POIs inside · the queue is re-scoped on the next run"
-		);
-	return d.mode === "radius"
-		? "≈" +
-				radiusPois +
-				" POIs inside · first run est. " +
-				Math.max(2, Math.round(sqkm / 3)) +
-				" min"
-		: "≈" +
-				d.picked!.pois +
-				" POIs inside " +
-				d.picked!.name +
-				" · first run est. " +
-				d.picked!.est;
+	return editing
+		? "POIs are counted on the next run · the queue is re-scoped then"
+		: "POIs are counted on the first run";
 });
 </script>
 
@@ -107,8 +146,20 @@ const estimate = $derived.by(() => {
 			{#if d.mode === "relation"}
 				<span class="text-[11px] text-muted">osm relation</span>
 				<div>
-					<input class="{INPUT} max-w-[360px]" bind:value={$form.query} />
+					<input
+						class="{INPUT} max-w-[360px]"
+						placeholder="search a place, e.g. Lyon"
+						bind:value={$form.query}
+						oninput={() => (typed = true)}
+					/>
 					<div class="mt-[7px] max-w-[460px] overflow-hidden rounded-sm border border-line">
+						{#if searching}
+							<div class="bg-panel px-[11px] py-[7px] text-[11.5px] text-faint">searching…</div>
+						{:else if failure}
+							<div class="bg-panel px-[11px] py-[7px] text-[11.5px] text-bad">{failure}</div>
+						{:else if searched && !found.length}
+							<div class="bg-panel px-[11px] py-[7px] text-[11.5px] text-faint">no administrative boundary matches "{searched}"</div>
+						{/if}
 						{#each results as r (r.rel)}
 							{@const on = d.picked?.rel === r.rel}
 							<button
@@ -122,7 +173,7 @@ const estimate = $derived.by(() => {
 								}}
 							>
 								<span class="text-ink">{r.name}</span>
-								<span class="text-[11.5px] text-faint">{r.meta}</span>
+								<span class="truncate text-[11.5px] text-faint">{meta(r)}</span>
 							</button>
 						{/each}
 					</div>

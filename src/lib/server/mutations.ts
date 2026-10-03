@@ -100,8 +100,8 @@ export function applyAreaDraft(db: Db, d: AreaDraft): string {
 				: {
 						def: "relation" as const,
 						rel: d.picked?.rel ?? null,
-						displayName: d.picked?.name ?? null,
-						bbox: null,
+						displayName: d.picked?.displayName ?? null,
+						bbox: d.picked?.bbox ?? null,
 						centerLat: d.picked?.center[0] ?? d.center[0],
 						centerLon: d.picked?.center[1] ?? d.center[1],
 						km: d.picked?.km ?? null,
@@ -115,7 +115,7 @@ export function applyAreaDraft(db: Db, d: AreaDraft): string {
 				.set({
 					...shape,
 					name: d.name || prev?.name || "New area",
-					level: d.mode === "relation" ? (prev?.level ?? 8) : null,
+					level: d.mode === "relation" ? (d.picked?.level ?? prev?.level ?? null) : null,
 				})
 				.where(eq(t.areas.id, d.editId))
 				.run();
@@ -125,7 +125,7 @@ export function applyAreaDraft(db: Db, d: AreaDraft): string {
 					...shape,
 					id,
 					name: d.name || d.picked?.name || "New area",
-					level: d.mode === "relation" ? 8 : null,
+					level: d.mode === "relation" ? (d.picked?.level ?? null) : null,
 				})
 				.run();
 		}

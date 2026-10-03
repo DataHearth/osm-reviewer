@@ -3,7 +3,7 @@ import { page } from "$app/state";
 import { post } from "$lib/post";
 import type { AreaDraft } from "$lib/schemas/area";
 import type { SourceDraft } from "$lib/schemas/source";
-import type { Area, Candidate, Counts, Decision, Rel, ScopeArea, Source, Staged } from "$lib/types";
+import type { Area, Candidate, Counts, Decision, ScopeArea, Source, Staged } from "$lib/types";
 
 /** Which form a rail opened. The fields themselves live in the form's own store. */
 export interface DraftMark {
@@ -75,10 +75,6 @@ class ReviewState {
 
 	get areas(): Area[] {
 		return page.data.areas ?? [];
-	}
-
-	get rels(): Rel[] {
-		return page.data.rels ?? [];
 	}
 
 	get staged(): Staged[] {
@@ -487,9 +483,8 @@ class ReviewState {
 			editId: null,
 			name: "",
 			mode: "relation",
-			query: this.rels[0]?.name ?? "",
+			query: "",
 			picked: null,
-			extraRels: [],
 			center: [43.6045, 1.444],
 			radius: 2500,
 			srcs: Object.fromEntries(this.sources.map((s) => [s.id, s.enabled])),
@@ -500,14 +495,14 @@ class ReviewState {
 		const cur =
 			a.def === "relation" && a.rel
 				? {
-						name: a.name,
 						rel: a.rel,
-						meta: "admin_level=" + a.level + " · current boundary · " + a.sqkm + " km²",
+						name: a.name,
+						displayName: a.displayName ?? a.name,
+						level: a.level ?? null,
 						center: a.center,
+						bbox: a.bbox ?? null,
 						km: a.km ?? 0,
 						sqkm: a.sqkm,
-						pois: a.pois,
-						est: "—",
 					}
 				: null;
 		const links = this.links;
@@ -517,7 +512,6 @@ class ReviewState {
 			mode: a.def,
 			query: cur ? cur.name : "",
 			picked: cur,
-			extraRels: cur ? [cur] : [],
 			center: a.center,
 			radius: this.radiusOf(a),
 			srcs: Object.fromEntries(this.sources.map((s) => [s.id, !!links[s.id + ":" + a.id]])),

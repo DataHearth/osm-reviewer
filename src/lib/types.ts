@@ -142,14 +142,14 @@ export interface Counts {
 
 /** An OSM admin relation offered by the area picker. */
 export interface Rel {
-	name: string;
 	rel: string;
-	meta: string;
+	name: string;
+	displayName: string;
+	level: number | null;
 	center: [number, number];
+	bbox: [number, number, number, number] | null;
 	km: number;
 	sqkm: number;
-	pois: string;
-	est: string;
 }
 
 /** An accepted candidate waiting for an upload, with the tags the accept selected. */

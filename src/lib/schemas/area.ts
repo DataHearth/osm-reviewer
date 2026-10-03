@@ -1,14 +1,14 @@
 import { z } from "zod";
 
 const relSchema = z.object({
-	name: z.string(),
 	rel: z.string(),
-	meta: z.string(),
+	name: z.string(),
+	displayName: z.string(),
+	level: z.number().int().nullable(),
 	center: z.tuple([z.number(), z.number()]),
+	bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).nullable(),
 	km: z.number(),
 	sqkm: z.number(),
-	pois: z.string(),
-	est: z.string(),
 });
 
 export const areaDraftSchema = z
@@ -18,8 +18,6 @@ export const areaDraftSchema = z
 		mode: z.enum(["relation", "radius"]).default("relation"),
 		query: z.string().default(""),
 		picked: relSchema.nullable().default(null),
-		/** The saved area's own relation, offered alongside the search results while editing. */
-		extraRels: z.array(relSchema).default([]),
 		center: z
 			.tuple([z.number().min(-90).max(90), z.number().min(-180).max(180)])
 			.default([43.6045, 1.444]),
