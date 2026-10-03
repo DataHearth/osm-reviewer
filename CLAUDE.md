@@ -25,7 +25,8 @@ are considered settled: change where data and validation live, not how a screen 
   pieces of those screens.
 - `src/lib/server/db/` — schema, client, migration runner, seed. Server-only: nothing
   under `src/lib/server/` may be imported from a component.
-- `src/lib/server/auth/` — password hashing and session handling.
+- `src/lib/server/auth/` — password hashing, sessions, and SSO: `oidc.ts` is the round trip
+  to the provider, `sso-user.ts` maps the returned claims onto a row in `users`.
 - `src/lib/schemas/` — the Zod schemas the forms validate against, shared by the server
   action and the client `superForm`.
 - `src/lib/stores/*.svelte.ts` — client view state (selection, filters, open sheets,
@@ -60,6 +61,28 @@ Two bits of state are derived rather than stored, so a flag can never disagree w
 table it describes: a candidate is **staged** when its decision is `accepted` and its
 `changeset_id` is null, and it is **in conflict** when `head_version` is not null.
 
+## Sign-in and accounts
+
+Two ways in: email + password, and OpenID Connect against `SSO_ISSUER`. SSO exists only
+when an issuer is configured — no issuer, no button, and both its action and
+`/login/callback` answer 404. The callback is a `+server.ts`, so the layout's auth guard
+never runs for it; it refuses on its own.
+
+`ssoUser` decides who an SSO sign-in is. The `groups` claim must carry `SSO_GROUP` (empty
+disables the gate). An account is matched on the provider's `sub`, stored in
+`sso_subject`; an existing row is linked by address once, and only when the provider
+marks the address verified, or anyone able to edit their own email there could take over
+a local account. Nobody matched means a new reviewer is created on the spot. Every refusal
+travels back to `/login` as `?sso=<reason>`, which the load turns into the form's one
+error line.
+
+Admins manage accounts in the settings **users** pane: create (an empty password makes an
+SSO-only account that links on first sign-in), promote/demote, disable — which also
+deletes the account's sessions — and delete. Delete is refused for anyone with decisions,
+because `candidate_decisions.user_id` has no cascade and the audit trail needs the row;
+disable them instead. None of these actions accept the acting admin's own id, and that
+single rule is what guarantees an instance never loses its last admin.
+
 Demo affordances are gated behind `dev` and built server-side — the "clear lock" button on
 the login screen and the seeded-credentials hint. Neither exists in a production build, and
 the hint reads the address from the database so the fixture users, which carry cleartext
@@ -83,8 +106,11 @@ Everything else is local and should stay that way:
   then falls back to system fonts and stops looking like the design), and it reports every
   page load to a third party.
 - **Leaflet is bundled**, and its marker sprites are inlined as `data:` URIs.
-- **The server makes no outbound requests at all.** Changeset upload and the
-  ntfy/webhook/email channels are configured and stored but never called — still simulated.
+- **The server talks to one host: the identity provider, and only while SSO is on.**
+  Discovery happens on the first SSO sign-in rather than at boot, so a provider that is
+  down never stops the server starting; token exchange, JWKS and userinfo follow during
+  each sign-in. Changeset upload and the ntfy/webhook/email channels are configured and
+  stored but never called — still simulated.
 - Links to `openstreetmap.org` on `/review` and `/history` are anchors; they fetch nothing
   until clicked.
 
@@ -223,16 +249,21 @@ on, so the directory must be writable — not just the file. Migrations are gene
 `src/hooks.server.ts`, so a deployment has no separate migration step.
 
 `.env.example` lists the whole environment surface — `DATABASE_PATH`, adapter-node's
-`HOST`/`PORT`/`ORIGIN`/`BODY_SIZE_LIMIT`, the `SSO_*` identity-provider facts and the
-`SEED_ADMIN_*` overrides — `SSO_ENABLED=false` hides the SSO button and makes its action a
-404, which leaves an account with no local password no way in. `src/lib/server/config.ts`
-is where the identity-provider and seed values are read, with
-the former fixture values as defaults; everything else about the instance — version, sha,
+`HOST`/`PORT`/`ORIGIN`/`BODY_SIZE_LIMIT`, the `SSO_*` provider settings
+(`SSO_CLIENT_SECRET` is the one secret among them; unset makes a public client protected by
+PKCE alone) and the `SEED_ADMIN_*` overrides. SSO is off unless `SSO_ISSUER` is set, and
+`SSO_ENABLED=false` switches it off even then — which leaves an account with no local
+password no way in. `src/lib/server/config.ts` is where the identity-provider and seed
+values are read; everything else about the instance — version, sha,
 uptime, the health rows, the keymap — is fixture text and stays in `src/lib/data.ts`.
 Vite loads `.env*` for `pnpm dev`; the scripts
 that run outside it (drizzle-kit, `db:seed`) get the same files through `loadEnvFiles` in
-`src/lib/server/env.ts`. Precedence is shell over `.env.<mode>` over `.env`, which is why
-the e2e seed, handed its path through the environment, is not redirected by a local file.
+`src/lib/server/env.ts`. Precedence is shell over `.env.<mode>` over `.env`, and the e2e run
+leans on that: `e2e/env.ts` hands the server and the seed every variable the suite asserts
+on, because both run without `NODE_ENV` and would otherwise read a developer's
+`.env.development` — which renames the seeded admin and switches SSO off. `e2e/sso.spec.ts`
+runs a mock provider (`oauth2-mock-server`, in `e2e/idp.ts`) inside the test process, so
+each test sets the identity it hands back.
 
 A production build has no seed, so the first account comes from `bootstrapAdmin`
 (`src/lib/server/db/bootstrap.ts`): at boot, after migrations, it creates one admin from
