@@ -20,6 +20,9 @@ const copyMigrations: Plugin = {
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit(), copyMigrations],
+	// direnv keeps the flake inputs' sources under .direnv; every Nix build touches them
+	// and Vite answers each touched tsconfig with a full page reload.
+	server: { watch: { ignored: ["**/.direnv/**"] } },
 	test: {
 		environment: "jsdom",
 		include: ["src/**/*.test.ts"],
