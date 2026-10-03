@@ -3,7 +3,7 @@ import { untrack } from "svelte";
 import { superForm } from "sveltekit-superforms";
 import { zod4Client } from "sveltekit-superforms/adapters";
 import { ghost, INERT_BTN, INPUT } from "$lib/format";
-import { osmSchema, UPLOAD_TARGETS } from "$lib/schemas/settings";
+import { osmSchema } from "$lib/schemas/settings";
 import { settings } from "$lib/stores/settings.svelte";
 import type { PageData } from "../../../routes/settings/$types";
 import Field from "./Field.svelte";
@@ -58,12 +58,8 @@ const connected = $derived(!!identity && !settings.disconnected);
 	<!-- `contents` keeps the form out of the field stack's layout: the fields stay
 	     its direct items, and the save bar reaches the form by id. -->
 	<form id="settings-osm" method="POST" action="?/osm" use:enhance class="contents">
-		<Field label="upload target" hint="The sandbox accepts the same API and throws the data away — the right target for a dry run.">
-			<div class="flex flex-wrap gap-1.5">
-				{#each UPLOAD_TARGETS as t (t)}
-					<button type="button" class="{ghost($form.target === t)} max-md:min-h-[40px]" onclick={() => ($form.target = t)}>{t}</button>
-				{/each}
-			</div>
+		<Field label="upload target" hint="Set by the instance (OSM_URL). The sandbox accepts the same API and throws the data away — the right target for a dry run.">
+			<span class="text-[12.5px] text-ink">{data.osmTarget}</span>
 		</Field>
 
 		<Field label="changeset comment" hint="The default the composer opens with. Editable per upload.">

@@ -32,7 +32,7 @@ export type CandidateType = "new" | "update" | "closure";
 
 export interface Candidate {
 	id: string;
-	osmId: string;
+	osmId: string | null;
 	type: CandidateType;
 	name: string;
 	addr: string;
@@ -42,7 +42,9 @@ export interface Candidate {
 	conf: number;
 	version: number;
 	fetched: string;
+	/** Derived from the fetch time at load: "12d". */
 	age: string;
+	/** Days since the fetch, set only once it is past the staleness threshold. */
 	stale?: number;
 	conflict?: boolean;
 	baseVersion?: number;
@@ -81,8 +83,16 @@ export interface Source {
 	failing?: boolean;
 	enabled: boolean;
 	floor: number;
+	endpoint: string;
+	schedule: "every 12 h" | "daily" | "weekly" | "monthly";
+	matching: string;
+	budget: string;
+	extractor: "deterministic" | "model";
+	licence: string;
 	allow: string[];
+	/** Display rows, built from the columns and the last run at load. */
 	config: ConfigRow[];
+	/** Display rows, derived from runs, candidates and decisions at load. */
 	metrics: MetricRow[];
 	runs: Run[];
 }
@@ -96,8 +106,12 @@ export interface Area {
 	center: [number, number];
 	km?: number;
 	radius?: number;
+	displayName?: string;
+	bbox?: [number, number, number, number];
 	sqkm: number;
+	/** Derived at load from candidates and decisions. */
 	pending: number;
+	/** Formatted OSM POI count, "—" until a run has counted. */
 	pois: string;
 	accepted30: number;
 	status: string;
@@ -141,7 +155,7 @@ export interface Rel {
 /** An accepted candidate waiting for an upload, with the tags the accept selected. */
 export interface Staged {
 	id: string;
-	osmId: string;
+	osmId: string | null;
 	name: string;
 	type: CandidateType;
 	tags: Tag[];

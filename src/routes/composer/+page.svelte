@@ -129,7 +129,7 @@ const errBody = $derived(
 			>
 				<div class="min-w-0 px-[14px] py-2.5 md:px-[18px]">
 					<div class="flex items-baseline gap-2.5">
-						<span class="shrink-0 text-[13px] text-accent">{s.osmId}</span>
+						<span class="shrink-0 text-[13px] text-accent">{s.osmId ?? "new POI"}</span>
 						<span class="truncate font-medium text-ink">{s.name}</span>
 						<span class="shrink-0 text-[11.5px] text-muted">{typeSlug(s.type)}</span>
 					</div>

@@ -1,14 +1,15 @@
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
-import { fmtDate, stamp } from "$lib/format";
+import { comma, daysSince, fmtDate, STALE_AFTER_DAYS, stamp } from "$lib/format";
+import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import { configRows, KIND_LABEL, metricRows, runRow } from "$lib/server/source-display";
 import type {
 	Area,
 	Candidate,
 	Changeset,
 	Counts,
 	Decision,
-	Rel,
 	ScopeArea,
 	Source,
 	Staged,
@@ -18,54 +19,142 @@ import type {
 /** How much of the queue one screen holds; the rest is counted, not fetched. */
 const QUEUE_PAGE = 50;
 
-export type Yields = Record<string, [number, number]>;
+/** Accepted decisions newer than this count toward an area's "accepted, 30 d". */
+const RECENT_DAYS = 30;
 
-export async function loadSources(db: Db): Promise<Source[]> {
-	const rows = await db.query.sources.findMany({
-		with: {
-			allowedTags: { orderBy: (x) => asc(x.position) },
-			config: { orderBy: (x) => asc(x.position) },
-			metrics: { orderBy: (x) => asc(x.position) },
-			runs: { orderBy: (x) => desc(x.startedAt) },
-		},
-		orderBy: (x) => asc(x.id),
+/** Candidates a source brought to an area, and the share reviewers accepted (null while none is decided). */
+export type Yields = Record<string, [number, number | null]>;
+
+const n = sql<number>`count(*)`.mapWith(Number);
+
+/** Per area: what the pipeline queued, and what reviewers have decided of it. */
+async function areaTallies(db: Db) {
+	const since = Math.floor((Date.now() - RECENT_DAYS * 86_400_000) / 1000);
+	const [queued, decided] = await Promise.all([
+		db.select({ areaId: t.candidates.areaId, n }).from(t.candidates).groupBy(t.candidates.areaId),
+		db
+			.select({
+				areaId: t.candidates.areaId,
+				n,
+				recent:
+					sql<number>`coalesce(sum(${t.decisions.kind} = 'accepted' and ${t.decisions.decidedAt} >= ${since}), 0)`.mapWith(
+						Number,
+					),
+			})
+			.from(t.decisions)
+			.innerJoin(t.candidates, eq(t.decisions.candidateId, t.candidates.id))
+			.groupBy(t.candidates.areaId),
+	]);
+	const queuedBy = new Map(queued.map((q) => [q.areaId, q.n]));
+	const decidedBy = new Map(decided.map((d) => [d.areaId, d]));
+	return (areaId: string) => {
+		const total = queuedBy.get(areaId) ?? 0;
+		const done = decidedBy.get(areaId);
+		return {
+			total,
+			pending: Math.max(0, total - (done?.n ?? 0)),
+			accepted30: done?.recent ?? 0,
+		};
+	};
+}
+
+/** The area's own state in the words the screens use. */
+const areaStatus = (a: { paused: boolean; lastRunAt: Date | null }) =>
+	a.paused ? "paused" : a.lastRunAt ? "active" : "first run queued";
+const areaLastRun = (a: { lastRunAt: Date | null }) => (a.lastRunAt ? stamp(a.lastRunAt) : "never");
+
+export async function loadSources(db: Db, now: Date = new Date()): Promise<Source[]> {
+	const [rows, reviewed, evidence, links] = await Promise.all([
+		db.query.sources.findMany({
+			with: {
+				allowedTags: { orderBy: (x) => asc(x.position) },
+				runs: { orderBy: (x) => desc(x.startedAt) },
+			},
+			orderBy: (x) => asc(x.id),
+		}),
+		db
+			.select({
+				sourceId: t.candidates.sourceId,
+				n,
+				accepted: sql<number>`coalesce(sum(${t.decisions.kind} = 'accepted'), 0)`.mapWith(Number),
+			})
+			.from(t.decisions)
+			.innerJoin(t.candidates, eq(t.decisions.candidateId, t.candidates.id))
+			.groupBy(t.candidates.sourceId),
+		db
+			.select({
+				sourceId: t.candidates.sourceId,
+				n,
+				bare: sql<number>`coalesce(sum(${t.evidence.id} is null), 0)`.mapWith(Number),
+			})
+			.from(t.tags)
+			.innerJoin(t.candidates, eq(t.tags.candidateId, t.candidates.id))
+			.leftJoin(t.evidence, eq(t.evidence.tagId, t.tags.id))
+			.groupBy(t.candidates.sourceId),
+		db
+			.select({ sourceId: t.areaSources.sourceId, n })
+			.from(t.areaSources)
+			.groupBy(t.areaSources.sourceId),
+	]);
+	const reviewedBy = new Map(reviewed.map((r) => [r.sourceId, r]));
+	const evidenceBy = new Map(evidence.map((r) => [r.sourceId, r]));
+	const linksBy = new Map(links.map((r) => [r.sourceId, r.n]));
+	const model = llm.provider && llm.model ? `${llm.model} · ${llm.provider}` : null;
+
+	return rows.map((s) => {
+		const last = s.runs[0];
+		const done = reviewedBy.get(s.id);
+		const tagged = evidenceBy.get(s.id);
+		return {
+			id: s.id,
+			name: s.name,
+			kind: s.kind,
+			kindLabel: KIND_LABEL[s.kind],
+			health: s.health,
+			failing: s.failing,
+			enabled: s.enabled,
+			floor: s.floor,
+			endpoint: s.endpoint,
+			schedule: s.schedule,
+			matching: s.matching,
+			budget: s.budget,
+			extractor: s.extractor,
+			licence: s.licence,
+			allow: s.allowedTags.map((a) => a.pattern),
+			config: configRows(s, last, model),
+			metrics: metricRows({
+				areas: linksBy.get(s.id) ?? 0,
+				last,
+				reviewed: done?.n ?? 0,
+				accepted: done?.accepted ?? 0,
+				tags: tagged?.n ?? 0,
+				unevidenced: tagged?.bare ?? 0,
+			}),
+			runs: s.runs.map((r) => runRow(r, s.kind)),
+		};
 	});
-
-	return rows.map((s) => ({
-		id: s.id,
-		name: s.name,
-		kind: s.kind,
-		kindLabel: s.kindLabel,
-		health: s.health,
-		failing: s.failing,
-		enabled: s.enabled,
-		floor: s.floor,
-		allow: s.allowedTags.map((a) => a.pattern),
-		config: s.config.map((c) => (c.tone ? [c.label, c.value, c.tone] : [c.label, c.value])),
-		metrics: s.metrics.map((m) => [m.label, m.value, m.note ?? undefined, m.tone ?? undefined]),
-		runs: s.runs.map((r) => ({
-			when: stamp(r.startedAt),
-			dur: r.dur,
-			fetched: r.fetched,
-			cands: r.cands,
-			errors: r.errors,
-			result: r.result,
-		})),
-	}));
 }
 
 export async function loadAreas(db: Db): Promise<{ areas: Area[]; yields: Yields }> {
-	const rows = await db.query.areas.findMany({
-		with: { sources: true },
-		orderBy: (x) => asc(x.id),
-	});
+	const [rows, tally, perLink] = await Promise.all([
+		db.query.areas.findMany({ with: { sources: true }, orderBy: (x) => asc(x.id) }),
+		areaTallies(db),
+		db
+			.select({
+				sourceId: t.candidates.sourceId,
+				areaId: t.candidates.areaId,
+				n,
+				decided: sql<number>`count(${t.decisions.candidateId})`.mapWith(Number),
+				accepted: sql<number>`coalesce(sum(${t.decisions.kind} = 'accepted'), 0)`.mapWith(Number),
+			})
+			.from(t.candidates)
+			.leftJoin(t.decisions, eq(t.decisions.candidateId, t.candidates.id))
+			.groupBy(t.candidates.sourceId, t.candidates.areaId),
+	]);
 
 	const yields: Yields = {};
-	for (const a of rows) {
-		for (const link of a.sources) {
-			if (link.candidateCount === null || link.acceptRate === null) continue;
-			yields[`${link.sourceId}:${a.id}`] = [link.candidateCount, link.acceptRate];
-		}
+	for (const l of perLink) {
+		yields[`${l.sourceId}:${l.areaId}`] = [l.n, l.decided > 0 ? l.accepted / l.decided : null];
 	}
 
 	const areas = rows.map((a) => ({
@@ -74,33 +163,21 @@ export async function loadAreas(db: Db): Promise<{ areas: Area[]; yields: Yields
 		def: a.def,
 		rel: a.rel ?? undefined,
 		level: a.level ?? undefined,
+		displayName: a.displayName ?? undefined,
+		bbox: a.bbox ?? undefined,
 		center: [a.centerLat, a.centerLon] as [number, number],
 		km: a.km ?? undefined,
 		radius: a.radius ?? undefined,
 		sqkm: a.sqkm,
-		pending: a.pending,
-		pois: a.pois,
-		accepted30: a.accepted30,
-		status: a.status,
-		lastRun: a.lastRun,
+		pending: tally(a.id).pending,
+		pois: a.pois === null ? "—" : comma(a.pois),
+		accepted30: tally(a.id).accepted30,
+		status: areaStatus(a),
+		lastRun: areaLastRun(a),
 		sources: a.sources.map((s) => s.sourceId),
 	}));
 
 	return { areas, yields };
-}
-
-export async function loadRels(db: Db): Promise<Rel[]> {
-	const rows = await db.query.rels.findMany({ orderBy: (x) => asc(x.name) });
-	return rows.map((r) => ({
-		name: r.name,
-		rel: r.rel,
-		meta: r.meta,
-		center: [r.centerLat, r.centerLon] as [number, number],
-		km: r.km,
-		sqkm: r.sqkm,
-		pois: r.pois,
-		est: r.est,
-	}));
 }
 
 /** The queue is the scoped area's, or every area's when the scope is null. */
@@ -164,8 +241,8 @@ export async function loadQueue(
 			conf: c.conf,
 			version: c.version,
 			fetched: fmtDate(c.fetchedAt),
-			age: c.age,
-			stale: c.stale ?? undefined,
+			age: daysSince(c.fetchedAt) + "d",
+			stale: daysSince(c.fetchedAt) >= STALE_AFTER_DAYS ? daysSince(c.fetchedAt) : undefined,
 			conflict: c.headVersion !== null,
 			baseVersion: c.baseVersion ?? undefined,
 			headVersion: c.headVersion ?? undefined,
@@ -173,7 +250,7 @@ export async function loadQueue(
 			theirs: side("theirs"),
 			ours: side("ours"),
 			nearby: c.nearby.map((n) => n.label),
-			unchanged: c.unchanged,
+			unchanged: c.unchangedTags.map((x) => `${x.k}=${x.v}`).join("  ") || "—",
 			tags,
 			allQuarantined: tags.every((tag) => !tag.ev),
 			hasNoEv: tags.some((tag) => !tag.ev),
@@ -212,20 +289,12 @@ export async function loadStaged(db: Db): Promise<Staged[]> {
 	});
 }
 
-/**
- * Every area the top bar's picker offers, most waiting first. `areas.pending` is what
- * the pipeline queued; decisions taken since are subtracted per area.
- */
+/** Every area the top bar's picker offers, most waiting first. */
 async function loadScopeAreas(db: Db): Promise<(ScopeArea & { queued: number })[]> {
-	const [rows, done] = await Promise.all([
+	const [rows, tally] = await Promise.all([
 		db.query.areas.findMany({ with: { sources: true } }),
-		db
-			.select({ areaId: t.candidates.areaId, n: sql<number>`count(*)`.mapWith(Number) })
-			.from(t.decisions)
-			.innerJoin(t.candidates, eq(t.decisions.candidateId, t.candidates.id))
-			.groupBy(t.candidates.areaId),
+		areaTallies(db),
 	]);
-	const decided = new Map(done.map((d) => [d.areaId, d.n]));
 
 	return rows
 		.map((a) => ({
@@ -233,11 +302,11 @@ async function loadScopeAreas(db: Db): Promise<(ScopeArea & { queued: number })[
 			name: a.name,
 			def: a.def,
 			radius: a.radius ?? undefined,
-			status: a.status,
-			lastRun: a.lastRun,
+			status: areaStatus(a),
+			lastRun: areaLastRun(a),
 			sources: a.sources.length,
-			queued: a.pending,
-			pending: Math.max(0, a.pending - (decided.get(a.id) ?? 0)),
+			queued: tally(a.id).total,
+			pending: tally(a.id).pending,
 		}))
 		.sort((x, y) => y.pending - x.pending);
 }

@@ -150,7 +150,7 @@ function openRow(c: Candidate, i: number) {
 							</span>
 							<span class="text-right font-mono text-[14px] tabular-nums {confText(c.conf)}">{pct(c.conf)}</span>
 							<span class="col-start-2 truncate font-mono text-[11.5px] text-faint"
-								><span class="text-link">{c.osmId}</span> · {c.source} · {c.tags.map((t) => OP_SIGN[t.op] + t.k).join(" ")}</span
+								><span class="text-link">{c.osmId ?? "new POI"}</span> · {c.source} · {c.tags.map((t) => OP_SIGN[t.op] + t.k).join(" ")}</span
 							>
 							<span class="text-right font-mono text-[11.5px] {c.stale ? 'text-warn' : 'text-faint'}">{c.age}</span>
 							{#if f}
@@ -200,7 +200,7 @@ function openRow(c: Candidate, i: number) {
 									<span class="shrink-0 text-[12px] {typeText(c.type)}">{typeLabel(c.type)}</span>
 								</span>
 								<span class="truncate font-mono text-[11.5px] text-faint"
-									><span class="text-link">{c.osmId}</span> &nbsp;·&nbsp; {c.source} &nbsp;·&nbsp; {c.tags
+									><span class="text-link">{c.osmId ?? "new POI"}</span> &nbsp;·&nbsp; {c.source} &nbsp;·&nbsp; {c.tags
 										.map((t) => OP_SIGN[t.op] + t.k)
 										.join(" ")}</span
 								>

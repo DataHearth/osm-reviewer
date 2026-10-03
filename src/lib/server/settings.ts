@@ -34,7 +34,6 @@ export async function loadSettings(db: Db, userId: string): Promise<SettingsPane
 	return {
 		account: { name: user?.name ?? "", email: user?.email ?? "" },
 		osm: {
-			target: s.osmTarget as OsmForm["target"],
 			comment: s.osmComment,
 			sourceTag: s.osmSourceTag,
 			hashtag: s.osmHashtag,
@@ -47,9 +46,9 @@ export async function loadSettings(db: Db, userId: string): Promise<SettingsPane
 			bindings: resolveBindings(s.bindings),
 		},
 		identity:
-			user?.osm && s.osmConnected
+			s.osmUserName && s.osmConnected
 				? {
-						user: user.osm,
+						user: s.osmUserName,
 						connected: stamp(s.osmConnected),
 						scopes: s.osmScopes,
 					}
@@ -61,7 +60,6 @@ export async function saveOsm(db: Db, userId: string, v: OsmForm) {
 	await rowFor(db, userId);
 	db.update(t.userSettings)
 		.set({
-			osmTarget: v.target,
 			osmComment: v.comment,
 			osmSourceTag: v.sourceTag,
 			osmHashtag: v.hashtag,
@@ -149,7 +147,11 @@ export function saveAccount(db: Db, userId: string, v: AccountForm) {
 
 export function setOsmConnected(db: Db, userId: string, connected: boolean) {
 	db.update(t.userSettings)
-		.set({ osmConnected: connected ? new Date() : null })
+		.set(
+			connected
+				? { osmConnected: new Date() }
+				: { osmConnected: null, osmToken: null, osmUserName: null, osmUserId: null },
+		)
 		.where(eq(t.userSettings.userId, userId))
 		.run();
 }

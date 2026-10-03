@@ -32,5 +32,5 @@ test("signing in and accepting a candidate work with JavaScript off", async ({ p
 
 	await page.goto("/");
 	await expect(onScreen(page.getByText(CANDIDATE.name, { exact: true }))).toHaveCount(0);
-	await expect(page.getByText("9 shown · 242 pending")).toBeVisible();
+	await expect(page.getByText("9 shown · 9 pending")).toBeVisible();
 });

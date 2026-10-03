@@ -42,9 +42,9 @@ const enabledAreas = $derived(review.visibleAreas.filter((a) => d.areas[a.id]).l
 let allowInput = $state("");
 
 const EP_HINT = {
-	registry: "StockEtablissement_utf8.csv",
+	registry: "https://www.data.gouv.fr/api/1/datasets/…/ or a direct file URL",
 	crawl: "website=* on POIs inside the area",
-	api: "GET /api/records/1.0/search?dataset=…",
+	api: "https://…/api/explore/v2.1/catalog/datasets/…/records",
 } as const;
 
 const KINDS: [SourceDraft["kind"], string][] = [
@@ -54,25 +54,12 @@ const KINDS: [SourceDraft["kind"], string][] = [
 ];
 const EXTRACTORS: [SourceDraft["extractor"], string][] = [
 	["deterministic", "deterministic field map"],
-	["model", "local model · qwen2.5-3b q4"],
+	["model", "language model"],
 ];
 const SCHEDULES: SourceDraft["schedule"][] = ["every 12 h", "daily", "weekly", "monthly"];
 
 const grid =
 	"grid grid-cols-1 items-start gap-y-2 border-b border-line-soft px-[14px] py-3 md:grid-cols-[124px_minmax(0,1fr)] md:items-center md:gap-x-3 md:gap-y-[11px] md:px-[18px] md:py-[14px]";
-
-function pickFile(e: Event) {
-	const f = (e.currentTarget as HTMLInputElement).files?.[0];
-	if (!f) return;
-	const mb = f.size / 1048576;
-	$form.endpoint = f.name;
-	$form.fileSize =
-		mb >= 1024
-			? (mb / 1024).toFixed(1) + " GB"
-			: mb >= 1
-				? mb.toFixed(1) + " MB"
-				: Math.max(1, Math.round(f.size / 1024)) + " KB";
-}
 
 function addKey(v: string) {
 	const key = v.trim().replace(/,+$/, "");
@@ -113,35 +100,23 @@ function allowKeydown(e: KeyboardEvent) {
 		</div>
 
 		<span class="text-[11px] text-muted">{EP_LABEL[d.kind]}</span>
-		{#if d.kind === "registry"}
-			<div class="flex flex-wrap items-center gap-2.5">
-				<label class="inline-flex cursor-pointer items-center rounded-sm border border-edge bg-raised px-3 py-1.5 text-[12.5px] text-ink">
-					choose file
-					<input type="file" accept=".csv,.tsv,.zip,.gz" class="sr-only" onchange={pickFile} />
-				</label>
-				<span class="truncate text-[12.5px] text-faint">
-					{d.endpoint ? d.endpoint + (d.fileSize ? " · " + d.fileSize : "") : "no file chosen · csv, tsv, zip"}
-				</span>
-			</div>
-		{:else}
-			<div>
-				<input class="{INPUT_SM} max-w-[480px]" placeholder={EP_HINT[d.kind]} bind:value={$form.endpoint} />
-				{#if $errors.endpoint}<div class="mt-1 text-[11px] text-bad">{$errors.endpoint[0]}</div>{/if}
-			</div>
-		{/if}
+		<div>
+			<input class="{INPUT_SM} max-w-[480px]" placeholder={EP_HINT[d.kind]} bind:value={$form.endpoint} />
+			{#if $errors.endpoint}<div class="mt-1 text-[11px] text-bad">{$errors.endpoint[0]}</div>{/if}
+		</div>
 
 		{#if d.kind === "api"}
 			<span class="text-[11px] text-muted">api key</span>
 			<input
 				class="{INPUT_SM} max-w-[400px]"
-				placeholder={d.editId ? "leave blank to keep the current key" : "stored encrypted, never shown again"}
+				placeholder={d.editId ? "leave blank to keep the current key" : "never shown again"}
 				bind:value={$form.key}
 			/>
 		{/if}
 
-		{#if d.kind === "registry"}
+		{#if d.kind !== "crawl"}
 			<span class="text-[11px] text-muted">matching</span>
-			<input class="{INPUT_SM} max-w-[480px]" placeholder="SIRET ↔ ref:FR:SIRET, then name + addr fuzzy" bind:value={$form.matching} />
+			<input class="{INPUT_SM} max-w-[480px]" placeholder="amenity=charging_station" bind:value={$form.matching} />
 		{/if}
 
 		{#if d.kind === "crawl"}

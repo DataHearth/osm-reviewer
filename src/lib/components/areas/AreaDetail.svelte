@@ -47,7 +47,7 @@ const defRows = $derived(
 				["relation", "relation/" + a.rel, "code"],
 				["admin level", a.level + " — commune"],
 				["area", sqkm + " km²"],
-				["boundary synced", a.lastRun === "never" ? "pending first run" : "01-09-2026"],
+				["boundary synced", a.lastRun === "never" ? "pending first run" : a.lastRun],
 			]) as [string, string, string?][],
 );
 </script>

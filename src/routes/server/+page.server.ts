@@ -33,7 +33,7 @@ import {
 	setSourceEnabled,
 	setSourceFloor,
 } from "$lib/server/mutations";
-import { loadAreas, loadRels, loadSources } from "$lib/server/queries";
+import { loadAreas, loadSources } from "$lib/server/queries";
 import { loadNotif, saveNotif } from "$lib/server/settings";
 import { requireAdmin, requireUser } from "$lib/server/user";
 import {
@@ -50,10 +50,9 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = requireUser(locals);
 	const admin = user.role === "admin";
-	const [sources, areas, rels, sourceForm, areaForm, notif, newUser] = await Promise.all([
+	const [sources, areas, sourceForm, areaForm, notif, newUser] = await Promise.all([
 		loadSources(db),
 		loadAreas(db),
-		loadRels(db),
 		superValidate(zod4(sourceDraftSchema)),
 		superValidate(zod4(areaDraftSchema)),
 		loadNotif(db).then((v) => superValidate(v, zod4(notifSchema), { errors: false })),
@@ -64,7 +63,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		sources,
 		areas: areas.areas,
 		yields: areas.yields,
-		rels,
 		forms: { source: sourceForm, area: areaForm, notif, newUser },
 		release: release(url.host),
 		users: admin ? listUsers(db) : [],

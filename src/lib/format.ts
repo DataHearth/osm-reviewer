@@ -70,8 +70,11 @@ export const statusPill = (s: string) =>
 			? "bg-warn-bg text-warn"
 			: "bg-raised text-muted";
 
-export const osmUrl = (osmId: string) =>
-	"https://www.openstreetmap.org/" + (osmId.startsWith("node/") ? osmId : "");
+/** No link for a candidate that has no OSM object yet. */
+export const osmUrl = (osmId: string | null) =>
+	osmId === null
+		? undefined
+		: "https://www.openstreetmap.org/" + (osmId.startsWith("node/") ? osmId : "");
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -83,6 +86,27 @@ export const fmtDate = (d: Date) =>
 export const stamp = (d: Date) => fmtDate(d) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
 
 export const nowStamp = () => stamp(new Date());
+
+/** "2 s", "41 min", "1 h 05 min": the longest unit that keeps one or two digits. */
+export function fmtDuration(ms: number): string {
+	const s = Math.round(ms / 1000);
+	if (s < 60) return s + " s";
+	const m = Math.round(s / 60);
+	if (m < 60) return m + " min";
+	return Math.floor(m / 60) + " h " + pad(m % 60) + " min";
+}
+
+/** 392, "3,742", "34.2M". */
+export function fmtCount(n: number): string {
+	return n >= 1_000_000 ? (n / 1_000_000).toFixed(1) + "M" : comma(n);
+}
+
+/** Whole days since `then`, never negative. */
+export const daysSince = (then: Date, now: Date = new Date()) =>
+	Math.max(0, Math.floor((now.getTime() - then.getTime()) / 86_400_000));
+
+/** A candidate fetched this long ago and still unreviewed is stale. */
+export const STALE_AFTER_DAYS = 60;
 
 /** Sort key for a DD-MM-YYYY HH:MM string that has already been formatted. */
 export const stampKey = (w: string) => {

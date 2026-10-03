@@ -2,7 +2,13 @@ import { expect, test } from "@playwright/test";
 import { onScreen, signIn, undoDecision } from "./helpers";
 
 /** Highest confidence of the seeded ten, so the queue sorts it first and `/review` opens it. */
-const CANDIDATE = { id: "c8", name: "Fleuriste des Minimes", fetched: "12-09-2026" };
+const CANDIDATE = { id: "c8", name: "Fleuriste des Minimes", ageDays: 2 };
+
+/** The seed dates each candidate by its fixture age back from the moment it ran. */
+const fetched = () =>
+	new Date(Date.now() - CANDIDATE.ageDays * 86_400_000)
+		.toLocaleDateString("fr-FR")
+		.replaceAll("/", "-");
 
 test.beforeEach(async ({ page }) => {
 	await signIn(page);
@@ -25,7 +31,7 @@ test("a candidate opens with its tags and evidence", async ({ page }) => {
 	await expect(page.getByText("FLEURISTE DES MINIMES", { exact: true })).toBeVisible();
 
 	await expect(page.getByText("all tags evidenced")).toBeVisible();
-	await expect(page.getByText(CANDIDATE.fetched, { exact: true })).toBeVisible();
+	await expect(page.getByText(fetched(), { exact: true })).toBeVisible();
 });
 
 test("accepting a candidate outlives a reload and takes it out of the queue", async ({ page }) => {
@@ -36,7 +42,7 @@ test("accepting a candidate outlives a reload and takes it out of the queue", as
 	await page.goto("/");
 	await page.reload();
 	await expect(onScreen(page.getByText(CANDIDATE.name, { exact: true }))).toHaveCount(0);
-	await expect(page.getByText("9 shown · 242 pending")).toBeVisible();
+	await expect(page.getByText("9 shown · 9 pending")).toBeVisible();
 
 	// The two tags it was accepted with are what the composer would upload.
 	await page.goto("/composer");

@@ -1,4 +1,4 @@
-import type { Area, Candidate, Changeset, Evidence, Rel, Run, Source, User } from "./types";
+import type { Candidate, Changeset, Evidence, User } from "./types";
 
 /** Split a quote on `|` — odd segments are the matched span. */
 const P = (s: string) => s.split("|").map((text, i) => ({ text, mark: i % 2 === 1 }));
@@ -17,22 +17,6 @@ const ev = (
 	when,
 	kind,
 	conf,
-});
-
-const run = (
-	when: string,
-	dur: string,
-	fetched: string,
-	cands: string,
-	errors: string,
-	result: string,
-): Run => ({
-	when,
-	dur,
-	fetched,
-	cands,
-	errors,
-	result,
 });
 
 type SeedCandidate = Omit<Candidate, "allQuarantined" | "hasNoEv" | "hasInvalid">;
@@ -493,238 +477,6 @@ export const CANDIDATES: Candidate[] = SEED.map((c) => ({
 	hasInvalid: c.tags.some((t) => t.invalid),
 }));
 
-/** Total the pipeline reports for Toulouse — the ten above are the loaded page. */
-export const QUEUE_TOTAL = 243;
-
-export const SOURCES: Source[] = [
-	{
-		id: "sirene",
-		name: "SIRENE — établissements",
-		kind: "registry",
-		kindLabel: "national registry dump",
-		health: "ok",
-		enabled: true,
-		floor: 0.6,
-		allow: ["amenity", "shop", "office", "craft", "name", "addr:*", "ref:FR:SIRET", "disused:*"],
-		config: [
-			["dataset", "StockEtablissement_utf8.csv", "code"],
-			["volume", "34.2M rows · 4.1 GB · diffed against last snapshot"],
-			["schedule", "monthly · 1st, 04:00 UTC"],
-			["next run", "01-10-2026 04:00"],
-			["matching", "SIRET ↔ ref:FR:SIRET, then name + addr fuzzy ≥0.88"],
-			["extractor", "deterministic field map · prompt registry-row-v3", "code"],
-		],
-		metrics: [
-			["candidates", "186", "last run, 3 areas"],
-			["accept rate", "78%", "of 1,204 reviewed", "ok"],
-			["unevidenced", "2%", "tags without a source row", "ok"],
-			["last run", "01-09-2026", "04:12 · 41 min"],
-			["errors", "0", "clean"],
-		],
-		runs: [
-			run("01-09-2026 04:12", "41 min", "34.2M rows", "186", "0", "ok"),
-			run("01-08-2026 04:09", "38 min", "34.1M rows", "204", "0", "ok"),
-			run("01-07-2026 04:11", "44 min", "34.0M rows", "171", "2", "ok, 2 rows skipped"),
-			run("01-06-2026 04:08", "39 min", "33.9M rows", "233", "0", "ok"),
-		],
-	},
-	{
-		id: "web",
-		name: "Operator website crawl",
-		kind: "crawl",
-		kindLabel: "operator website crawl",
-		health: "warn",
-		enabled: true,
-		floor: 0.55,
-		allow: ["opening_hours", "phone", "website", "email", "takeaway", "delivery", "wheelchair"],
-		config: [
-			["seed rule", "website=* on POIs inside the area", "code"],
-			["budget", "400 pages / run · 1 request / 4 s per host"],
-			["robots.txt", "honoured — 6 hosts disallow /horaires", "warn"],
-			["schedule", "every 12 h"],
-			["next run", "14-09-2026 18:12"],
-			["extractor", "qwen2.5-3b-instruct q4 · prompt page-extract-v7", "code"],
-		],
-		metrics: [
-			["candidates", "38", "last run, 2 areas"],
-			["accept rate", "61%", "of 806 reviewed", "warn"],
-			["unevidenced", "11%", "model asserted, page did not", "warn"],
-			["last run", "06:12 today", "8 min"],
-			["errors", "14", "12 timeouts, 2 × 403", "warn"],
-		],
-		runs: [
-			run("14-09-2026 06:12", "8 min", "392 pages", "38", "14", "14 fetch failures"),
-			run("13-09-2026 18:12", "9 min", "400 pages", "44", "6", "ok"),
-			run("13-09-2026 06:12", "7 min", "361 pages", "29", "9", "ok"),
-			run("12-09-2026 18:12", "8 min", "388 pages", "41", "5", "ok"),
-		],
-	},
-	{
-		id: "datatls",
-		name: "data.toulouse-metropole.fr",
-		kind: "api",
-		kindLabel: "government open-data API",
-		health: "ok",
-		enabled: true,
-		floor: 0.7,
-		allow: ["amenity", "shop", "name", "addr:*", "opening_hours", "operator"],
-		config: [
-			["endpoint", "GET /api/records/1.0/search?dataset=commerces", "code"],
-			["api key", "••••••••••••3f71 · expires 02-03-2027"],
-			["pagination", "100 rows / page · 38 pages last run"],
-			["schedule", "weekly · Mon 05:00"],
-			["next run", "15-09-2026 05:00"],
-			["extractor", "deterministic field map · no model", "code"],
-		],
-		metrics: [
-			["candidates", "19", "last run, 1 area"],
-			["accept rate", "84%", "of 312 reviewed", "ok"],
-			["unevidenced", "0%", "every tag cites a row", "ok"],
-			["last run", "08-09-2026", "05:00 · 2 min"],
-			["errors", "0", "clean"],
-		],
-		runs: [
-			run("08-09-2026 05:00", "2 min", "3,742 rows", "19", "0", "ok"),
-			run("01-09-2026 05:00", "2 min", "3,740 rows", "24", "0", "ok"),
-			run("25-08-2026 05:01", "3 min", "3,731 rows", "31", "1", "ok, 1 row malformed"),
-			run("18-08-2026 05:00", "2 min", "3,728 rows", "12", "0", "ok"),
-		],
-	},
-	{
-		id: "datagouv",
-		name: "data.gouv.fr — annuaire",
-		kind: "api",
-		kindLabel: "government open-data API",
-		health: "error",
-		failing: true,
-		enabled: false,
-		floor: 0.75,
-		allow: ["amenity", "name", "operator", "ref:FR:*", "opening_hours"],
-		config: [
-			["endpoint", "GET /api/1/datasets/annuaire-administration/", "code"],
-			["api key", "•••••••••••• rejected 27-08-2026", "bad"],
-			["pagination", "50 rows / page"],
-			["schedule", "weekly · Wed 05:00 — held after 3 failures", "warn"],
-			["next run", "not scheduled", "warn"],
-			["extractor", "deterministic field map · no model", "code"],
-		],
-		metrics: [
-			["candidates", "0", "nothing since 27-08-2026", "bad"],
-			["accept rate", "91%", "of 64 reviewed", "ok"],
-			["unevidenced", "0%", "—", "ok"],
-			["last ok run", "20-08-2026", "05:00 · 1 min"],
-			["errors", "3", "consecutive 401", "bad"],
-		],
-		runs: [
-			run("10-09-2026 05:00", "2 s", "0 rows", "0", "1", "401 unauthorized"),
-			run("03-09-2026 05:00", "2 s", "0 rows", "0", "1", "401 unauthorized"),
-			run("27-08-2026 05:00", "2 s", "0 rows", "0", "1", "401 unauthorized"),
-			run("20-08-2026 05:00", "1 min", "1,880 rows", "7", "0", "ok"),
-		],
-	},
-];
-
-export const AREAS: Area[] = [
-	{
-		id: "tls",
-		name: "Toulouse",
-		def: "relation",
-		rel: "35738",
-		level: 8,
-		center: [43.6045, 1.444],
-		km: 8.6,
-		sqkm: 118,
-		pending: 243,
-		pois: "18,402",
-		accepted30: 149,
-		status: "active",
-		lastRun: "06:12 today",
-		sources: ["sirene", "web", "datatls", "datagouv"],
-	},
-	{
-		id: "bdx",
-		name: "Bordeaux",
-		def: "relation",
-		rel: "75689",
-		level: 8,
-		center: [44.8378, -0.5792],
-		km: 7.2,
-		sqkm: 49,
-		pending: 88,
-		pois: "11,970",
-		accepted30: 76,
-		status: "active",
-		lastRun: "05:40 today",
-		sources: ["sirene", "web", "datagouv"],
-	},
-	{
-		id: "mpl",
-		name: "Montpellier centre",
-		def: "radius",
-		center: [43.6109, 3.8767],
-		radius: 2500,
-		sqkm: 20,
-		pending: 12,
-		pois: "3,318",
-		accepted30: 9,
-		status: "paused",
-		lastRun: "30-08-2026",
-		sources: ["sirene"],
-	},
-	{
-		id: "alb",
-		name: "Albi",
-		def: "relation",
-		rel: "103574",
-		level: 8,
-		center: [43.9289, 2.148],
-		km: 4.6,
-		sqkm: 44,
-		pending: 0,
-		pois: "2,104",
-		accepted30: 0,
-		status: "first run queued",
-		lastRun: "never",
-		sources: ["sirene", "web"],
-	},
-];
-
-/** What the relation search offers, keyed off the draft query. */
-export const RELS: Rel[] = [
-	{
-		name: "Montauban",
-		rel: "104176",
-		meta: "admin_level=8 · Tarn-et-Garonne · 134 km²",
-		center: [44.0181, 1.355],
-		km: 6.6,
-		sqkm: 134,
-		pois: "2,640",
-		est: "14 min",
-	},
-	{
-		name: "Montauban-de-Bretagne",
-		rel: "145520",
-		meta: "admin_level=8 · Ille-et-Vilaine · 39 km²",
-		center: [48.193, -2.045],
-		km: 3.6,
-		sqkm: 39,
-		pois: "310",
-		est: "4 min",
-	},
-];
-
-/** candidates + accept rate per source × area, as the last runs measured them. */
-export const YIELDS: Record<string, [number, number]> = {
-	"sirene:tls": [112, 0.79],
-	"sirene:bdx": [58, 0.75],
-	"sirene:mpl": [16, 0.81],
-	"web:tls": [26, 0.62],
-	"web:bdx": [12, 0.58],
-	"datatls:tls": [19, 0.84],
-	"datagouv:tls": [5, 0.91],
-	"datagouv:bdx": [2, 0.9],
-};
-
 export const HISTORY: Changeset[] = (
 	[
 		[
@@ -795,7 +547,6 @@ export const USERS: User[] = [
 export const SETTINGS = {
 	osmConnected: "12-09-2026 20:11",
 	osmScopes: "write_api · read_prefs",
-	osmTarget: "openstreetmap.org",
 	osmComment: "Toulouse POI updates from SIRENE + operator websites (reviewed)",
 	osmSourceTag: "https://sirene.fr; operator website",
 	osmHashtag: "#poi-review",
@@ -815,7 +566,7 @@ export const NOTIFICATIONS = {
 	webhookSecret: "",
 	emailOn: true,
 	emailTo: "antoine@antoine-langlois.net",
-	emailRelay: "smtp.lan:587",
+	emailRelay: "smtp://smtp.lan:587",
 	queueOver: 250,
 	eventQueue: true,
 	eventSourceFailed: true,

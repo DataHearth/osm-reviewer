@@ -1,0 +1,32 @@
+import { describe, expect, it } from "vitest";
+import { daysSince, fmtCount, fmtDuration, osmUrl } from "./format";
+
+describe("fmtDuration", () => {
+	it("picks the longest unit that keeps the number small", () => {
+		expect(fmtDuration(2000)).toBe("2 s");
+		expect(fmtDuration(41 * 60_000)).toBe("41 min");
+		expect(fmtDuration(65 * 60_000)).toBe("1 h 05 min");
+	});
+});
+
+describe("fmtCount", () => {
+	it("groups thousands and abbreviates millions", () => {
+		expect(fmtCount(3742)).toBe("3,742");
+		expect(fmtCount(34_200_000)).toBe("34.2M");
+	});
+});
+
+describe("daysSince", () => {
+	it("counts whole days and never goes negative", () => {
+		const now = new Date(2026, 9, 3, 12);
+		expect(daysSince(new Date(2026, 8, 21, 12), now)).toBe(12);
+		expect(daysSince(new Date(2026, 9, 4), now)).toBe(0);
+	});
+});
+
+describe("osmUrl", () => {
+	it("has no link for a POI OSM does not have yet", () => {
+		expect(osmUrl(null)).toBeUndefined();
+		expect(osmUrl("node/1")).toBe("https://www.openstreetmap.org/node/1");
+	});
+});

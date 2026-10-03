@@ -120,7 +120,7 @@ export function upload(
 		return {
 			conflict: {
 				candidateId: moved.candidateId,
-				osmId: moved.osmId,
+				osmId: moved.osmId ?? moved.candidateId,
 				changesetId: id,
 				baseVersion: (moved.baseVersion ?? moved.version) - 1,
 				headVersion: moved.version,

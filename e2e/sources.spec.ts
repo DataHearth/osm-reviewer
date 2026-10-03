@@ -5,8 +5,8 @@ test("a source with a blank name is refused by the server and never reaches the 
 	page,
 }) => {
 	await signIn(page, ADMIN.email, "/server?s=sources");
-	await expect(page.getByText("SOURCES · 4")).toBeVisible();
-	await expect(page.getByText("4 sources · aggregate")).toBeVisible();
+	await expect(page.getByText("SOURCES · 6")).toBeVisible();
+	await expect(page.getByText("6 sources · aggregate")).toBeVisible();
 
 	// The create button stays disabled until the client's copy of the schema
 	// passes, so the server's own check is only reachable by posting the way a
@@ -21,8 +21,8 @@ test("a source with a blank name is refused by the server and never reaches the 
 	expect(result.data).toContain("A name is required.");
 
 	await page.reload();
-	await expect(page.getByText("SOURCES · 4")).toBeVisible();
-	await expect(page.getByText("4 sources · aggregate")).toBeVisible();
+	await expect(page.getByText("SOURCES · 6")).toBeVisible();
+	await expect(page.getByText("6 sources · aggregate")).toBeVisible();
 });
 
 test("the new-source form will not submit while the name is empty", async ({ page }) => {

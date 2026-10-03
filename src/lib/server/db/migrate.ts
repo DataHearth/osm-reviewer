@@ -23,6 +23,22 @@ function findMigrationsFolder(): string {
 	}
 }
 
+/**
+ * Drizzle applies every pending migration inside one transaction, where SQLite
+ * ignores `PRAGMA foreign_keys`. The OFF that a generated table rebuild emits is
+ * therefore a no-op, and dropping the old table cascades through its children:
+ * 0005's `areas` rebuild deleted every candidate and decision this way. Keys are
+ * off around the whole run instead, and the check afterwards replaces the one
+ * SQLite would have made.
+ */
 export function runMigrations(db: Db): void {
-	migrate(db, { migrationsFolder: findMigrationsFolder() });
+	const sqlite = db.$client;
+	sqlite.pragma("foreign_keys = OFF");
+	try {
+		migrate(db, { migrationsFolder: findMigrationsFolder() });
+		const broken = sqlite.pragma("foreign_key_check") as unknown[];
+		if (broken.length > 0) throw new Error(`migrations left ${broken.length} broken foreign keys`);
+	} finally {
+		sqlite.pragma("foreign_keys = ON");
+	}
 }

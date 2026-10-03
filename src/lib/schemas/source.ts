@@ -16,7 +16,6 @@ export const sourceDraftSchema = z.object({
 	name: z.string().trim().min(1, "A name is required."),
 	kind: z.enum(SOURCE_KINDS).default("api"),
 	endpoint: z.string().trim().min(1, "Required."),
-	fileSize: z.string().default(""),
 	key: z.string().default(""),
 	schedule: z.enum(SCHEDULES).default("weekly"),
 	floor: z.number().min(0).max(0.9).default(0.6),

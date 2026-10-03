@@ -132,8 +132,8 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 					<span class="truncate {on ? 'text-ink' : 'text-faint'}">{a.name}</span>
 					<span class="text-[11.5px] text-faint">{on && y ? y[0] + " cand" : on ? "no runs yet" : "—"}</span>
 					<span
-						class="text-[11.5px] {on && y ? (y[1] >= 0.75 ? 'text-ok' : y[1] >= 0.6 ? 'text-warn' : 'text-bad') : 'text-faint'}"
-						>{on && y ? Math.round(y[1] * 100) + "% acc" : "—"}</span
+						class="text-[11.5px] {on && y?.[1] != null ? (y[1] >= 0.75 ? 'text-ok' : y[1] >= 0.6 ? 'text-warn' : 'text-bad') : 'text-faint'}"
+						>{on && y?.[1] != null ? Math.round(y[1] * 100) + "% acc" : "—"}</span
 					>
 				</div>
 			{/each}

@@ -9,7 +9,7 @@ function meta(s: Source) {
 	const linked = review.visibleAreas.filter((a) => review.links[s.id + ":" + a.id]).length;
 	const areaLabel = linked + (linked === 1 ? " area" : " areas");
 	if (!review.enabled[s.id]) return areaLabel + " · disabled";
-	if (!s.runs[0] || s.runs[0].when === "queued") return areaLabel + " · first run queued";
+	if (s.runs[0]) return areaLabel + " · first run queued";
 	const mv = (label: string) => String(review.metric(s, label)[1]);
 	return areaLabel + " · " + mv("candidates") + " cand · " + mv("errors") + " err";
 }

@@ -258,7 +258,7 @@ class ReviewState {
 		return list.find((a) => a.id === id) ?? list[0];
 	}
 
-	yieldFor(srcId: string, areaId: string): [number, number] | undefined {
+	yieldFor(srcId: string, areaId: string): [number, number | null] | undefined {
 		return page.data.yields?.[srcId + ":" + areaId];
 	}
 
@@ -279,11 +279,6 @@ class ReviewState {
 
 	metric(s: Source, label: string) {
 		return s.metrics.find((m) => m[0] === label) ?? ["", "—", "", null];
-	}
-
-	configValue(s: Source, label: string) {
-		const r = s.config.find((x) => x[0] === label);
-		return r ? String(r[1]) : "";
 	}
 
 	// ── review ──────────────────────────────────────────────────────────────
@@ -457,12 +452,11 @@ class ReviewState {
 			name: "",
 			kind: "api",
 			endpoint: "",
-			fileSize: "",
 			key: "",
 			schedule: "weekly",
 			floor: 0.6,
 			allow: ["opening_hours", "phone", "website"],
-			matching: "SIRET ↔ ref:FR:SIRET, then name + addr fuzzy ≥0.88",
+			matching: "",
 			budget: "400 pages / run · 1 request / 4 s per host",
 			extractor: "deterministic",
 			areas: Object.fromEntries(this.visibleAreas.map((a, i) => [a.id, i === 0])),
@@ -470,26 +464,19 @@ class ReviewState {
 		const s = editId ? this.sources.find((x) => x.id === editId) : null;
 		if (!s) return blank;
 
-		const cfg = (label: string) => this.configValue(s, label);
-		const endpointLabel =
-			s.kind === "registry" ? "dataset" : s.kind === "crawl" ? "seed rule" : "endpoint";
 		const links = this.links;
 		return {
 			editId: s.id,
 			name: s.name,
 			kind: s.kind,
-			endpoint: cfg(endpointLabel).split(" · ")[0],
-			fileSize: "",
+			endpoint: s.endpoint,
 			key: "",
-			schedule:
-				(["every 12 h", "daily", "weekly", "monthly"] as const).find(
-					(x) => x === cfg("schedule").split(" · ")[0],
-				) ?? "weekly",
+			schedule: s.schedule,
 			floor: this.floors[s.id] ?? s.floor,
 			allow: s.allow.slice(),
-			matching: cfg("matching") || blank.matching,
-			budget: cfg("budget") || blank.budget,
-			extractor: /qwen|instruct|model/.test(cfg("extractor")) ? "model" : "deterministic",
+			matching: s.matching,
+			budget: s.budget,
+			extractor: s.extractor,
 			areas: Object.fromEntries(this.visibleAreas.map((a) => [a.id, !!links[s.id + ":" + a.id]])),
 		};
 	}

@@ -25,7 +25,6 @@ export const users = sqliteTable(
 		ssoSubject: text(),
 		/** Blocks every sign-in path but keeps the row, which decisions still point at. */
 		disabled: integer({ mode: "boolean" }).notNull().default(false),
-		osm: text(),
 		lastSeen: integer({ mode: "timestamp" }),
 	},
 	(t) => [
@@ -52,12 +51,38 @@ export const sources = sqliteTable("sources", {
 	id: text().primaryKey(),
 	name: text().notNull(),
 	kind: text({ enum: ["registry", "crawl", "api"] }).notNull(),
-	kindLabel: text().notNull(),
+	/** What a run last reported about the source; `failing` is the held-after-failures state. */
 	health: text({ enum: ["ok", "warn", "error"] }).notNull(),
 	failing: integer({ mode: "boolean" }).notNull().default(false),
 	/** Whether the pipeline polls it at all — orthogonal to `health`, which reports the last run. */
 	enabled: integer({ mode: "boolean" }).notNull().default(true),
 	floor: real().notNull(),
+	/** registry: the dataset URL (a file, or a data.gouv.fr dataset API URL); api: the records URL; crawl: the seed rule. */
+	endpoint: text().notNull().default(""),
+	/** Sent to the endpoint as-is; the screens only ever show the last four characters. */
+	apiKey: text(),
+	schedule: text({ enum: ["every 12 h", "daily", "weekly", "monthly"] })
+		.notNull()
+		.default("weekly"),
+	/** The OSM tag filter a source's records are matched against existing POIs by, e.g. `amenity=school`. */
+	matching: text().notNull().default(""),
+	/** Crawl only: the page and rate budget of one run, as the operator wrote it. */
+	budget: text().notNull().default(""),
+	extractor: text({ enum: ["deterministic", "model"] })
+		.notNull()
+		.default("deterministic"),
+	/** The built-in field map a deterministic extractor applies; null until a run picks or the operator names one. */
+	preset: text(),
+	/** Free text, e.g. "Licence Ouverte 2.0". Shown on the source and written into changeset source tags. */
+	licence: text().notNull().default(""),
+	/** Null on an enabled source means due now. */
+	nextRunAt: integer({ mode: "timestamp" }),
+	/** "Run now": the scheduler runs the source at its next tick and clears this when the run starts. */
+	runRequestedAt: integer({ mode: "timestamp" }),
+	/** Set while a run is in flight, so a second tick or button press does not start another. */
+	runningSince: integer({ mode: "timestamp" }),
+	/** Opaque runner state between runs: ETag, snapshot hash, page cursor. Only the pipeline reads it. */
+	syncState: text({ mode: "json" }).$type<Record<string, unknown>>(),
 });
 
 /**
@@ -70,8 +95,16 @@ export const userSettings = sqliteTable("user_settings", {
 		.primaryKey()
 		.references(() => users.id, { onDelete: "cascade" }),
 	osmConnected: integer({ mode: "timestamp" }),
+	/**
+	 * The OAuth2 access token, stored as-is: the database is the trust boundary, as it
+	 * already is for `instanceSettings.webhookSecret` and `sessions.token`. Null until the
+	 * account is connected, and again after it is disconnected.
+	 */
+	osmToken: text(),
+	/** The account's OSM display name and numeric uid, read at connect time. */
+	osmUserName: text(),
+	osmUserId: integer(),
 	osmScopes: text().notNull().default("write_api · read_prefs"),
-	osmTarget: text().notNull().default("openstreetmap.org"),
 	osmComment: text().notNull().default(""),
 	osmSourceTag: text().notNull().default(""),
 	osmHashtag: text().notNull().default("#poi-review"),
@@ -120,35 +153,6 @@ export const sourceAllowedTags = sqliteTable(
 	(t) => [primaryKey({ columns: [t.sourceId, t.position] })],
 );
 
-export const sourceConfigRows = sqliteTable(
-	"source_config_rows",
-	{
-		sourceId: text()
-			.notNull()
-			.references(() => sources.id, { onDelete: "cascade" }),
-		position: integer().notNull(),
-		label: text().notNull(),
-		value: text().notNull(),
-		tone: text({ enum: ["code", "warn", "bad"] }),
-	},
-	(t) => [primaryKey({ columns: [t.sourceId, t.position] })],
-);
-
-export const sourceMetricRows = sqliteTable(
-	"source_metric_rows",
-	{
-		sourceId: text()
-			.notNull()
-			.references(() => sources.id, { onDelete: "cascade" }),
-		position: integer().notNull(),
-		label: text().notNull(),
-		value: text().notNull(),
-		note: text(),
-		tone: text({ enum: ["ok", "warn", "bad"] }),
-	},
-	(t) => [primaryKey({ columns: [t.sourceId, t.position] })],
-);
-
 export const runs = sqliteTable(
 	"runs",
 	{
@@ -157,11 +161,16 @@ export const runs = sqliteTable(
 			.notNull()
 			.references(() => sources.id, { onDelete: "cascade" }),
 		startedAt: integer({ mode: "timestamp" }).notNull(),
-		dur: text().notNull(),
-		fetched: text().notNull(),
-		cands: text().notNull(),
-		errors: text().notNull(),
-		result: text().notNull(),
+		durMs: integer().notNull(),
+		/** Rows for a registry or an api, pages for a crawl. */
+		fetched: integer().notNull(),
+		/** Candidates the run created or refreshed. */
+		cands: integer().notNull(),
+		errors: integer().notNull(),
+		/** `partial` finished but with errors worth showing; `failed` produced nothing. */
+		result: text({ enum: ["ok", "partial", "failed"] }).notNull(),
+		/** The detail after the result: "2 rows skipped", "401 unauthorized". */
+		message: text(),
 	},
 	(t) => [index("runs_source_idx").on(t.sourceId, t.startedAt)],
 );
@@ -170,18 +179,25 @@ export const areas = sqliteTable("areas", {
 	id: text().primaryKey(),
 	name: text().notNull(),
 	def: text({ enum: ["relation", "radius"] }).notNull(),
+	/** The OSM relation id of a boundary area. */
 	rel: text(),
+	/** The boundary's `admin_level`. */
 	level: integer(),
+	/** The Nominatim display name of the picked boundary, which says which "Montauban" it is. */
+	displayName: text(),
+	/** `[south, west, north, east]`, the order Overpass takes. Null for a radius area. */
+	bbox: text({ mode: "json" }).$type<[number, number, number, number]>(),
 	centerLat: real().notNull(),
 	centerLon: real().notNull(),
 	km: real(),
 	radius: integer(),
 	sqkm: real().notNull(),
-	pending: integer().notNull().default(0),
-	pois: text().notNull(),
-	accepted30: integer().notNull().default(0),
-	status: text().notNull(),
-	lastRun: text().notNull(),
+	/** OSM POIs inside the boundary as Overpass last counted them; null until a run has. */
+	pois: integer(),
+	/** Paused areas are skipped by the pipeline. */
+	paused: integer({ mode: "boolean" }).notNull().default(false),
+	/** When a run last processed the area; null means none has, which the screens call "first run queued". */
+	lastRunAt: integer({ mode: "timestamp" }),
 });
 
 export const areaSources = sqliteTable(
@@ -193,8 +209,6 @@ export const areaSources = sqliteTable(
 		sourceId: text()
 			.notNull()
 			.references(() => sources.id, { onDelete: "cascade" }),
-		candidateCount: integer(),
-		acceptRate: real(),
 	},
 	(t) => [
 		primaryKey({ columns: [t.areaId, t.sourceId] }),
@@ -202,23 +216,18 @@ export const areaSources = sqliteTable(
 	],
 );
 
-export const rels = sqliteTable("rels", {
-	rel: text().primaryKey(),
-	name: text().notNull(),
-	meta: text().notNull(),
-	centerLat: real().notNull(),
-	centerLon: real().notNull(),
-	km: real().notNull(),
-	sqkm: real().notNull(),
-	pois: text().notNull(),
-	est: text().notNull(),
-});
-
 export const candidates = sqliteTable(
 	"candidates",
 	{
 		id: text().primaryKey(),
-		osmId: text().notNull(),
+		/** `node/123`. Null for a candidate that proposes a POI OSM does not have yet. */
+		osmId: text(),
+		/** The source's own id for the record. With `sourceId` it is what a re-run upserts on. */
+		sourceRecordKey: text().notNull(),
+		/** Hash of what the source said last time, so a re-run can tell an unchanged record from a moved one. */
+		contentHash: text(),
+		/** When a run last saw the record. */
+		seenAt: integer({ mode: "timestamp" }),
 		areaId: text()
 			.notNull()
 			.references(() => areas.id, { onDelete: "cascade" }),
@@ -231,17 +240,19 @@ export const candidates = sqliteTable(
 		lat: real().notNull(),
 		lon: real().notNull(),
 		conf: real().notNull(),
+		/** The OSM object version the tags were computed against; 0 when there is no `osmId`. */
 		version: integer().notNull(),
+		/** When the source was fetched. Age and staleness are derived from it, never stored. */
 		fetchedAt: integer({ mode: "timestamp" }).notNull(),
-		age: text().notNull(),
-		stale: integer(),
 		baseVersion: integer(),
 		/** Set only when upstream moved on: `Candidate.conflict` is this being non-null. */
 		headVersion: integer(),
 		conflictWho: text(),
-		unchanged: text().notNull(),
+		/** The object's tags the candidate leaves alone, shown for context. */
+		unchangedTags: text({ mode: "json" }).$type<{ k: string; v: string }[]>().notNull().default([]),
 	},
 	(t) => [
+		uniqueIndex("candidates_source_record_idx").on(t.sourceId, t.sourceRecordKey),
 		index("candidates_queue_idx").on(t.areaId, t.conf),
 		index("candidates_source_idx").on(t.sourceId),
 		index("candidates_fetched_idx").on(t.fetchedAt),
@@ -329,11 +340,15 @@ export const changesets = sqliteTable(
 		id: text().primaryKey(),
 		/** Null when the upload failed, so OSM never accepted the changeset under this id. */
 		osmId: text(),
+		/** Empty when there is no OSM changeset to link to. */
 		url: text().notNull(),
 		uploadedAt: integer({ mode: "timestamp" }).notNull(),
 		comment: text().notNull(),
 		objects: text().notNull(),
 		result: text().notNull(),
+		/** What OSM or the network said when the upload failed; null on success. */
+		error: text(),
+		uploadedBy: text().references(() => users.id, { onDelete: "set null" }),
 	},
 	(t) => [index("changesets_uploaded_idx").on(t.uploadedAt)],
 );
@@ -409,8 +424,6 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
 
 export const sourcesRelations = relations(sources, ({ many }) => ({
 	allowedTags: many(sourceAllowedTags),
-	config: many(sourceConfigRows),
-	metrics: many(sourceMetricRows),
 	runs: many(runs),
 	areas: many(areaSources),
 	candidates: many(candidates),
@@ -418,14 +431,6 @@ export const sourcesRelations = relations(sources, ({ many }) => ({
 
 export const sourceAllowedTagsRelations = relations(sourceAllowedTags, ({ one }) => ({
 	source: one(sources, { fields: [sourceAllowedTags.sourceId], references: [sources.id] }),
-}));
-
-export const sourceConfigRowsRelations = relations(sourceConfigRows, ({ one }) => ({
-	source: one(sources, { fields: [sourceConfigRows.sourceId], references: [sources.id] }),
-}));
-
-export const sourceMetricRowsRelations = relations(sourceMetricRows, ({ one }) => ({
-	source: one(sources, { fields: [sourceMetricRows.sourceId], references: [sources.id] }),
 }));
 
 export const runsRelations = relations(runs, ({ one }) => ({

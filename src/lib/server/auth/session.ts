@@ -112,7 +112,6 @@ function toUser(row: typeof users.$inferSelect): User {
 		role: row.role,
 		initials: row.initials,
 		ssoOnly: row.passwordHash === null,
-		osm: row.osm ?? undefined,
 		lastSeen: row.lastSeen ? stamp(row.lastSeen) : "never",
 	};
 }

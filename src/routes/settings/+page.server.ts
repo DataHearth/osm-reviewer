@@ -5,7 +5,7 @@ import { zod4 } from "sveltekit-superforms/adapters";
 import { z } from "zod";
 import { accountSchema, keysSchema, osmSchema, passwordSchema } from "$lib/schemas/settings";
 import { hashPassword, verifyPassword } from "$lib/server/auth/password";
-import { sso } from "$lib/server/config";
+import { osm as osmConfig, sso } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { users } from "$lib/server/db/schema";
 import { CREATED_BY } from "$lib/server/instance";
@@ -35,6 +35,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 		forms: { account, osm, keys, password },
 		identity: panes.identity,
 		createdBy: CREATED_BY,
+		osmTarget: new URL(osmConfig.url).host,
 		session: { at: locals.session?.at ?? "—", via: locals.session?.via ?? "password" },
 		user: { ...user, ssoOnly: user.ssoOnly === true },
 		sso: {

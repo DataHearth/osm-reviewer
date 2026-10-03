@@ -1,8 +1,6 @@
 import { z } from "zod";
 import { ACTION_IDS, clashes, RESERVED } from "$lib/keymap";
 
-export const UPLOAD_TARGETS = ["openstreetmap.org", "master.apis.dev.openstreetmap.org"] as const;
-
 export const accountSchema = z.object({
 	name: z.string().trim().min(1, "A display name is required."),
 	email: z.email("Not an email address."),
@@ -20,7 +18,6 @@ export const passwordSchema = z
 	});
 
 export const osmSchema = z.object({
-	target: z.enum(UPLOAD_TARGETS),
 	comment: z.string().trim().min(1, "Every changeset needs a comment."),
 	sourceTag: z.string().trim(),
 	hashtag: z.string().trim(),

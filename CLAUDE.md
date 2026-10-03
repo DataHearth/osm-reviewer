@@ -35,8 +35,9 @@ are considered settled: change where data and validation live, not how a screen 
   action and the client `superForm`.
 - `src/lib/stores/*.svelte.ts` — client view state (selection, filters, open sheets,
   optimistic updates). These are not the source of truth; the database is.
-- `src/lib/data.ts` — the original fixtures. **Seed data only.** Nothing at runtime reads
-  it; `src/lib/server/db/seed.ts` does.
+- `src/lib/data.ts` — the original fixtures (candidates, history, users, defaults).
+  **Seed data only.** Nothing at runtime reads it; `src/lib/server/db/seed.ts` does, and
+  it also holds the demo sources and areas, which are real datasets and a real Lyon boundary.
 - `src/styles/tokens.css` — the palette, and the only place hex values live.
 - `nix/` — package, checks, source filtering and the two modules. `flake.nix` holds the
   inputs, the per-system wiring and the devShell itself.
@@ -120,6 +121,12 @@ Everything else is local and should stay that way:
   down never stops the server starting; token exchange, JWKS and userinfo follow during
   each sign-in. Changeset upload and the ntfy/webhook/email channels are configured and
   stored but never called — still simulated.
+- **The pipeline's hosts are configuration, not code**: `OVERPASS_URL`, `NOMINATIM_URL`,
+  `OSM_URL` (default the dev sandbox, so an unconfigured instance cannot write to the live
+  map), the model at `LLM_URL`, and each source's own endpoint. All are read in
+  `src/lib/server/config.ts`, and `PIPELINE_ENABLED=false` switches off the scheduler and
+  every fetch at boot — the e2e run sets it so the suite stays offline. Every call carries a
+  timeout, and a failure is a recorded run or upload failure, never a crash.
 - Links to `openstreetmap.org` on `/review` and `/history` are anchors; they fetch nothing
   until clicked.
 
@@ -267,7 +274,8 @@ the operator: `OSM_REVIEWER_REV` (the commit, from the Nix package and the Docke
 `OSM_REVIEWER_IMAGE` (from the Nix image and the chart). SSO is off unless
 `SSO_ISSUER` is set, and `SSO_ENABLED=false` switches it off even then — which leaves an
 account with no local password no way in. `src/lib/server/config.ts` is where the
-identity-provider and seed values are read.
+identity-provider, seed, pipeline, OSM, LLM and backup values are read. SMTP is the
+exception: the relay is an operator-edited instance setting, not environment.
 
 Nothing the running app shows is fixture text. `src/lib/server/instance.ts` measures the
 instance — version from `package.json`, uptime, the database file, free disk, source health,
@@ -289,13 +297,21 @@ A production build has no seed, so the first account comes from `bootstrapAdmin`
 `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` — but only while the users table is empty, so leaving
 them set never resets a password changed in the app.
 
-Two fields are derived rather than stored, because storing them twice would let them
-disagree: a user is SSO-only when `passwordHash` is null, and a candidate is in conflict
-when `headVersion` is not null.
+Derived rather than stored, because storing them twice would let them disagree: a user is
+SSO-only when `passwordHash` is null, a candidate is in conflict when `headVersion` is not
+null, and its age and staleness come from `fetchedAt`. An area's pending count, accepted-in-30-days
+and status come from its candidates, decisions and `paused`/`lastRunAt`; a source's config
+rows and metrics are built in `source-display.ts` from its columns, runs and decisions, and
+the per-area yield from the candidates. Nothing in a table is display text.
 
-Real timestamps are `integer({ mode: "timestamp" })` and come back as `Date` — format them
-at the edge. Fixture strings that were never dates (`"12d"`, `"41 min"`, `"06:12 today"`)
-stayed text.
+Times are `integer({ mode: "timestamp" })` and come back as `Date`, durations are
+milliseconds and counts are integers — all formatted at the edge (`src/lib/format.ts`).
+
+A source stores its real configuration (`endpoint`, `apiKey`, `schedule`, `matching`, …); the
+screens only ever see the key's last four characters. The key and an account's `osmToken` are
+stored as-is: the database is the trust boundary, as it already is for `webhookSecret`. A
+candidate is identified by `(sourceId, sourceRecordKey)`, which is what a re-run upserts on;
+`osmId` is null for a POI OSM does not have yet.
 
 ## Nix
 
