@@ -45,6 +45,8 @@ spec:
           env:
             - name: ORIGIN
               value: {{ include "osm-reviewer.origin" . | quote }}
+            - name: OSM_REVIEWER_IMAGE
+              value: "{{ .Values.image.repository }}:{{ include "osm-reviewer.imageTag" . }}"
             {{- range $name, $value := .Values.env }}
             - name: {{ $name }}
               value: {{ $value | quote }}
