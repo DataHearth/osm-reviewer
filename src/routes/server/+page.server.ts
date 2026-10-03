@@ -84,7 +84,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
 	sourceSave: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(sourceDraftSchema));
 		if (!form.valid) return fail(400, { form });
 		const id = applySourceDraft(db, form.data);
@@ -93,7 +93,7 @@ export const actions: Actions = {
 	},
 
 	runNow: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(sourceIdSchema));
 		if (!form.valid) return fail(400, { form });
 		if (requestRuns(db, [form.data.id]) === 0)
@@ -102,7 +102,7 @@ export const actions: Actions = {
 	},
 
 	runArea: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(areaIdSchema));
 		if (!form.valid) return fail(400, { form });
 		if (requestRuns(db, sourcesOfArea(db, form.data.id)) === 0)
@@ -117,7 +117,7 @@ export const actions: Actions = {
 	},
 
 	enabled: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(sourceEnabledSchema));
 		if (!form.valid) return fail(400, { form });
 		setSourceEnabled(db, form.data.id, form.data.enabled);
@@ -125,7 +125,7 @@ export const actions: Actions = {
 	},
 
 	floor: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(sourceFloorSchema));
 		if (!form.valid) return fail(400, { form });
 		setSourceFloor(db, form.data.id, form.data.floor);
@@ -133,7 +133,7 @@ export const actions: Actions = {
 	},
 
 	link: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(sourceLinkSchema));
 		if (!form.valid) return fail(400, { form });
 		setLink(db, form.data.sourceId, form.data.areaId, form.data.on);
@@ -141,7 +141,7 @@ export const actions: Actions = {
 	},
 
 	areaSave: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(areaDraftSchema));
 		if (!form.valid) return fail(400, { form });
 		const id = applyAreaDraft(db, form.data);
@@ -149,7 +149,7 @@ export const actions: Actions = {
 	},
 
 	paused: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(areaPausedSchema));
 		if (!form.valid) return fail(400, { form });
 		setAreaPaused(db, form.data.id, form.data.paused);
@@ -157,7 +157,7 @@ export const actions: Actions = {
 	},
 
 	radius: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(areaRadiusSchema));
 		if (!form.valid) return fail(400, { form });
 		setAreaRadius(db, form.data.id, form.data.radius);
@@ -165,7 +165,7 @@ export const actions: Actions = {
 	},
 
 	remove: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(areaIdSchema));
 		if (!form.valid) return fail(400, { form });
 		removeArea(db, form.data.id);
@@ -173,7 +173,7 @@ export const actions: Actions = {
 	},
 
 	notif: async ({ request, locals }) => {
-		requireUser(locals);
+		requireAdmin(locals);
 		const form = await superValidate(request, zod4(notifSchema));
 		if (!form.valid) return fail(400, { form });
 		await saveNotif(db, form.data);

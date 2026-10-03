@@ -24,7 +24,9 @@ are considered settled: change where data and validation live, not how a screen 
   and loads the counts the top bar shows everywhere. `/settings` is the signed-in
   account's own (account, OSM account, shortcuts), opened from the account menu;
   `/server` is everything instance-wide (sources, areas, notifications, users,
-  diagnostics), behind the gear. `/server?s=<section>` opens a section directly.
+  diagnostics), behind the gear. `/server?s=<section>` opens a section directly. Every
+  account can read it; every action on it is admin-only, and users and diagnostics are
+  hidden from reviewers altogether.
 - `src/lib/server/pipeline/` — the in-process pipeline that fills the queue (see "The
   pipeline"). Server-only, started from `src/hooks.server.ts`.
 - `src/lib/components/**` — shared markup. `areas/`, `sources/` and `settings/` hold the
