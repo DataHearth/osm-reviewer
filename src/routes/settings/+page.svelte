@@ -4,6 +4,7 @@ import Diagnostics from "$lib/components/settings/Diagnostics.svelte";
 import Notifications from "$lib/components/settings/Notifications.svelte";
 import OsmAccount from "$lib/components/settings/OsmAccount.svelte";
 import Shortcuts from "$lib/components/settings/Shortcuts.svelte";
+import Users from "$lib/components/settings/Users.svelte";
 import { railRow } from "$lib/format";
 import { settings } from "$lib/stores/settings.svelte";
 import type { PageData } from "./$types";
@@ -20,12 +21,15 @@ const SECTIONS = [
 	["osm", "OSM account", "changeset identity"],
 	["notif", "notifications", "ntfy, webhook, email"],
 	["keys", "shortcuts", "the keyboard map"],
+	["users", "users", "accounts, roles, access"],
 	["diag", "diagnostics", "version, health, bundle"],
 ];
 
-// Diagnostics is instance-wide, so reviewers do not get it.
+// Users and diagnostics are instance-wide, so reviewers do not get them.
 const sections = $derived(
-	data.user.role === "admin" ? SECTIONS : SECTIONS.filter((s) => s[0] !== "diag"),
+	data.user.role === "admin"
+		? SECTIONS
+		: SECTIONS.filter((s) => s[0] !== "users" && s[0] !== "diag"),
 );
 const current = $derived(sections.find((s) => s[0] === sec) ?? sections[0]);
 
@@ -76,6 +80,8 @@ function open(id: string) {
 					<Notifications form={data.forms.notif} />
 				{:else if sec === "keys"}
 					<Shortcuts form={data.forms.keys} keymap={data.keymap} />
+				{:else if sec === "users"}
+					<Users {data} />
 				{:else}
 					<Diagnostics instance={data.instance} health={data.health} sso={data.sso} />
 				{/if}

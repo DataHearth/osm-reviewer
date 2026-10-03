@@ -60,7 +60,24 @@ export const keysSchema = z.object({
 	showHints: z.boolean(),
 });
 
+export const ROLES = ["admin", "reviewer"] as const;
+
+export const newUserSchema = z.object({
+	name: z.string().trim().min(1, "A display name is required."),
+	email: z.email("Not an email address."),
+	role: z.enum(ROLES).default("reviewer"),
+	/** Empty makes the account SSO-only; the server refuses that while SSO is off. */
+	password: z
+		.string()
+		.refine((p) => p === "" || p.length >= 10, "A password needs at least 10 characters."),
+});
+
+export const userRoleSchema = z.object({ id: z.string().min(1), role: z.enum(ROLES) });
+export const userDisabledSchema = z.object({ id: z.string().min(1), disabled: z.boolean() });
+export const userIdSchema = z.object({ id: z.string().min(1) });
+
 export type AccountForm = z.infer<typeof accountSchema>;
 export type OsmForm = z.infer<typeof osmSchema>;
 export type NotifForm = z.infer<typeof notifSchema>;
 export type KeysForm = z.infer<typeof keysSchema>;
+export type NewUserForm = z.infer<typeof newUserSchema>;
