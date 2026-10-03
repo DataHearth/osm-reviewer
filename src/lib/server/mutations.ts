@@ -174,8 +174,6 @@ export function removeArea(db: Db, id: string) {
 /**
  * Taking the upstream version as the new base is what resolving a conflict means:
  * `headVersion` back to null is the schema's own definition of "no conflict".
- * `conflictWho` stays, because the upload still has to know this object moved
- * once — that is what the 409 retry hangs off.
  */
 export function rebase(db: Db, candidateId: string) {
 	db.update(t.candidates)

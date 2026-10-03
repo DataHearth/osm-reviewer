@@ -58,7 +58,6 @@ const errBody = $derived(
 		use:enhance
 		class="w-full max-w-[940px] overflow-hidden max-md:border-b max-md:border-line md:rounded-xl md:border md:border-edge-strong md:bg-panel md:shadow-[0_18px_44px_rgba(0,0,0,0.42)]"
 	>
-		<input type="hidden" name="retry" value={review.upload === "retry"} />
 		<div
 			class="flex flex-col items-start justify-between gap-2 border-b-2 border-accent bg-bar px-[14px] py-3 leading-[1.45] md:flex-row md:items-baseline md:gap-4 md:px-[18px] md:py-[14px]"
 		>

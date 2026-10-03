@@ -26,6 +26,12 @@ const osm = superForm(
 const { form, errors, enhance, tainted } = osm;
 $effect(() => settings.mark("osm", osm.isTainted($tainted)));
 
+const PROBLEMS: Record<string, string> = {
+	denied: "OSM sign-in was declined.",
+	expired: "The sign-in expired before it finished. Try again.",
+	failed: "OSM sign-in failed. Try again.",
+};
+
 const identity = $derived(data.identity);
 const connected = $derived(!!identity && !settings.disconnected);
 </script>
@@ -43,7 +49,16 @@ const connected = $derived(!!identity && !settings.disconnected);
 			<p class="mt-1 text-[11.5px] leading-relaxed text-muted">
 				The composer can stage writes but cannot upload them.
 			</p>
-			<button class="mt-2 {INERT_BTN} max-md:min-h-[44px]" disabled title="OSM sign-in is not implemented">connect OSM account · not implemented</button>
+			{#if data.osmProblem}
+				<p class="mt-1 text-[11.5px] text-bad">{PROBLEMS[data.osmProblem] ?? PROBLEMS.failed}</p>
+			{/if}
+			{#if data.osmConfigured}
+				<form method="POST" action="?/osmConnect" class="mt-2">
+					<button class="{ghost(false)} max-md:min-h-[44px]">connect OSM account</button>
+				</form>
+			{:else}
+				<button class="mt-2 {INERT_BTN} max-md:min-h-[44px]" disabled title="Set OSM_CLIENT_ID to enable OSM sign-in">connect OSM account · not configured</button>
+			{/if}
 		</div>
 	{:else}
 		<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-line bg-panel px-3 py-2.5">

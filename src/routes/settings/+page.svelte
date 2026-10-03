@@ -1,4 +1,5 @@
 <script lang="ts">
+import { untrack } from "svelte";
 import Account from "$lib/components/settings/Account.svelte";
 import OsmAccount from "$lib/components/settings/OsmAccount.svelte";
 import Shortcuts from "$lib/components/settings/Shortcuts.svelte";
@@ -11,14 +12,15 @@ let { data }: { data: PageData } = $props();
 // The signed-in account's own settings, in the account menu. Instance-wide ones
 // live at /server, behind the gear. A rail of sections beside the open one, and
 // on a phone the two are screens rather than columns.
-let sec = $state("account");
-let pane = $state<"rail" | "detail">("rail");
-
 const sections = [
 	["account", "account", "name, email, password"],
 	["osm", "OSM account", "changeset identity"],
 	["keys", "shortcuts", "the keyboard map"],
 ];
+const requested = untrack(() => sections.find((x) => x[0] === data.section)?.[0]);
+let sec = $state(requested ?? "account");
+let pane = $state<"rail" | "detail">(requested ? "detail" : "rail");
+
 const current = $derived(sections.find((s) => s[0] === sec) ?? sections[0]);
 
 function open(id: string) {

@@ -18,7 +18,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 			{
 				comment: settings.osm.comment,
 				source: settings.osm.sourceTag,
-				retry: false,
 			},
 			zod4(uploadSchema),
 			{ errors: false },
@@ -28,11 +27,12 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-	upload: async ({ request }) => {
+	upload: async ({ request, locals }) => {
+		const user = requireUser(locals);
 		const form = await superValidate(request, zod4(uploadSchema));
 		if (!form.valid) return fail(400, { form });
 		try {
-			const result = upload(db, form.data);
+			const result = await upload(db, user.id, form.data);
 			if ("conflict" in result) return fail(409, { form, conflict: result.conflict });
 			return { form, changesetId: result.changesetId };
 		} catch (e) {

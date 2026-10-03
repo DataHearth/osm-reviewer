@@ -119,7 +119,7 @@ Everything else is local and should stay that way:
 - **The server talks to one host: the identity provider, and only while SSO is on.**
   Discovery happens on the first SSO sign-in rather than at boot, so a provider that is
   down never stops the server starting; token exchange, JWKS and userinfo follow during
-  each sign-in. Changeset upload is still simulated.
+  each sign-in.
 - **Notification channels are operator-configured hosts**: `notify()` in
   `src/lib/server/notify.ts` posts to the ntfy server and the webhook URL and speaks SMTP to
   the relay (`smtp://`/`smtps://`, credentials allowed, or a bare `host:port`), all from the
@@ -138,6 +138,18 @@ Everything else is local and should stay that way:
   throttle (1 request/s, plus a five-minute cache) keeps the instance inside the usage policy.
   The area's size is the bounding box's, which overstates the boundary; the picker says
   "bbox", and POI counts stay "—" until a run counts them.
+- **The OSM API is the second host, only for a signed-in reviewer's own actions**
+  (`src/lib/server/osm/`): the OAuth2 round trip (authorization code + PKCE, scopes
+  `read_prefs write_api`, needs `OSM_CLIENT_ID`; without it the connect button says not
+  configured and nothing else changes), and the upload. The access token is stored as-is in
+  `user_settings`, the database being the trust boundary. An upload first reads each object's
+  current version: one moved past the candidate's base is a conflict and nothing is sent. Then
+  per `osmPerChangeset` batch it creates a changeset, posts an osmChange built from the
+  *current* element with the accepted tag ops applied, and always closes it. A closure is
+  written as the `disused:` key its candidate carries, and the bare key it replaces is
+  dropped. A failed batch is a `changesets` row with a null `osm_id` and the error, and its
+  decisions stay staged. The diagnostics page probes `/api/0.6/capabilities.json` only when a
+  client id is set.
 - Links to `openstreetmap.org` on `/review` and `/history` are anchors; they fetch nothing
   until clicked.
 

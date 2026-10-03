@@ -4,10 +4,11 @@ import { count, sql } from "drizzle-orm";
 import { env } from "$env/dynamic/private";
 import { providerReachable } from "$lib/server/auth/oidc";
 import { backupHealth } from "$lib/server/backup";
-import { sso } from "$lib/server/config";
+import { osm, sso } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import { resolveDatabasePath } from "$lib/server/db/path";
 import { candidates, sources } from "$lib/server/db/schema";
+import { probeOsm } from "$lib/server/osm/api";
 import type { MetricRow } from "$lib/types";
 import { version } from "../../../package.json";
 
@@ -84,6 +85,15 @@ async function identityProvider(): Promise<MetricRow> {
 		: ["identity provider", "unreachable", sso.host + " · " + result, "bad"];
 }
 
+async function osmApi(): Promise<MetricRow> {
+	if (!osm.clientId) return ["OSM API", NOT_CONFIGURED, "OSM_CLIENT_ID is unset"];
+	const host = new URL(osm.url).host;
+	const problem = await probeOsm();
+	return problem === null
+		? ["OSM API", "reachable", host, "ok"]
+		: ["OSM API", "unreachable", `${host} · ${problem}`, "bad"];
+}
+
 function disk(): MetricRow {
 	const dir = dirname(resolveDatabasePath(env.DATABASE_PATH));
 	const fs = statfsSync(dir);
@@ -113,7 +123,7 @@ function sourceHealth(db: Db): MetricRow {
 export async function health(db: Db): Promise<MetricRow[]> {
 	return [
 		["pipeline worker", NOT_IMPLEMENTED, "nothing feeds the queue yet"],
-		["OSM API", NOT_IMPLEMENTED, "changeset upload is simulated"],
+		await osmApi(),
 		sourceHealth(db),
 		await identityProvider(),
 		disk(),

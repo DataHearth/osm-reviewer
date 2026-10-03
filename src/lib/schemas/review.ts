@@ -11,8 +11,6 @@ export const candidateSchema = z.object({ id: z.string().min(1) });
 export const uploadSchema = z.object({
 	comment: z.string().trim().min(1, "A changeset comment is required."),
 	source: z.string().trim().min(1, "A source tag is required."),
-	/** A retry knowingly re-sends after a 409; the first attempt must not. */
-	retry: z.boolean().default(false),
 });
 
 export type UploadForm = z.infer<typeof uploadSchema>;

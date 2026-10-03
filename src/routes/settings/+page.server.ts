@@ -1,4 +1,4 @@
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 import { eq } from "drizzle-orm";
 import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
@@ -9,6 +9,7 @@ import { osm as osmConfig, sso } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { users } from "$lib/server/db/schema";
 import { CREATED_BY } from "$lib/server/instance";
+import { beginConnect, osmOAuthConfigured } from "$lib/server/osm/oauth";
 import {
 	loadSettings,
 	saveAccount,
@@ -19,9 +20,9 @@ import {
 import { requireUser } from "$lib/server/user";
 import type { Actions, PageServerLoad } from "./$types";
 
-const connectionSchema = z.object({ connected: z.boolean() });
+const disconnectSchema = z.object({ connected: z.literal(false) });
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = requireUser(locals);
 	const panes = await loadSettings(db, user.id);
 	const [account, osm, keys, password] = await Promise.all([
@@ -36,6 +37,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 		identity: panes.identity,
 		createdBy: CREATED_BY,
 		osmTarget: new URL(osmConfig.url).host,
+		osmConfigured: osmOAuthConfigured(),
+		section: url.searchParams.get("s"),
+		osmProblem: url.searchParams.get("osm"),
 		session: { at: locals.session?.at ?? "—", via: locals.session?.via ?? "password" },
 		user: { ...user, ssoOnly: user.ssoOnly === true },
 		sso: {
@@ -94,11 +98,17 @@ export const actions: Actions = {
 		return { form };
 	},
 
+	osmConnect: async ({ locals, cookies, url }) => {
+		const user = requireUser(locals);
+		if (!osmOAuthConfigured()) return fail(404, { message: "OSM sign-in is not configured." });
+		redirect(303, beginConnect(cookies, url, user.id).href);
+	},
+
 	osmConnection: async ({ request, locals }) => {
 		const user = requireUser(locals);
-		const form = await superValidate(request, zod4(connectionSchema));
+		const form = await superValidate(request, zod4(disconnectSchema));
 		if (!form.valid) return fail(400, { form });
-		setOsmConnected(db, user.id, form.data.connected);
+		setOsmConnected(db, user.id, false);
 		return { form };
 	},
 };

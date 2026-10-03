@@ -46,7 +46,7 @@ export async function loadSettings(db: Db, userId: string): Promise<SettingsPane
 			bindings: resolveBindings(s.bindings),
 		},
 		identity:
-			s.osmUserName && s.osmConnected
+			s.osmUserName && s.osmConnected && s.osmToken
 				? {
 						user: s.osmUserName,
 						connected: stamp(s.osmConnected),
@@ -152,6 +152,24 @@ export function setOsmConnected(db: Db, userId: string, connected: boolean) {
 				? { osmConnected: new Date() }
 				: { osmConnected: null, osmToken: null, osmUserName: null, osmUserId: null },
 		)
+		.where(eq(t.userSettings.userId, userId))
+		.run();
+}
+
+export async function saveOsmAccount(
+	db: Db,
+	userId: string,
+	v: { token: string; name: string; id: number; scopes: string },
+) {
+	await rowFor(db, userId);
+	db.update(t.userSettings)
+		.set({
+			osmToken: v.token,
+			osmUserName: v.name,
+			osmUserId: v.id,
+			osmScopes: v.scopes,
+			osmConnected: new Date(),
+		})
 		.where(eq(t.userSettings.userId, userId))
 		.run();
 }
