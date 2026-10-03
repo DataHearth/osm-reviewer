@@ -35,7 +35,6 @@ export async function loadSettings(db: Db, userId: string): Promise<SettingsPane
 		account: { name: user?.name ?? "", email: user?.email ?? "" },
 		osm: {
 			comment: s.osmComment,
-			sourceTag: s.osmSourceTag,
 			hashtag: s.osmHashtag,
 			perChangeset: s.osmPerChangeset,
 		},
@@ -61,7 +60,6 @@ export async function saveOsm(db: Db, userId: string, v: OsmForm) {
 	db.update(t.userSettings)
 		.set({
 			osmComment: v.comment,
-			osmSourceTag: v.sourceTag,
 			osmHashtag: v.hashtag,
 			osmPerChangeset: v.perChangeset,
 		})

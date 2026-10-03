@@ -19,7 +19,18 @@ const ev = (
 	conf,
 });
 
-type SeedCandidate = Omit<Candidate, "allQuarantined" | "hasNoEv" | "hasInvalid">;
+/** The fixtures spell an object's untouched tags as `k=v  k=v`, or a dash for none. */
+type SeedCandidate = Omit<Candidate, "allQuarantined" | "hasNoEv" | "hasInvalid" | "unchanged"> & {
+	unchanged: string;
+};
+
+const unchangedTags = (text: string) =>
+	text === "—"
+		? []
+		: text.split(/\s{2,}/).map((pair) => {
+				const eq = pair.indexOf("=");
+				return { k: pair.slice(0, eq), v: pair.slice(eq + 1) };
+			});
 
 const SEED: SeedCandidate[] = [
 	{
@@ -472,6 +483,7 @@ const SEED: SeedCandidate[] = [
 
 export const CANDIDATES: Candidate[] = SEED.map((c) => ({
 	...c,
+	unchanged: unchangedTags(c.unchanged),
 	allQuarantined: c.tags.every((t) => !t.ev),
 	hasNoEv: c.tags.some((t) => !t.ev),
 	hasInvalid: c.tags.some((t) => t.invalid),
@@ -500,7 +512,7 @@ export const HISTORY: Changeset[] = (
 	] as const
 ).map((h) => ({
 	id: h[0],
-	url: "https://www.openstreetmap.org/changeset/" + h[5],
+	url: `https://www.openstreetmap.org/changeset/${h[5]}`,
 	when: h[1],
 	comment: h[2],
 	objects: h[3],
@@ -547,8 +559,7 @@ export const USERS: User[] = [
 export const SETTINGS = {
 	osmConnected: "12-09-2026 20:11",
 	osmScopes: "write_api · read_prefs",
-	osmComment: "Toulouse POI updates from SIRENE + operator websites (reviewed)",
-	osmSourceTag: "https://sirene.fr; operator website",
+	osmComment: "",
 	osmHashtag: "#poi-review",
 	osmPerChangeset: 50,
 	vim: true,

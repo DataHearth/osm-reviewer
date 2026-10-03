@@ -36,6 +36,17 @@ $effect(() => {
 	list?.scrollTo({ top: 0 });
 });
 
+const SCROLLOFF = 2;
+// The view follows the keyboard selection, keeping SCROLLOFF rows visible past it the
+// way vim's `scrolloff` does. Both layouts' rows carry the index; the hidden one's
+// scrollIntoView is a no-op.
+$effect(() => {
+	const i = review.qIdx;
+	for (const j of [i - SCROLLOFF, i + SCROLLOFF, i])
+		for (const el of list?.querySelectorAll<HTMLElement>(`[data-row="${j}"]`) ?? [])
+			el.scrollIntoView({ block: "nearest" });
+});
+
 const seg = (on: boolean) =>
 	"cursor-pointer rounded-md border-0 px-[11px] py-1 text-[12.5px] whitespace-nowrap transition-colors " +
 	(on ? "bg-raised text-ink" : "bg-transparent text-muted hover:text-ink");
@@ -71,7 +82,7 @@ function flag(c: Candidate): [string, string] | null {
 	if (c.hasInvalid) return ["Invalid", FLAG_BAD];
 	if (c.allQuarantined) return ["Quarantined", FLAG_BAD];
 	if (c.hasNoEv) return ["1 unevidenced", FLAG_WARN];
-	if (c.stale) return ["Stale " + c.stale + "d", FLAG_WARN];
+	if (c.stale) return [`Stale ${c.stale}d`, FLAG_WARN];
 	return null;
 }
 
@@ -143,6 +154,7 @@ function openRow(c: Candidate, i: number) {
 						{@const f = flag(c)}
 						<button
 							type="button"
+							data-row={i}
 							class="grid w-full cursor-pointer grid-cols-[9px_minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 border-b border-line-row px-4 py-3 text-left {i ===
 							review.qIdx
 								? 'bg-sel shadow-[inset_2px_0_0_var(--accent)]'
@@ -193,7 +205,8 @@ function openRow(c: Candidate, i: number) {
 						{@const f = flag(c)}
 						<button
 							type="button"
-							class="w-full cursor-pointer border-b border-line-row px-4 py-2.5 text-left {cols}
+							data-row={i}
+							class="w-full scroll-mt-10 cursor-pointer border-b border-line-row px-4 py-2.5 text-left {cols}
 							{on ? 'bg-sel shadow-[inset_2px_0_0_var(--accent)]' : 'bg-transparent hover:bg-panel'}"
 							onclick={() => openRow(c, i)}
 						>
@@ -229,10 +242,13 @@ function openRow(c: Candidate, i: number) {
 				{#if keys.showHints}
 					{@const b = keys.bindings}
 					<span class="ml-auto hidden items-center gap-1.5 lg:flex">
-						<span class={KBD}>{keys.vim ? kbdLabel(b.down) + " " + kbdLabel(b.up) : "↓ ↑"}</span><span class="mr-3">move</span>
-						<span class={KBD}>{kbdLabel(b.prevPage)} {kbdLabel(b.nextPage)}</span><span class="mr-3">page</span>
-						<span class={KBD}>{kbdLabel(b.open)}</span><span class="mr-3">open</span>
-						<span class={KBD}>{kbdLabel(b.back)}</span><span>back</span>
+						<span class={KBD}>↓ ↑</span>
+						{#if keys.vim}<span class={KBD}>{kbdLabel(b.down)} {kbdLabel(b.up)}</span>{/if}
+						<span class="mr-3">move</span>
+						<span class={KBD}>← →</span>
+						{#if keys.vim}<span class={KBD}>{kbdLabel(b.prevPage)} {kbdLabel(b.nextPage)}</span>{/if}
+						<span class="mr-3">page</span>
+						<span class={KBD}>{kbdLabel(b.open)}</span><span>open</span>
 					</span>
 				{/if}
 			</footer>

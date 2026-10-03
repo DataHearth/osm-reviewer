@@ -94,3 +94,12 @@ test("a candidate opened from a filtered queue steps through that view and back 
 	await page.keyboard.press("Escape");
 	await expect(page).toHaveURL("/?type=closure");
 });
+
+test("the list scrolls with the keyboard selection, two rows ahead", async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 420 });
+	await expect(onScreen(page.getByText(SEEDED[0], { exact: true }))).toBeInViewport();
+	for (let i = 0; i < 7; i++) await page.keyboard.press("j");
+	// Row 7 is selected; the one two below it is already on screen.
+	await expect(onScreen(page.getByText(SEEDED[9], { exact: true }))).toBeInViewport();
+	await expect(onScreen(page.getByText(SEEDED[0], { exact: true }))).not.toBeInViewport();
+});

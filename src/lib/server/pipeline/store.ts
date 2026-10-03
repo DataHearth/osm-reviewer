@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, inArray, isNotNull, isNull, lt, notInArray, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import type { SourceRecord } from "$lib/types";
 import type { TagOp } from "./match";
 import { evidenceDate } from "./presets";
 
@@ -24,10 +25,11 @@ export interface CandidateWrite {
 	ops: TagOp[];
 	nearby: string[];
 	unchanged: { k: string; v: string }[];
+	record: SourceRecord;
 	seenAt: Date;
 }
 
-const newId = () => "c" + randomBytes(5).toString("hex");
+const newId = () => `c${randomBytes(5).toString("hex")}`;
 
 export type Existing = {
 	id: string;
@@ -35,6 +37,7 @@ export type Existing = {
 	osmId: string | null;
 	contentHash: string | null;
 	decided: boolean;
+	hasRecord: boolean;
 };
 
 export function existingCandidates(db: Db, sourceId: string): Map<string, Existing> {
@@ -45,6 +48,7 @@ export function existingCandidates(db: Db, sourceId: string): Map<string, Existi
 			areaId: t.candidates.areaId,
 			osmId: t.candidates.osmId,
 			contentHash: t.candidates.contentHash,
+			hasRecord: sql<number>`${t.candidates.record} is not null`,
 			decision: t.decisions.candidateId,
 		})
 		.from(t.candidates)
@@ -60,6 +64,7 @@ export function existingCandidates(db: Db, sourceId: string): Map<string, Existi
 				osmId: r.osmId,
 				contentHash: r.contentHash,
 				decided: r.decision !== null,
+				hasRecord: !!r.hasRecord,
 			},
 		]),
 	);
@@ -93,6 +98,7 @@ export function saveCandidate(db: Db, w: CandidateWrite, existing: Existing | un
 			headVersion: null,
 			conflictWho: null,
 			unchangedTags: w.unchanged,
+			record: w.record,
 		};
 		let id: string;
 		if (existing) {

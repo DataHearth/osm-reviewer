@@ -43,6 +43,20 @@
 			"when": 1791061431436,
 			"tag": "0005_brainy_gertrude_yorkes",
 			"breakpoints": true
+		},
+		{
+			"idx": 6,
+			"version": "6",
+			"when": 1791069335637,
+			"tag": "0006_graceful_captain_cross",
+			"breakpoints": true
+		},
+		{
+			"idx": 7,
+			"version": "6",
+			"when": 1791069948286,
+			"tag": "0007_sloppy_sunspot",
+			"breakpoints": true
 		}
 	]
 }

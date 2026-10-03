@@ -27,7 +27,7 @@ export const actions: Actions = {
 		const form = await superValidate(request, zod4(acceptSchema), { id: "accept" });
 		if (!form.valid) return fail(400, { form });
 		try {
-			accept(db, user.id, form.data.id, form.data.tags);
+			accept(db, user.id, form.data.id, form.data);
 		} catch (e) {
 			if (e instanceof RefusedError) return message(form, e.message, { status: 409 });
 			throw e;

@@ -53,13 +53,17 @@ export interface Candidate {
 	theirs?: { k: string; v: string }[];
 	ours?: { k: string; v: string }[];
 	nearby: string[];
-	unchanged: string;
+	/** The object's tags no proposal touches, as OSM had them when the candidate was matched. */
+	unchanged: { k: string; v: string }[];
 	tags: Tag[];
 	/** Derived once at load: no tag has evidence, so nothing can be accepted. */
 	allQuarantined: boolean;
 	hasNoEv: boolean;
 	hasInvalid: boolean;
 }
+
+/** What a source said about one candidate, as read: the record's rows, or a crawled page's text. */
+export type SourceRecord = { rows: Record<string, unknown>[] } | { text: string };
 
 export type SourceKind = "registry" | "crawl" | "api";
 export type ConfigRow = [string, string, ("code" | "warn" | "bad")?];
@@ -158,7 +162,8 @@ export interface Staged {
 	osmId: string | null;
 	name: string;
 	type: CandidateType;
-	tags: Tag[];
+	source: string;
+	tags: Pick<Tag, "op" | "k" | "v">[];
 }
 
 export interface Changeset {

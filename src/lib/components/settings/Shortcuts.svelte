@@ -51,10 +51,17 @@ function capture(e: KeyboardEvent, a: Action) {
 	}
 }
 
+const FIXED = [
+	["queue", "↓ ↑", "move selection, across pages"],
+	["queue", "← →", "previous / next page"],
+	["review", "← →", "previous / next candidate"],
+	["review", "1 – 9", "toggle tag n"],
+];
+
 const opts: [Exclude<keyof KeysForm, "bindings">, string][] = $derived([
 	[
 		"vim",
-		`${keyLabel($form.bindings.down)} / ${keyLabel($form.bindings.up)} as well as the arrow keys`,
+		`${keyLabel($form.bindings.down)} / ${keyLabel($form.bindings.up)} and ${keyLabel($form.bindings.prev)} / ${keyLabel($form.bindings.next)} as well as the arrow keys`,
 	],
 	["confirmAccept", "ask before accepting — a is otherwise immediate"],
 	["showHints", "show the key hints in the queue footer"],
@@ -101,13 +108,15 @@ const opts: [Exclude<keyof KeysForm, "bindings">, string][] = $derived([
 				</span>
 			</div>
 		{/each}
-		<div
-			class="grid items-baseline gap-x-3 px-3 py-2 max-md:grid-cols-[62px_minmax(0,1fr)] md:grid-cols-[92px_84px_minmax(0,1fr)]"
-		>
-			<span class="text-[11px] text-faint">review</span>
-			<span class="text-[12.5px] text-accent max-md:order-3 max-md:col-span-2">1 – 9</span>
-			<span class="text-[12px] text-ink-2 max-md:order-2">toggle tag n · fixed</span>
-		</div>
+		{#each FIXED as [scope, key, does] (scope + key)}
+			<div
+				class="grid items-baseline gap-x-3 px-3 py-2 max-md:grid-cols-[62px_minmax(0,1fr)] md:grid-cols-[92px_84px_minmax(0,1fr)]"
+			>
+				<span class="text-[11px] text-faint">{scope}</span>
+				<span class="text-[12.5px] text-accent max-md:order-3 max-md:col-span-2">{key}</span>
+				<span class="text-[12px] text-ink-2 max-md:order-2">{does} · fixed</span>
+			</div>
+		{/each}
 	</div>
 
 	<!-- `contents` keeps the form out of the field stack's layout: the fields stay

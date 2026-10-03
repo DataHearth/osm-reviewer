@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 import { uploadSchema } from "$lib/schemas/review";
+import { osm } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { CREATED_BY } from "$lib/server/instance";
 import { loadStaged } from "$lib/server/queries";
@@ -17,13 +18,18 @@ export const load: PageServerLoad = async ({ locals }) => {
 		superValidate(
 			{
 				comment: settings.osm.comment,
-				source: settings.osm.sourceTag,
 			},
 			zod4(uploadSchema),
 			{ errors: false },
 		),
 	]);
-	return { staged, form, createdBy: CREATED_BY };
+	return {
+		staged,
+		form,
+		createdBy: CREATED_BY,
+		perChangeset: settings.osm.perChangeset,
+		osmHost: new URL(osm.url).host,
+	};
 };
 
 export const actions: Actions = {

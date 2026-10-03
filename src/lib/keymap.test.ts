@@ -13,8 +13,9 @@ describe("key bindings", () => {
 		expect(clashes({ ...DEFAULT_BINDINGS, upload: "u" })).toEqual(["upload", "undo"]);
 	});
 
-	it("the queue's j/k clash with review keys, since review steps with them too", () => {
-		expect(clashes({ ...DEFAULT_BINDINGS, accept: "j" })).toEqual(["down", "accept"]);
+	it("a key clashes only on the screen it shares", () => {
+		expect(clashes({ ...DEFAULT_BINDINGS, accept: "j" })).toEqual([]);
+		expect(clashes({ ...DEFAULT_BINDINGS, accept: "l" })).toEqual(["accept", "next"]);
 	});
 
 	it("stored bindings sit over the defaults", () => {

@@ -24,6 +24,17 @@ export interface Sending {
 	index: number;
 }
 
+/** A reviewer's changes to one candidate, held until it is accepted. */
+export interface Edits {
+	/** Proposal position → the value typed over it. */
+	vals: Record<number, string>;
+	/** A key the object already has → its new value, or null to delete it. */
+	existing: Record<string, string | null>;
+	added: { k: string; v: string }[];
+}
+
+const NO_EDITS: Edits = { vals: {}, existing: {}, added: [] };
+
 /** Tags start selected unless they are unevidenced, invalid, or under conflict. */
 const freshSel = (c: Candidate) => c.tags.map((t) => !!t.ev && !t.invalid && !c.conflict);
 
@@ -40,6 +51,7 @@ class ReviewState {
 	idx = $state(0);
 	qIdx = $state(0);
 	sel = $state<Record<string, boolean[]>>({});
+	edits = $state<Record<string, Edits>>({});
 	last = $state<{ kind: "accept" | "reject"; id: string; name: string } | null>(null);
 
 	/** Phone filter sheet. Its trigger lives in the title bar, the sheet on the queue. */
@@ -70,7 +82,7 @@ class ReviewState {
 	private wanted = $state<string | null>(null);
 
 	/** The review screen owns the accept/reject forms; the keymap reaches them through here. */
-	submitAccept: ((id: string, tags: number[]) => void) | null = null;
+	submitAccept: (() => void) | null = null;
 	submitReject: ((id: string) => void) | null = null;
 	submitUpload: (() => void) | null = null;
 
@@ -178,7 +190,7 @@ class ReviewState {
 	get links(): Record<string, boolean> {
 		const m: Record<string, boolean> = {};
 		for (const a of this.areas)
-			for (const s of this.sources) m[s.id + ":" + a.id] = a.sources.includes(s.id);
+			for (const s of this.sources) m[`${s.id}:${a.id}`] = a.sources.includes(s.id);
 		return m;
 	}
 
@@ -216,7 +228,7 @@ class ReviewState {
 
 	get position() {
 		const c = this.candidate;
-		return this.offset + (c ? this.candidates.indexOf(c) : 0) + 1 + " / " + this.matching;
+		return `${this.offset + (c ? this.candidates.indexOf(c) : 0) + 1} / ${this.matching}`;
 	}
 
 	get selected() {
@@ -225,8 +237,38 @@ class ReviewState {
 		return this.sel[c.id] ?? freshSel(c);
 	}
 
+	get edit(): Edits {
+		const c = this.candidate;
+		return (c && this.edits[c.id]) || NO_EDITS;
+	}
+
+	/**
+	 * What the accept form posts: proposals taken as they are by position, everything
+	 * the reviewer typed as `key=value`, and the keys they removed. Whether a write adds
+	 * or modifies is the server's call, made against the object's tags.
+	 */
+	get picks(): { tags: number[]; set: string[]; del: string[] } {
+		const c = this.candidate;
+		const out = { tags: [] as number[], set: [] as string[], del: [] as string[] };
+		if (!c) return out;
+		const e = this.edit;
+		const sel = this.selected;
+		c.tags.forEach((t, i) => {
+			if (!sel[i]) return;
+			if (i in e.vals) out.set.push(`${t.k}=${e.vals[i]}`);
+			else out.tags.push(i);
+		});
+		for (const [k, v] of Object.entries(e.existing)) {
+			if (v === null) out.del.push(k);
+			else out.set.push(`${k}=${v}`);
+		}
+		for (const a of e.added) if (a.k.trim()) out.set.push(`${a.k.trim()}=${a.v}`);
+		return out;
+	}
+
 	get selCount() {
-		return this.selected.filter(Boolean).length;
+		const p = this.picks;
+		return p.tags.length + p.set.length + p.del.length;
 	}
 
 	get blockedReason(): string | null {
@@ -241,9 +283,19 @@ class ReviewState {
 		if (c.allQuarantined)
 			return "accept blocked — candidate quarantined, no tag has evidence. Reject, or requeue for re-extraction.";
 		const sel = this.selected;
-		if (c.tags.some((t, i) => t.invalid && sel[i]))
-			return "accept blocked — opening_hours fails syntax validation. Deselect the tag to accept the rest.";
-		if (!sel.some(Boolean)) return "nothing selected — no tags would be written.";
+		const e = this.edit;
+		const typed = (i: number) => i in e.vals;
+		if (c.tags.some((t, i) => t.invalid && sel[i] && !typed(i)))
+			return "accept blocked — opening_hours fails syntax validation. Fix the value or deselect the tag.";
+		if (c.tags.some((t, i) => !t.ev && sel[i] && !typed(i)))
+			return "accept blocked — an unevidenced tag cannot be written. Type its value to vouch for it, or deselect it.";
+		const empty = [
+			...c.tags.filter((_, i) => sel[i] && typed(i) && !e.vals[i].trim()).map((t) => t.k),
+			...Object.entries(e.existing).flatMap(([k, v]) => (v !== null && !v.trim() ? [k] : [])),
+			...e.added.filter((a) => a.k.trim() && !a.v.trim()).map((a) => a.k.trim()),
+		];
+		if (empty.length) return `${empty[0]} needs a value.`;
+		if (!this.selCount) return "nothing selected — no tags would be written.";
 		return null;
 	}
 
@@ -252,10 +304,10 @@ class ReviewState {
 		if (!c) return [];
 		return [
 			{ label: "opening_hours syntax", ok: !c.hasInvalid },
-			{ label: "version current (v" + c.version + ")", ok: !c.conflict },
+			{ label: `version current (v${c.version})`, ok: !c.conflict },
 			{
 				label: c.hasNoEv
-					? c.tags.filter((t) => !t.ev).length + " tag(s) unevidenced"
+					? `${c.tags.filter((t) => !t.ev).length} tag(s) unevidenced`
 					: "all tags evidenced",
 				ok: !c.hasNoEv,
 			},
@@ -273,14 +325,14 @@ class ReviewState {
 	}
 
 	yieldFor(srcId: string, areaId: string): [number, number | null] | undefined {
-		return page.data.yields?.[srcId + ":" + areaId];
+		return page.data.yields?.[`${srcId}:${areaId}`];
 	}
 
 	/** Sources both linked to this area and globally enabled. */
 	sourceCount(a: Area) {
 		const links = this.links;
 		const enabled = this.enabled;
-		return this.sources.filter((s) => links[s.id + ":" + a.id] && enabled[s.id]).length;
+		return this.sources.filter((s) => links[`${s.id}:${a.id}`] && enabled[s.id]).length;
 	}
 
 	radiusOf(a: Area) {
@@ -339,6 +391,13 @@ class ReviewState {
 		return true;
 	}
 
+	/** Moves the queue selection a row, onto the next or previous page past either end. */
+	async step(d: 1 | -1) {
+		const next = this.qIdx + d;
+		if (next >= 0 && next < this.candidates.length) this.qIdx = next;
+		else if (await this.turnPage(d)) this.qIdx = d > 0 ? 0 : this.candidates.length - 1;
+	}
+
 	open(c: Candidate, i = this.qIdx) {
 		this.wanted = null;
 		this.idx = this.candidates.indexOf(c);
@@ -378,14 +437,49 @@ class ReviewState {
 		this.sel = { ...this.sel, [c.id]: row };
 	}
 
+	private patch(fn: (e: Edits) => Edits) {
+		const c = this.candidate;
+		if (c) this.edits = { ...this.edits, [c.id]: fn(this.edit) };
+	}
+
+	/** Typing over a proposal selects it: the value on screen is the one that would be written. */
+	editValue(i: number, v: string) {
+		const tag = this.candidate?.tags[i];
+		if (!tag) return;
+		this.patch((e) => {
+			const vals = { ...e.vals };
+			if (v === tag.v) delete vals[i];
+			else vals[i] = v;
+			return { ...e, vals };
+		});
+		if (!this.selected[i]) this.toggle(i);
+	}
+
+	/** `null` deletes the key; its original value puts it back untouched. */
+	editExisting(k: string, v: string | null) {
+		const was = this.candidate?.unchanged.find((x) => x.k === k)?.v;
+		this.patch((e) => {
+			const existing = { ...e.existing };
+			if (v === was) delete existing[k];
+			else existing[k] = v;
+			return { ...e, existing };
+		});
+	}
+
+	addTag() {
+		this.patch((e) => ({ ...e, added: [...e.added, { k: "", v: "" }] }));
+	}
+
+	editAdded(i: number, tag: { k: string; v: string } | null) {
+		this.patch((e) => ({
+			...e,
+			added: tag ? e.added.with(i, tag) : e.added.filter((_, j) => j !== i),
+		}));
+	}
+
 	accept() {
 		if (this.blockedReason) return;
-		const c = this.candidate;
-		if (!c) return;
-		this.submitAccept?.(
-			c.id,
-			this.selected.flatMap((on, i) => (on ? [i] : [])),
-		);
+		this.submitAccept?.();
 	}
 
 	reject() {
@@ -443,7 +537,7 @@ class ReviewState {
 
 	// ── sources & areas ─────────────────────────────────────────────────────
 	async toggleLink(srcId: string, areaId: string) {
-		await post("?/link", { sourceId: srcId, areaId, on: !this.links[srcId + ":" + areaId] });
+		await post("?/link", { sourceId: srcId, areaId, on: !this.links[`${srcId}:${areaId}`] });
 	}
 
 	setFloor(srcId: string, v: number) {
@@ -540,7 +634,7 @@ class ReviewState {
 			matching: s.matching,
 			budget: s.budget,
 			extractor: s.extractor,
-			areas: Object.fromEntries(this.visibleAreas.map((a) => [a.id, !!links[s.id + ":" + a.id]])),
+			areas: Object.fromEntries(this.visibleAreas.map((a) => [a.id, !!links[`${s.id}:${a.id}`]])),
 		};
 	}
 
@@ -581,7 +675,7 @@ class ReviewState {
 			picked: cur,
 			center: a.center,
 			radius: this.radiusOf(a),
-			srcs: Object.fromEntries(this.sources.map((s) => [s.id, !!links[s.id + ":" + a.id]])),
+			srcs: Object.fromEntries(this.sources.map((s) => [s.id, !!links[`${s.id}:${a.id}`]])),
 		};
 	}
 }

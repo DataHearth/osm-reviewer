@@ -9,8 +9,20 @@ let {
 	tag,
 	index,
 	selected,
+	value,
 	onToggle,
-}: { tag: Tag; index: number; selected: boolean; onToggle: () => void } = $props();
+	onEdit,
+}: {
+	tag: Tag;
+	index: number;
+	selected: boolean;
+	/** The value that would be written: the proposal's, or what the reviewer typed over it. */
+	value: string;
+	onToggle: () => void;
+	onEdit: (v: string) => void;
+} = $props();
+
+const edited = $derived(value !== tag.v);
 
 const quarantined = $derived(!tag.ev);
 const dimmed = $derived(!selected && !quarantined && !tag.invalid);
@@ -52,7 +64,25 @@ const square = $derived(
 			<div class="font-mono text-[12.5px] leading-normal text-faint line-through [overflow-wrap:anywhere]">{tag.was}</div>
 		{/if}
 
-		<div class="font-mono text-[14px] leading-[1.45] [overflow-wrap:anywhere] {quarantined ? 'text-quarantine-ink' : 'text-ink'}">{tag.v}</div>
+		{#if tag.op === "del"}
+			<div class="font-mono text-[14px] leading-[1.45] [overflow-wrap:anywhere] {quarantined ? 'text-quarantine-ink' : 'text-ink'}">{tag.v}</div>
+		{:else}
+			<textarea
+				rows="1"
+				aria-label="Value of {tag.k}"
+				class="tag-input text-[14px] leading-[1.45] {quarantined && !edited ? 'text-quarantine-ink' : 'text-ink'}"
+				{value}
+				oninput={(e) => onEdit(e.currentTarget.value)}
+				onkeydown={(e) => e.key === "Enter" && (e.preventDefault(), e.currentTarget.blur())}
+			></textarea>
+			{#if edited}
+				<div class="flex items-baseline gap-2 text-[11.5px]">
+					<span class="text-accent">edited</span>
+					<span class="min-w-0 truncate font-mono text-faint">proposed {tag.v}</span>
+					<button class="shrink-0 cursor-pointer border-0 bg-transparent p-0 text-faint hover:text-ink" onclick={() => onEdit(tag.v)}>reset</button>
+				</div>
+			{/if}
+		{/if}
 
 		{#if tag.invalid}
 			<div class="mt-0.5 rounded-lg border border-bad-line bg-bad-deep px-3 py-2 text-[12px] leading-[1.55]">

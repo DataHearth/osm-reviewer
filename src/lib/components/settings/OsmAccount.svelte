@@ -82,10 +82,6 @@ const connected = $derived(!!identity && !settings.disconnected);
 			{#if $errors.comment}<span class="text-[11px] text-bad">{$errors.comment[0]}</span>{/if}
 		</Field>
 
-		<Field label="source tag">
-			<input class="{INPUT} md:max-w-[420px] max-md:min-h-[44px]" bind:value={$form.sourceTag} />
-		</Field>
-
 		<div class="flex flex-wrap gap-5">
 			<Field label="hashtag">
 				<input class="{INPUT} max-w-[168px] max-md:min-h-[44px]" bind:value={$form.hashtag} />

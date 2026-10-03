@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import type { SourceRecord } from "$lib/types";
 import { refreshConflicts } from "./conflicts";
 import { askModel, modelLabel, vetTags } from "./llm";
 import {
@@ -80,6 +81,11 @@ async function extract(
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/** A crawled page can be long; the review screen only needs enough of it to check a quote against. */
+const RECORD_TEXT_MAX = 100_000;
+const recordOf = (rec: RawRecord): SourceRecord =>
+	rec.text !== undefined ? { text: rec.text.slice(0, RECORD_TEXT_MAX) } : { rows: rec.rows };
+
 /** One source's records for one area, matched against what OSM has and written as candidates. */
 export async function processArea(
 	db: Db,
@@ -119,7 +125,7 @@ export async function processArea(
 			unchanged.push(rec.key);
 			failedInARow += 1;
 			if (failedInARow >= MODEL_FAILURES_BEFORE_ABORT && source.extractor === "model")
-				throw new PipelineError("the model keeps failing: " + errors[errors.length - 1]);
+				throw new PipelineError(`the model keeps failing: ${errors[errors.length - 1]}`);
 		}
 	}
 
@@ -165,6 +171,11 @@ export async function processArea(
 			had.contentHash === h &&
 			had.osmId === osmId
 		) {
+			if (!had.hasRecord)
+				db.update(t.candidates)
+					.set({ record: recordOf(rec) })
+					.where(eq(t.candidates.id, had.id))
+					.run();
 			unchanged.push(x.key);
 			continue;
 		}
@@ -189,6 +200,7 @@ export async function processArea(
 				ops,
 				nearby: nearbyLabels(x, elements, el),
 				unchanged: el ? unchangedTags(el.tags, new Set(ops.map((o) => o.k))) : [],
+				record: recordOf(rec),
 				seenAt: new Date(),
 			},
 			had,

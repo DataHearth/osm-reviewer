@@ -24,7 +24,7 @@ test("a candidate opens with its tags and evidence", async ({ page }) => {
 
 	await expect(page.getByRole("button", { name: "Deselect shop" })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Deselect name" })).toBeVisible();
-	await expect(page.getByText("florist", { exact: true })).toBeVisible();
+	await expect(page.getByRole("textbox", { name: "Value of shop" })).toHaveValue("florist");
 	// Exact, because the default match is case-insensitive and the second quote
 	// would otherwise also find the candidate's own name in the header.
 	await expect(page.getByText("commerce de détail de fleurs", { exact: true })).toBeVisible();
@@ -47,6 +47,23 @@ test("accepting a candidate outlives a reload and takes it out of the queue", as
 	// The two tags it was accepted with are what the composer would upload.
 	await page.goto("/composer");
 	await expect(page.getByText("1 candidates · 2 tag writes · 1 changeset")).toBeVisible();
+});
+
+test("what the reviewer typed is what gets staged", async ({ page }) => {
+	await onScreen(page.getByText(CANDIDATE.name, { exact: true })).click();
+	await page.getByRole("textbox", { name: "Value of name" }).fill("Fleurs des Minimes");
+	await expect(page.getByText("edited", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "+ add tag" }).click();
+	await page.getByRole("textbox", { name: "New key" }).fill("phone");
+	await page.getByRole("textbox", { name: "New value" }).fill("+33 5 61 00 00 00");
+	await page.getByRole("button", { name: /^Accept 3/ }).click();
+	await expect(page.getByText(`accepted ${CANDIDATE.name} · u to undo`)).toBeVisible();
+
+	await page.goto("/composer");
+	await expect(page.getByText("1 candidates · 3 tag writes · 1 changeset")).toBeVisible();
+	await page.getByText(CANDIDATE.name, { exact: true }).click();
+	await expect(page.getByText("Fleurs des Minimes")).toBeVisible();
+	await expect(page.getByText("+33 5 61 00 00 00")).toBeVisible();
 });
 
 test("a candidate in conflict cannot be accepted", async ({ page }) => {

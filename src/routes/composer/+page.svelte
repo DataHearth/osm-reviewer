@@ -2,6 +2,7 @@
 import { tick, untrack } from "svelte";
 import { superForm } from "sveltekit-superforms";
 import { goto } from "$app/navigation";
+import { batches, sourceTag } from "$lib/changeset";
 import { OP_INK, OP_SIGN, typeSlug } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { PageData } from "./$types";
@@ -10,6 +11,7 @@ let { data }: { data: PageData } = $props();
 
 const staged = $derived(review.staged);
 const writes = $derived(staged.reduce((n, x) => n + x.tags.length, 0));
+const changesets = $derived(batches(staged, data.perChangeset));
 const conflict = $derived(review.uploadConflict);
 
 const { form, errors, enhance } = superForm(
@@ -63,9 +65,9 @@ const errBody = $derived(
 		>
 			<div class="flex flex-col gap-[3px]">
 				<span class="font-sans text-[19px] font-semibold text-ink">Upload changeset</span>
-				<span class="text-[12px] text-faint">{staged.length} candidates · {writes} tag writes · 1 changeset</span>
+				<span class="text-[12px] text-faint">{staged.length} candidates · {writes} tag writes · {changesets.length} changeset{changesets.length === 1 ? "" : "s"}</span>
 			</div>
-			<span class="text-[11.5px] text-bad">writes to api.openstreetmap.org · not reversible from this tool</span>
+			<span class="text-[11.5px] text-bad">writes to {data.osmHost} · not reversible from this tool</span>
 		</div>
 
 		{#if review.upload === "failed" && conflict}
@@ -113,42 +115,40 @@ const errBody = $derived(
 				<input class={input} name="comment" bind:value={$form.comment} />
 				{#if $errors.comment}<div class="mt-1 text-[11px] text-bad">{$errors.comment[0]}</div>{/if}
 			</div>
-			<span class="pt-[5px] text-[11px] text-muted">source</span>
-			<div>
-				<input class={input} name="source" bind:value={$form.source} />
-				{#if $errors.source}<div class="mt-1 text-[11px] text-bad">{$errors.source[0]}</div>{/if}
-			</div>
 			<span class="text-[11px] text-muted">created_by</span>
 			<span class="text-[12.5px] text-faint">{data.createdBy}</span>
 		</div>
 
-		{#each staged as s (s.id)}
-			<div
-				class="flex flex-col border-b border-line-soft md:grid md:grid-cols-[minmax(0,1fr)_90px]"
-			>
-				<div class="min-w-0 px-[14px] py-2.5 md:px-[18px]">
-					<div class="flex items-baseline gap-2.5">
-						<span class="shrink-0 text-[13px] text-accent">{s.osmId ?? "new POI"}</span>
-						<span class="truncate font-medium text-ink">{s.name}</span>
-						<span class="shrink-0 text-[11.5px] text-muted">{typeSlug(s.type)}</span>
-					</div>
-					<div class="mt-[5px] flex flex-col gap-px">
-						{#each s.tags as t (t.k)}
-							<div class="text-[12.5px] leading-normal">
-								<span class={OP_INK[t.op]}>{OP_SIGN[t.op]}</span>
-								<span class="text-key">{t.k}</span><span class="text-key">=</span><span class="text-ink">{t.v}</span>
-							</div>
-						{/each}
-					</div>
-				</div>
-				<div class="flex items-center px-[14px] pb-3 md:justify-end md:px-[18px] md:py-2.5 md:pb-2.5">
+		{#each changesets as batch, i (batch[0].id)}
+			<div class="grid grid-cols-1 gap-x-[14px] gap-y-1 border-b border-line bg-bar px-[14px] py-2 text-[11.5px] md:grid-cols-[120px_1fr] md:px-[18px]">
+				<span class="text-muted">changeset {i + 1}/{changesets.length}</span>
+				<span class="min-w-0 text-faint">{batch.length} objects · source <span class="text-ink-2">{sourceTag(batch)}</span></span>
+			</div>
+			{#each batch as s (s.id)}
+				<div class="flex items-start gap-2.5 border-b border-line-soft px-[14px] md:px-[18px]">
+					<details class="group min-w-0 flex-1">
+						<summary class="flex min-h-[40px] cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
+							<span class="shrink-0 text-[11px] text-faint group-open:rotate-90">›</span>
+							<span class="shrink-0 text-[13px] text-accent">{s.osmId ?? "new POI"}</span>
+							<span class="truncate font-medium text-ink">{s.name}</span>
+							<span class="shrink-0 text-[11.5px] text-muted">{typeSlug(s.type)} · {s.tags.length} tags</span>
+						</summary>
+						<div class="flex flex-col gap-px pb-2.5 pl-[21px]">
+							{#each s.tags as t (t.k)}
+								<div class="text-[12.5px] leading-normal">
+									<span class={OP_INK[t.op]}>{OP_SIGN[t.op]}</span>
+									<span class="text-key">{t.k}</span><span class="text-key">=</span><span class="text-ink">{t.v}</span>
+								</div>
+							{/each}
+						</div>
+					</details>
 					<button
 						type="button"
-						class="cursor-pointer rounded-sm border border-line bg-transparent px-[9px] py-[3px] text-[11.5px] text-faint hover:text-ink"
+						class="mt-2 shrink-0 cursor-pointer rounded-sm border border-line bg-transparent px-[9px] py-[3px] text-[11.5px] text-faint hover:text-ink"
 						onclick={() => review.unstage(s.id)}>remove</button
 					>
 				</div>
-			</div>
+			{/each}
 		{/each}
 
 		{#if staged.length === 0}

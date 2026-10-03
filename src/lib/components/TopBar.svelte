@@ -39,16 +39,16 @@ const tab = (on: boolean) =>
 	"flex shrink-0 cursor-pointer items-center gap-[7px] border-0 bg-transparent px-2.5 text-[13.5px] font-medium whitespace-nowrap transition-colors lg:px-3 " +
 	(on ? "text-ink shadow-[inset_0_-2px_0_var(--accent)]" : "text-muted hover:text-ink");
 const count = (on: boolean) =>
-	"font-mono text-[11px] font-normal tabular-nums " + (on ? "text-accent" : "text-faint");
+	`font-mono text-[11px] font-normal tabular-nums ${on ? "text-accent" : "text-faint"}`;
 const pill = (on: boolean) =>
 	"rounded-[4px] px-[5px] font-mono text-[11px] font-normal tabular-nums " +
 	(on ? "bg-accent text-accent-ink" : "bg-raised text-accent");
 
 const tabs = $derived([
-	{ href: "/", label: "Queue", count: review.pendingCount },
-	{ href: "/review", label: "Review", count: null },
-	{ href: "/composer", label: "Composer", count: review.stagedCount },
-	{ href: "/history", label: "History", count: null },
+	{ href: "/", to: review.href("/"), label: "Queue", count: review.pendingCount },
+	{ href: "/review", to: review.href("/review"), label: "Review", count: null },
+	{ href: "/composer", to: "/composer", label: "Composer", count: review.stagedCount },
+	{ href: "/history", to: "/history", label: "History", count: null },
 ]);
 
 const TITLES: Record<string, string> = {
@@ -113,7 +113,7 @@ function togglePicker() {
 	<nav class="flex min-w-0 items-stretch max-md:hidden">
 		{#each tabs as t (t.href)}
 			{@const on = path === t.href}
-			<button class={tab(on)} onclick={() => goto(t.href)}>
+			<button class={tab(on)} onclick={() => goto(t.to)}>
 				{t.label}{#if t.href === "/"}<span class={pill(on)}>{t.count}</span>{:else if t.count !== null}<span class={count(on)}
 						>{t.count}</span
 					>{/if}

@@ -38,15 +38,18 @@ function onkeydown(e: KeyboardEvent) {
 
 	if (path === "/") {
 		const rows = review.candidates;
-		if (k === b.prevPage || k === b.nextPage) {
+		if ((vim && k === b.prevPage) || k === "ArrowLeft") {
 			e.preventDefault();
-			review.turnPage(k === b.nextPage ? 1 : -1);
+			review.turnPage(-1);
+		} else if ((vim && k === b.nextPage) || k === "ArrowRight") {
+			e.preventDefault();
+			review.turnPage(1);
 		} else if ((vim && k === b.down) || k === "ArrowDown") {
 			e.preventDefault();
-			review.qIdx = Math.min(rows.length - 1, review.qIdx + 1);
+			review.step(1);
 		} else if ((vim && k === b.up) || k === "ArrowUp") {
 			e.preventDefault();
-			review.qIdx = Math.max(0, review.qIdx - 1);
+			review.step(-1);
 		} else if (k === b.open) {
 			const c = rows[review.qIdx];
 			if (c) {
@@ -71,10 +74,10 @@ function onkeydown(e: KeyboardEvent) {
 	} else if (k === b.reject) {
 		e.preventDefault();
 		review.reject();
-	} else if (k === b.skip || (vim && k === b.down)) {
+	} else if (k === b.skip || (vim && k === b.next) || k === "ArrowRight") {
 		e.preventDefault();
 		review.move(1);
-	} else if (vim && k === b.up) {
+	} else if ((vim && k === b.prev) || k === "ArrowLeft") {
 		e.preventDefault();
 		review.move(-1);
 	} else if (/^[1-9]$/.test(k)) {

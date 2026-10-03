@@ -18,8 +18,7 @@ export const passwordSchema = z
 	});
 
 export const osmSchema = z.object({
-	comment: z.string().trim().min(1, "Every changeset needs a comment."),
-	sourceTag: z.string().trim(),
+	comment: z.string().trim(),
 	hashtag: z.string().trim(),
 	perChangeset: z.number().int().min(1).max(500),
 });

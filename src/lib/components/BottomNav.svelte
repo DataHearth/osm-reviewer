@@ -9,10 +9,10 @@ import { review } from "$lib/stores/review.svelte";
 const path = $derived(page.url.pathname);
 
 const tabs = $derived([
-	{ href: "/", label: "Queue", count: review.pendingCount },
-	{ href: "/review", label: "Review", count: null },
-	{ href: "/composer", label: "Composer", count: review.stagedCount },
-	{ href: "/history", label: "History", count: null },
+	{ href: "/", to: review.href("/"), label: "Queue", count: review.pendingCount },
+	{ href: "/review", to: review.href("/review"), label: "Review", count: null },
+	{ href: "/composer", to: "/composer", label: "Composer", count: review.stagedCount },
+	{ href: "/history", to: "/history", label: "History", count: null },
 ]);
 
 // /review is a pushed detail view on phone: its own back button and action
@@ -32,7 +32,7 @@ const hidden = $derived(path === "/review");
 					? 'text-ink shadow-[inset_0_2px_0_var(--accent)]'
 					: 'text-muted'}"
 				aria-current={on ? "page" : undefined}
-				onclick={() => goto(t.href)}
+				onclick={() => goto(t.to)}
 			>
 				<span>{t.label}</span>
 				{#if t.count !== null}

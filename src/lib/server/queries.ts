@@ -13,6 +13,7 @@ import {
 	type SQL,
 	sql,
 } from "drizzle-orm";
+import { sourceLabel } from "$lib/changeset";
 import { comma, daysSince, fmtDate, STALE_AFTER_DAYS, stamp } from "$lib/format";
 import type { QueueQuery, SortKey } from "$lib/schemas/queue";
 import { llm } from "$lib/server/config";
@@ -77,7 +78,7 @@ const areaStatus = (a: { paused: boolean; lastRunAt: Date | null }) =>
 	a.paused ? "paused" : a.lastRunAt ? "active" : "first run queued";
 const areaLastRun = (a: { lastRunAt: Date | null }) => (a.lastRunAt ? stamp(a.lastRunAt) : "never");
 
-export async function loadSources(db: Db, now: Date = new Date()): Promise<Source[]> {
+export async function loadSources(db: Db): Promise<Source[]> {
 	const [rows, reviewed, evidence, links] = await Promise.all([
 		db.query.sources.findMany({
 			with: {
@@ -282,6 +283,8 @@ export async function loadQueue(
 
 	const rows = ids.length
 		? await db.query.candidates.findMany({
+				// A page is 50 candidates; the record is fetched for the one being read.
+				columns: { record: false },
 				with: {
 					tags: {
 						orderBy: (x) => asc(x.position),
@@ -332,7 +335,7 @@ export async function loadQueue(
 			conf: c.conf,
 			version: c.version,
 			fetched: fmtDate(c.fetchedAt),
-			age: daysSince(c.fetchedAt) + "d",
+			age: `${daysSince(c.fetchedAt)}d`,
 			stale: daysSince(c.fetchedAt) >= STALE_AFTER_DAYS ? daysSince(c.fetchedAt) : undefined,
 			conflict: c.headVersion !== null,
 			baseVersion: c.baseVersion ?? undefined,
@@ -341,7 +344,7 @@ export async function loadQueue(
 			theirs: side("theirs"),
 			ours: side("ours"),
 			nearby: c.nearby.map((n) => n.label),
-			unchanged: c.unchangedTags.map((x) => `${x.k}=${x.v}`).join("  ") || "—",
+			unchanged: c.unchangedTags,
 			tags,
 			allQuarantined: tags.every((tag) => !tag.ev),
 			hasNoEv: tags.some((tag) => !tag.ev),
@@ -355,29 +358,21 @@ export async function loadQueue(
 export async function loadStaged(db: Db): Promise<Staged[]> {
 	const rows = await db.query.decisions.findMany({
 		where: (d) => and(eq(d.kind, "accepted"), isNull(d.changesetId)),
-		with: { candidate: { with: { tags: { orderBy: (x) => asc(x.position) } } }, tags: true },
+		with: {
+			candidate: { with: { source: true } },
+			tags: { orderBy: (x) => asc(x.position) },
+		},
 		orderBy: (d) => asc(d.decidedAt),
 	});
 
-	return rows.map((d) => {
-		const picked = new Set(d.tags.map((x) => x.tagId));
-		return {
-			id: d.candidateId,
-			osmId: d.candidate.osmId,
-			name: d.candidate.name,
-			type: d.candidate.type,
-			tags: d.candidate.tags
-				.filter((tag) => picked.has(tag.id))
-				.map((tag) => ({
-					op: tag.op,
-					k: tag.k,
-					v: tag.v,
-					was: tag.was ?? undefined,
-					conf: tag.conf,
-					ev: null,
-				})),
-		};
-	});
+	return rows.map((d) => ({
+		id: d.candidateId,
+		osmId: d.candidate.osmId,
+		name: d.candidate.name,
+		type: d.candidate.type,
+		source: sourceLabel(d.candidate.source.name, d.candidate.source.licence),
+		tags: d.tags.map((x) => ({ op: x.op, k: x.k, v: x.v })),
+	}));
 }
 
 /** Every area the top bar's picker offers, most waiting first. */

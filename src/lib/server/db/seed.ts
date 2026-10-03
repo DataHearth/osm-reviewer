@@ -263,15 +263,6 @@ const SOURCE_IDS: Record<string, string> = { website: "web" };
 /** Every fixture candidate sits in Toulouse; the fixtures never say so explicitly. */
 const FIXTURE_AREA = "tls";
 
-/** The fixtures spell an object's untouched tags as `k=v  k=v`, or a dash for none. */
-function unchangedTags(text: string): { k: string; v: string }[] {
-	if (text === "—") return [];
-	return text.split(/\s{2,}/).map((pair) => {
-		const eq = pair.indexOf("=");
-		return { k: pair.slice(0, eq), v: pair.slice(eq + 1) };
-	});
-}
-
 /**
  * Fixtures spell dates DD-MM-YYYY, optionally followed by HH:MM. They are built in
  * the instance's own zone, because that is the zone every screen formats them back
@@ -435,7 +426,7 @@ async function seed(db: Db): Promise<void> {
 					baseVersion: c.baseVersion ?? null,
 					headVersion: c.headVersion ?? null,
 					conflictWho: c.conflictWho ?? null,
-					unchangedTags: unchangedTags(c.unchanged),
+					unchangedTags: c.unchanged,
 				})
 				.run();
 

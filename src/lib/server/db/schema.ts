@@ -10,6 +10,7 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { Bindings } from "../../keymap";
+import type { SourceRecord } from "../../types";
 
 export const users = sqliteTable(
 	"users",
@@ -106,7 +107,6 @@ export const userSettings = sqliteTable("user_settings", {
 	osmUserId: integer(),
 	osmScopes: text().notNull().default("write_api · read_prefs"),
 	osmComment: text().notNull().default(""),
-	osmSourceTag: text().notNull().default(""),
 	osmHashtag: text().notNull().default("#poi-review"),
 	osmPerChangeset: integer().notNull().default(50),
 	vim: integer({ mode: "boolean" }).notNull().default(true),
@@ -250,6 +250,8 @@ export const candidates = sqliteTable(
 		conflictWho: text(),
 		/** The object's tags the candidate leaves alone, shown for context. */
 		unchangedTags: text({ mode: "json" }).$type<{ k: string; v: string }[]>().notNull().default([]),
+		/** What the source said, as read: the record's rows, or a crawled page's text. Null until a run stores it. */
+		record: text({ mode: "json" }).$type<SourceRecord>(),
 	},
 	(t) => [
 		uniqueIndex("candidates_source_record_idx").on(t.sourceId, t.sourceRecordKey),
@@ -375,18 +377,25 @@ export const decisions = sqliteTable(
 	(t) => [index("decisions_changeset_idx").on(t.changesetId)],
 );
 
-/** The tags an accept selected — a subset of the candidate's, chosen at accept time. */
+/**
+ * What an accept writes: the reviewer's final ops, which the upload applies as they are.
+ * `tagId` is the proposal a row came from, edited or not, and null for one the reviewer
+ * wrote; the proposal itself is never changed, so history keeps both sides.
+ */
 export const decisionTags = sqliteTable(
 	"decision_tags",
 	{
 		candidateId: text()
 			.notNull()
 			.references(() => decisions.candidateId, { onDelete: "cascade" }),
-		tagId: integer()
-			.notNull()
-			.references(() => tags.id, { onDelete: "cascade" }),
+		position: integer().notNull(),
+		tagId: integer().references(() => tags.id, { onDelete: "set null" }),
+		op: text({ enum: ["add", "mod", "del"] }).notNull(),
+		k: text().notNull(),
+		v: text().notNull(),
+		was: text(),
 	},
-	(t) => [primaryKey({ columns: [t.candidateId, t.tagId] })],
+	(t) => [primaryKey({ columns: [t.candidateId, t.k] })],
 );
 
 export const usersRelations = relations(users, ({ many, one }) => ({

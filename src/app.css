@@ -147,3 +147,10 @@ select {
 @utility btn-secondary {
 	@apply cursor-pointer rounded-lg border border-edge bg-raised px-3.5 py-1.5 text-[13px] font-medium text-ink max-md:min-h-[46px];
 }
+
+/* A tag key or value the reviewer can type over, drawn as the text it replaces until
+   it is pointed at. `field-sizing` lets a long value wrap; where it is unsupported the
+   field stays one line and scrolls. */
+@utility tag-input {
+	@apply w-full resize-none border-0 border-b border-transparent bg-transparent p-0 font-mono outline-none [overflow-wrap:anywhere] [field-sizing:content] hover:border-edge focus:border-accent;
+}

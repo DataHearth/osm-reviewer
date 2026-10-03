@@ -20,6 +20,7 @@ import { kbdLabel } from "$lib/keymap";
 import { queueSearch } from "$lib/schemas/queue";
 import { keys } from "$lib/stores/keys.svelte";
 import { review, type Sending } from "$lib/stores/review.svelte";
+import type { SourceRecord } from "$lib/types";
 import type { PageData } from "./$types";
 
 let { data }: { data: PageData } = $props();
@@ -27,7 +28,26 @@ let { data }: { data: PageData } = $props();
 const c = $derived(review.candidate);
 const blocked = $derived(review.blockedReason);
 const selCount = $derived(review.selCount);
-const selPositions = $derived(review.selected.flatMap((on, i) => (on ? [i] : [])));
+const picks = $derived(review.picks);
+const edits = $derived(review.edit);
+
+// The record is fetched for the candidate on screen, and only while its panel is open.
+let recordOpen = $state(false);
+let record = $state<
+	{ id: string; record: SourceRecord | null } | { id: string; error: string } | null
+>(null);
+$effect(() => {
+	const id = c?.id;
+	if (!recordOpen || !id || record?.id === id) return;
+	fetch(`/review/record?id=${encodeURIComponent(id)}`)
+		.then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+		.then((body: { record: SourceRecord | null }) => {
+			if (c?.id === id) record = { id, record: body.record };
+		})
+		.catch((e: Error) => {
+			if (c?.id === id) record = { id, error: e.message };
+		});
+});
 
 // Phone splits the screen into two panes instead of one long scroll: the
 // tags are the decision, everything else is context you consult. Which pane
@@ -86,7 +106,7 @@ const rejected = superForm(
 // queue's view; otherwise the page after a decision would be the unfiltered queue's.
 const actionUrl = (name: string) => {
 	const view = queueSearch(review.query);
-	return `?${view ? view + "&" : ""}/${name}`;
+	return `?${view ? `${view}&` : ""}/${name}`;
 };
 
 const acceptEnhance = accepted.enhance;
@@ -110,7 +130,14 @@ const seg = (on: boolean) =>
 	"flex min-h-[38px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border-0 text-[13px] font-medium " +
 	(on ? "bg-raised text-ink" : "bg-transparent text-muted");
 const label = "mb-1.5 text-[12px] font-medium text-faint";
-const banner = CHIP + " border-transparent font-semibold text-bg";
+const rowBtn =
+	"shrink-0 cursor-pointer border-0 bg-transparent p-0 font-sans text-[11.5px] text-faint hover:text-ink";
+const blurOnEnter = (e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
+	if (e.key !== "Enter") return;
+	e.preventDefault();
+	e.currentTarget.blur();
+};
+const banner = `${CHIP} border-transparent font-semibold text-bg`;
 </script>
 
 <section class="flex min-h-0 flex-1 flex-col font-sans">
@@ -176,7 +203,13 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 				<div class="flex min-w-0 flex-1 flex-col gap-[3px]">
 					<div class="flex items-baseline justify-between gap-3">
 						<span class="min-w-0 truncate text-[18px] font-semibold text-ink">{c?.name}</span>
-						<span class="shrink-0 font-mono text-[12px] tabular-nums text-ink-2">{review.position}</span>
+						<span class="flex shrink-0 items-center gap-3">
+							<button
+								class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[13px] text-faint hover:text-ink"
+								onclick={() => goto(review.href("/"))}><span class="text-[16px] leading-none">‹</span> Queue</button
+							>
+							<span class="font-mono text-[12px] tabular-nums text-ink-2">{review.position}</span>
+						</span>
 					</div>
 					<span class="truncate text-[13px] text-muted">{c?.addr}</span>
 					{#if c}
@@ -251,7 +284,7 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 
 			<div class="sticky top-0 z-2 flex shrink-0 gap-1 border-b border-line bg-panel px-2 py-1.5 md:hidden">
 				<button class={seg(pane === "tags")} onclick={() => (pane = "tags")}>
-					Tags <span class="font-mono text-[11px] font-normal text-faint">{selCount}/{c?.tags.length ?? 0}</span>
+					Tags <span class="font-mono text-[11px] font-normal text-faint">{selCount}</span>
 				</button>
 				<button class={seg(pane === "context")} onclick={() => (pane = "context")}>
 					Context
@@ -266,10 +299,59 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 						: ''}"
 				>
 					{#each c?.tags ?? [] as tag, i ((c?.id ?? "") + tag.k)}
-						<TagRow {tag} index={i} selected={!!review.selected[i]} onToggle={() => review.toggle(i)} />
+						<TagRow
+							{tag}
+							index={i}
+							selected={!!review.selected[i]}
+							value={edits.vals[i] ?? tag.v}
+							onToggle={() => review.toggle(i)}
+							onEdit={(v) => review.editValue(i, v)}
+						/>
 					{/each}
-					<div class="px-2 py-2 text-[12px] leading-relaxed text-faint">
-						<span class="mr-2 font-medium">Unchanged</span><span class="font-mono">{c?.unchanged}</span>
+					<div class="flex flex-col gap-1 px-2 py-2 text-[12px] leading-relaxed text-faint">
+						<div class="font-medium">Unchanged{#if !c?.unchanged.length}<span class="ml-2 font-mono font-normal">—</span>{/if}</div>
+						{#each c?.unchanged ?? [] as x (x.k)}
+							{@const cur = x.k in edits.existing ? edits.existing[x.k] : x.v}
+							<div class="grid grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto] items-baseline gap-2 font-mono">
+								<span class="truncate text-key">{x.k}</span>
+								{#if cur === null}
+									<span class="text-bad line-through [overflow-wrap:anywhere]">{x.v}</span>
+									<button class={rowBtn} onclick={() => review.editExisting(x.k, x.v)}>restore</button>
+								{:else}
+									<textarea
+										rows="1"
+										aria-label="Value of {x.k}"
+										class="tag-input text-[12px] {cur === x.v ? 'text-ink-2' : 'text-accent'}"
+										value={cur}
+										oninput={(e) => review.editExisting(x.k, e.currentTarget.value)}
+										onkeydown={blurOnEnter}
+									></textarea>
+									<button class={rowBtn} aria-label="Delete {x.k}" onclick={() => review.editExisting(x.k, null)}>delete</button>
+								{/if}
+							</div>
+						{/each}
+						{#each edits.added as a, j (j)}
+							<div class="grid grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto] items-baseline gap-2 font-mono">
+								<input
+									aria-label="New key"
+									placeholder="key"
+									class="tag-input text-[12px] text-key"
+									value={a.k}
+									oninput={(e) => review.editAdded(j, { k: e.currentTarget.value, v: a.v })}
+								/>
+								<textarea
+									rows="1"
+									aria-label="New value"
+									placeholder="value"
+									class="tag-input text-[12px] text-accent"
+									value={a.v}
+									oninput={(e) => review.editAdded(j, { k: a.k, v: e.currentTarget.value })}
+									onkeydown={blurOnEnter}
+								></textarea>
+								<button class={rowBtn} onclick={() => review.editAdded(j, null)}>remove</button>
+							</div>
+						{/each}
+						<button class="{rowBtn} self-start" onclick={() => review.addTag()}>+ add tag</button>
 					</div>
 				</div>
 
@@ -308,6 +390,32 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 							<span class="text-faint">Fetched</span><span class="font-mono text-[12px]">{c?.fetched}</span>
 						</div>
 					</div>
+					<details
+						class="group border-t border-line-soft px-4 py-3 text-[12.5px] leading-[1.65] text-muted md:col-span-2 lg:col-span-1"
+						bind:open={recordOpen}
+					>
+						<summary class="cursor-pointer list-none text-[12px] font-medium text-faint group-open:mb-1.5 [&::-webkit-details-marker]:hidden">
+							<span class="inline-block group-open:rotate-90">›</span> Source record
+						</summary>
+						{#if !record || record.id !== c?.id}
+							<div class="text-faint">loading…</div>
+						{:else if "error" in record}
+							<div class="text-bad-ink">could not load the record — {record.error}</div>
+						{:else if !record.record}
+							<div class="text-faint">Not stored yet — the source's next run stores it.</div>
+						{:else if "text" in record.record}
+							<pre class="max-h-[480px] overflow-y-auto font-mono text-[11.5px] whitespace-pre-wrap text-ink-2 [overflow-wrap:anywhere]">{record.record.text}</pre>
+						{:else}
+							{#each record.record.rows as row, r (r)}
+								<div class="grid grid-cols-[minmax(0,40%)_minmax(0,1fr)] gap-x-2 font-mono text-[11.5px] {r ? 'mt-2 border-t border-line-soft pt-2' : ''}">
+									{#each Object.entries(row) as [k, v] (k)}
+										<span class="truncate text-key" title={k}>{k}</span>
+										<span class="text-ink-2 [overflow-wrap:anywhere]">{v === null || v === "" ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
+									{/each}
+								</div>
+							{/each}
+						{/if}
+					</details>
 				</aside>
 			</div>
 		</div>
@@ -323,7 +431,9 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 			     bar's flex layout: the buttons stay its direct items. -->
 			<form method="POST" action={actionUrl("accept")} use:acceptEnhance class="contents">
 				<input type="hidden" name="id" value={c?.id ?? ""} />
-				{#each selPositions as p (p)}<input type="hidden" name="tags" value={p} />{/each}
+				{#each picks.tags as p (p)}<input type="hidden" name="tags" value={p} />{/each}
+				{#each picks.set as s, i (i)}<input type="hidden" name="set" value={s} />{/each}
+				{#each picks.del as k, i (i)}<input type="hidden" name="del" value={k} />{/each}
 				<button
 					bind:this={acceptBtn}
 					type="submit"
@@ -349,9 +459,11 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 			>
 			<span class="ml-4 hidden items-center gap-1.5 lg:flex">
 				<span class={KBD}>1–9</span><span class="mr-3">toggle tag</span>
+				<span class={KBD}>← →</span>
 				{#if keys.vim}
-					<span class={KBD}>{kbdLabel(keys.bindings.down)} {kbdLabel(keys.bindings.up)}</span><span class="mr-3">next / prev</span>
+					<span class={KBD}>{kbdLabel(keys.bindings.prev)} {kbdLabel(keys.bindings.next)}</span>
 				{/if}
+				<span class="mr-3">prev / next</span>
 				<span class={KBD}>{kbdLabel(keys.bindings.undo)}</span><span class="mr-3">undo</span>
 				<span class={KBD}>{kbdLabel(keys.bindings.back)}</span><span>queue</span>
 			</span>
