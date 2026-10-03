@@ -3,64 +3,66 @@
 :root {
 	color-scheme: dark;
 
-	/* grounds */
-	--bg: #1a1a1c;
-	--panel: #1f1f23;
-	--bar: #24242a;
-	--head: #212126;
-	--raised: #2b2b32;
-	--sel: #292930;
+	/* grounds — green-grey slate */
+	--bg: #121817;
+	--panel: #182120;
+	--bar: #1b2524;
+	--head: #172020;
+	--raised: #233130;
+	--sel: #1f2c2b;
 
 	/* rules */
-	--line: #35353d;
-	--line-soft: #2b2b32;
-	--line-faint: #26262c;
-	--line-row: #2a2a30;
-	--edge: #3d3d46;
-	--edge-strong: #45454f;
-	--edge-soft: #2f2f36;
+	--line: #2b3938;
+	--line-soft: #233130;
+	--line-faint: #1d2928;
+	--line-row: #213030;
+	--edge: #344443;
+	--edge-strong: #3e504e;
+	--edge-soft: #283635;
 
 	/* ink */
-	--ink: #e8e6e3;
-	--ink-2: #c9c9d4;
-	--key: #9d9da9;
-	--muted: #a8a8b4;
-	--faint: #8f8f9c;
-	--dim: #5a5a63;
+	--ink: #e4ebe8;
+	--ink-2: #c3d0cc;
+	--key: #95a7a2;
+	--muted: #a6b5b1;
+	--faint: #8b9c98;
+	--dim: #56645f;
 	--was: #a58c86;
-	--box-off: #a6a6b2;
+	--box-off: #a3b3ae;
 
-	/* accent */
-	--accent: #e0a33c;
-	--accent-ink: #1a1a1c;
+	/* accent: amber for action and selection, teal for OSM ids and links */
+	--accent: #e8a838;
+	--accent-ink: #121817;
+	--link: #6cc3b5;
+	--link-hover: #94d8cc;
 
 	/* status */
-	--ok: #5fa872;
-	--ok-ink: #7cc48e;
-	--ok-bg: #243026;
-	--ok-line: #33543c;
-	--warn: #e0a33c;
-	--warn-ink: #c9b183;
-	--warn-bg: #2a2620;
-	--warn-line: #433a28;
+	--ok: #5fb07a;
+	--ok-ink: #82cf9c;
+	--ok-bg: #1f3329;
+	--ok-line: #2f5040;
+	--warn: #e8a838;
+	--warn-ink: #d9bf7f;
+	--warn-bg: #27271a;
+	--warn-line: #464128;
 	--bad: #e07a5f;
-	--bad-ink: #d4795f;
-	--bad-bg: #2b1a1c;
-	--bad-deep: #301f1d;
-	--bad-line: #43292b;
+	--bad-ink: #e48a72;
+	--bad-bg: #2a1b1a;
+	--bad-deep: #301e1c;
+	--bad-line: #4a2a27;
 
 	/* diff ops */
-	--add: #5fa872;
-	--add-bg: #1d2a20;
-	--mod: #e0a33c;
-	--mod-bg: #28241a;
-	--del: #c26049;
-	--del-bg: #2a1c1d;
+	--add: #5fb07a;
+	--add-bg: #18281f;
+	--mod: #e8a838;
+	--mod-bg: #242519;
+	--del: #c86450;
+	--del-bg: #2a1b1a;
 	--quarantine: #c8452a;
 	--quarantine-ink: #e78d76;
-	--mark-bg: #35422f;
-	--mark-ink: #f3f0ec;
+	--mark-bg: #23423c;
+	--mark-ink: #eaf5f2;
 
-	--font-mono: "IBM Plex Mono", ui-monospace, monospace;
-	--font-sans: "IBM Plex Sans", system-ui, sans-serif;
+	--font-mono: "JetBrains Mono", ui-monospace, monospace;
+	--font-sans: "Public Sans", system-ui, sans-serif;
 }

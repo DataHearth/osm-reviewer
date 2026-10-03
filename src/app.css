@@ -3,12 +3,12 @@
 /* Self-hosted rather than fetched from Google: the instance is meant to run on a LAN with
    no internet, where a webfont request fails silently and the app falls back to whatever
    the system has. Latin subset only — it covers the French POI names in the data. */
-@import "@fontsource/ibm-plex-sans/latin-400.css";
-@import "@fontsource/ibm-plex-sans/latin-500.css";
-@import "@fontsource/ibm-plex-sans/latin-600.css";
-@import "@fontsource/ibm-plex-mono/latin-400.css";
-@import "@fontsource/ibm-plex-mono/latin-500.css";
-@import "@fontsource/ibm-plex-mono/latin-600.css";
+@import "@fontsource/public-sans/latin-400.css";
+@import "@fontsource/public-sans/latin-500.css";
+@import "@fontsource/public-sans/latin-600.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/latin-500.css";
+@import "@fontsource/jetbrains-mono/latin-600.css";
 
 @import "./styles/tokens.css";
 @import "./styles/motion.css";
@@ -41,6 +41,8 @@
 
 	--color-accent: var(--accent);
 	--color-accent-ink: var(--accent-ink);
+	--color-link: var(--link);
+	--color-link-hover: var(--link-hover);
 	--color-ok: var(--ok);
 	--color-ok-ink: var(--ok-ink);
 	--color-ok-bg: var(--ok-bg);
@@ -88,11 +90,11 @@ body {
 }
 
 a {
-	color: var(--accent);
+	color: var(--link);
 	text-decoration: none;
 }
 a:hover {
-	color: #f0bd63;
+	color: var(--link-hover);
 	text-decoration: underline;
 }
 ::selection {
@@ -120,14 +122,14 @@ select {
 	color: var(--ink-2);
 }
 .leaflet-control-zoom a:hover {
-	background: #2f2f37;
+	background: var(--raised);
 	color: var(--ink);
 }
 .leaflet-control-zoom {
 	border: 1px solid var(--line);
 }
 .leaflet-control-attribution {
-	background: rgba(22, 24, 28, 0.8) !important;
+	background: color-mix(in srgb, var(--bg) 80%, transparent) !important;
 	color: var(--faint);
 	font-size: 9px;
 }

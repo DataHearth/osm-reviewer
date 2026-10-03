@@ -89,9 +89,15 @@ in
       # The sandbox has no fonts and playwright-driver.browsers carries none, so Chromium
       # measures every glyph as zero wide. Anything sized by its own text then collapses to
       # an empty box, which Playwright reports as `hidden` — the element is there with the
-      # right text and never becomes visible. IBM Plex is what the design asks for, so the
-      # layout assertions measure the real thing rather than a substitute metric.
-      FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.ibm-plex ]; };
+      # right text and never becomes visible. JetBrains Mono and Public Sans are what the
+      # design asks for, so the layout assertions measure the real thing rather than a
+      # substitute metric.
+      FONTCONFIG_FILE = pkgs.makeFontsConf {
+        fontDirectories = [
+          pkgs.jetbrains-mono
+          pkgs.public-sans
+        ];
+      };
       CI = "1";
     };
     script = "pnpm test:e2e";

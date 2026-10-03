@@ -100,7 +100,7 @@ locating a POI at zoom 17.
 
 Everything else is local and should stay that way:
 
-- **Fonts are self-hosted** — `@fontsource/ibm-plex-{sans,mono}`, weights 400/500/600,
+- **Fonts are self-hosted** — `@fontsource/jetbrains-mono` and `@fontsource/public-sans`, weights 400/500/600,
   latin subset, imported at the top of `src/app.css`. Do not reintroduce the Google Fonts
   `<link>`: it is render-blocking, it fails silently on a LAN with no internet (the app
   then falls back to system fonts and stops looking like the design), and it reports every
@@ -209,7 +209,7 @@ because wrapping the pane in a form breaks the `min-h-full` chain its sticky foo
 Anything sized by its own text collapses to an empty box, which Playwright reports as
 `hidden` — the element is in the DOM with the right text and simply never becomes visible.
 Elements with padding survive, which makes the failure look arbitrary. The `e2e` check
-therefore sets `FONTCONFIG_FILE` to a fonts.conf carrying IBM Plex, and `e2e/global-setup.ts`
+therefore sets `FONTCONFIG_FILE` to a fonts.conf carrying JetBrains Mono and Public Sans, and `e2e/global-setup.ts`
 measures a string before the suite runs so a fontless environment fails in one sentence
 instead of fourteen timeouts. `playwright-driver.browsers` ships no fonts of its own.
 
