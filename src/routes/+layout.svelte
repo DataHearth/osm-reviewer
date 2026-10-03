@@ -26,19 +26,22 @@ function onkeydown(e: KeyboardEvent) {
 	const vim = keys.vim;
 
 	if (k === b.back) {
-		goto("/");
+		goto(review.href("/"));
 		return;
 	}
 	if (k === b.undo) {
 		e.preventDefault();
 		review.undo();
-		if (review.last === null) goto("/review");
+		if (review.last === null) goto(review.href("/review"));
 		return;
 	}
 
 	if (path === "/") {
-		const rows = review.visible;
-		if ((vim && k === b.down) || k === "ArrowDown") {
+		const rows = review.candidates;
+		if (k === b.prevPage || k === b.nextPage) {
+			e.preventDefault();
+			review.turnPage(k === b.nextPage ? 1 : -1);
+		} else if ((vim && k === b.down) || k === "ArrowDown") {
 			e.preventDefault();
 			review.qIdx = Math.min(rows.length - 1, review.qIdx + 1);
 		} else if ((vim && k === b.up) || k === "ArrowUp") {
@@ -48,7 +51,7 @@ function onkeydown(e: KeyboardEvent) {
 			const c = rows[review.qIdx];
 			if (c) {
 				review.open(c);
-				goto("/review");
+				goto(review.href("/review"));
 			}
 		}
 		return;

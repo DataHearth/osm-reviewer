@@ -161,8 +161,6 @@ export interface Staged {
 	tags: Tag[];
 }
 
-export type Decision = "accepted" | "rejected";
-
 export interface Changeset {
 	id: string;
 	url: string;

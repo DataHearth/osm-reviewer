@@ -2,6 +2,7 @@
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import EmptyState from "$lib/components/EmptyState.svelte";
+import Pager from "$lib/components/Pager.svelte";
 import QueueFilterSheet from "$lib/components/QueueFilterSheet.svelte";
 import {
 	CHIP,
@@ -17,6 +18,7 @@ import {
 	typeText,
 } from "$lib/format";
 import { kbdLabel } from "$lib/keymap";
+import { queueSearch } from "$lib/schemas/queue";
 import { keys } from "$lib/stores/keys.svelte";
 import { review } from "$lib/stores/review.svelte";
 import type { Candidate } from "$lib/types";
@@ -24,12 +26,15 @@ import type { Candidate } from "$lib/types";
 // A row has too many fields to line up in columns at 402px, so phone gets
 // cards and md gets the table. Both are rendered and the CSS breakpoint
 // picks one, rather than a JS width read choosing which to mount.
-const rows = $derived(review.visible);
-const rowsLabel = $derived(
-	rows.length
-		? "Rows 1–" + rows.length + " of " + review.pendingCount
-		: "No rows loaded · " + review.pendingCount + " pending",
-);
+const rows = $derived(review.candidates);
+
+// The list scrolls inside its own box, which outlives a change of view.
+let list = $state<HTMLElement>();
+const view = $derived(queueSearch(review.query));
+$effect(() => {
+	void view;
+	list?.scrollTo({ top: 0 });
+});
 
 const seg = (on: boolean) =>
 	"cursor-pointer rounded-md border-0 px-[11px] py-1 text-[12.5px] whitespace-nowrap transition-colors " +
@@ -78,7 +83,7 @@ const sortBtn = (k: string) =>
 
 function openRow(c: Candidate, i: number) {
 	review.open(c, i);
-	goto("/review");
+	goto(review.href("/review"));
 }
 </script>
 
@@ -106,10 +111,7 @@ function openRow(c: Candidate, i: number) {
 				{#each types as t (t[0])}
 					<button
 						class={seg(review.typeFilter === t[0])}
-						onclick={() => {
-							review.typeFilter = t[0];
-							review.qIdx = 0;
-						}}>{t[1]}</button
+						onclick={() => (review.typeFilter = t[0])}>{t[1]}</button
 					>
 				{/each}
 			</div>
@@ -117,25 +119,23 @@ function openRow(c: Candidate, i: number) {
 				{#each confs as c (c[0])}
 					<button
 						class="{seg(review.confFilter === c[0])} {c[0] === 'all' ? '' : 'font-mono !text-[12px]'}"
-						onclick={() => {
-							review.confFilter = c[0];
-							review.qIdx = 0;
-						}}>{c[1]}</button
+						onclick={() => (review.confFilter = c[0])}>{c[1]}</button
 					>
 				{/each}
 			</div>
 			<span class="ml-auto text-[12px] whitespace-nowrap text-faint">
-				{rows.length} shown · {review.pendingCount} pending
+				{review.matching} matching · {review.pendingCount} pending
 			</span>
 		</div>
 
 		<div class="flex min-h-0 flex-1 flex-col">
-			<div class="min-h-0 flex-1 overflow-y-auto">
-				{#if !rows.length && review.scopeArea}
+			<div bind:this={list} class="min-h-0 flex-1 overflow-y-auto">
+				{#if !rows.length}
 					<div class="m-rise flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-4 text-[13px] text-muted">
-						<span>No candidates loaded for {review.scopeArea.name} yet.</span>
-						<button class="btn-secondary" onclick={() => review.setScope(null)}>Show all areas</button
-						>
+						<span>No pending candidate{review.scopeArea ? " in " + review.scopeArea.name : ""} matches these filters.</span>
+						{#if review.scopeArea}
+							<button class="btn-secondary" onclick={() => review.setScope(null)}>Show all areas</button>
+						{/if}
 					</div>
 				{/if}
 				<div class="md:hidden">
@@ -164,9 +164,7 @@ function openRow(c: Candidate, i: number) {
 							{/if}
 						</button>
 					{/each}
-					<div class="px-4 py-3 text-[12px] text-faint">
-						{rows.length} of {review.pendingCount} pending
-					</div>
+					<Pager class="px-4 py-3 text-[12px] text-faint" />
 				</div>
 
 				<div class="max-md:hidden">
@@ -227,11 +225,12 @@ function openRow(c: Candidate, i: number) {
 			</div>
 
 			<footer class="hidden shrink-0 items-center gap-2 border-t border-line px-4 py-[9px] text-[12px] text-faint md:flex">
-				<span>{rowsLabel}</span>
+				<Pager />
 				{#if keys.showHints}
 					{@const b = keys.bindings}
 					<span class="ml-auto hidden items-center gap-1.5 lg:flex">
 						<span class={KBD}>{keys.vim ? kbdLabel(b.down) + " " + kbdLabel(b.up) : "↓ ↑"}</span><span class="mr-3">move</span>
+						<span class={KBD}>{kbdLabel(b.prevPage)} {kbdLabel(b.nextPage)}</span><span class="mr-3">page</span>
 						<span class={KBD}>{kbdLabel(b.open)}</span><span class="mr-3">open</span>
 						<span class={KBD}>{kbdLabel(b.back)}</span><span>back</span>
 					</span>

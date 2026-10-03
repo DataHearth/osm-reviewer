@@ -20,8 +20,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("the queue lists every seeded candidate with the derived counts", async ({ page }) => {
-	await expect(page.getByText("10 shown · 10 pending")).toBeVisible();
-	await expect(page.getByText("Rows 1–10 of 10")).toBeVisible();
+	await expect(page.getByText("10 matching · 10 pending")).toBeVisible();
+	await expect(onScreen(page.getByText("Rows 1–10 of 10"))).toBeVisible();
 	// The same count again, in the top bar's scope button, which every screen shows.
 	await expect(page.getByRole("button", { name: "Area: Toulouse" })).toContainText("10 pending");
 
@@ -53,5 +53,44 @@ test("the area picker scopes the queue and the choice outlives a reload", async 
 
 	await page.getByRole("button", { name: "Show all areas" }).click();
 	await expect(page.getByRole("button", { name: "Area: All areas" })).toContainText("10 pending");
-	await expect(page.getByText("10 shown · 10 pending")).toBeVisible();
+	await expect(page.getByText("10 matching · 10 pending")).toBeVisible();
+});
+
+test("a filter reaches every area's candidates, not just a loaded page, and lives in the URL", async ({
+	page,
+}) => {
+	await page.getByRole("button", { name: "Area: Toulouse" }).click();
+	await onScreen(page.getByRole("button", { name: /^All areas/ })).click();
+	await expect(page.getByRole("button", { name: "Area: All areas" })).toBeVisible();
+
+	await page.getByRole("button", { name: "Closure", exact: true }).click();
+	await expect(page).toHaveURL("/?type=closure");
+	await expect(page.getByText("2 matching · 10 pending")).toBeVisible();
+	await expect(onScreen(page.getByText("Rows 1–2 of 2"))).toBeVisible();
+	for (const name of ["Pharmacie du Capitole", "Coiffure Saint-Cyprien"]) {
+		await expect(onScreen(page.getByText(name, { exact: true }))).toHaveCount(1);
+	}
+	await expect(onScreen(page.getByText("Fleuriste des Minimes", { exact: true }))).toHaveCount(0);
+	await expect(onScreen(page.getByRole("button", { name: "Previous page" }))).toBeDisabled();
+	await expect(onScreen(page.getByRole("button", { name: "Next page" }))).toBeDisabled();
+
+	await page.goBack();
+	await expect(page).toHaveURL("/");
+	await expect(page.getByText("10 matching · 10 pending")).toBeVisible();
+});
+
+test("a candidate opened from a filtered queue steps through that view and back to it", async ({
+	page,
+}) => {
+	await page.goto("/?type=closure");
+	await onScreen(page.getByText("Pharmacie du Capitole", { exact: true })).click();
+	await expect(page).toHaveURL("/review?type=closure");
+	await expect(onScreen(page.getByText("1 / 2", { exact: true }))).toBeVisible();
+
+	await page.getByRole("button", { name: /^Skip/ }).click();
+	await expect(onScreen(page.getByText("2 / 2", { exact: true }))).toBeVisible();
+	await expect(onScreen(page.getByText("Coiffure Saint-Cyprien", { exact: true }))).toBeVisible();
+
+	await page.keyboard.press("Escape");
+	await expect(page).toHaveURL("/?type=closure");
 });

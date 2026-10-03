@@ -71,10 +71,7 @@ const pick = (on: boolean) =>
 					{#each types as t (t[0])}
 						<button
 							class={pick(review.typeFilter === t[0])}
-							onclick={() => {
-								review.typeFilter = t[0];
-								review.qIdx = 0;
-							}}>{t[1]}</button
+							onclick={() => (review.typeFilter = t[0])}>{t[1]}</button
 						>
 					{/each}
 				</div>
@@ -86,10 +83,7 @@ const pick = (on: boolean) =>
 					{#each confs as c (c[0])}
 						<button
 							class={pick(review.confFilter === c[0])}
-							onclick={() => {
-								review.confFilter = c[0];
-								review.qIdx = 0;
-							}}>{c[1]}</button
+							onclick={() => (review.confFilter = c[0])}>{c[1]}</button
 						>
 					{/each}
 				</div>
@@ -114,7 +108,7 @@ const pick = (on: boolean) =>
 
 			<button
 				class="flex min-h-[48px] cursor-pointer items-center justify-center rounded-lg border-0 bg-accent text-[14px] font-semibold text-accent-ink"
-				onclick={close}>Show {review.visible.length} candidates</button
+				onclick={close}>Show {review.matching} candidates</button
 			>
 		</div>
 	</div>

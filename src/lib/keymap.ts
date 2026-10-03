@@ -3,6 +3,8 @@ export const ACTIONS = {
 	down: { scope: "queue", key: "j", does: "move selection down" },
 	up: { scope: "queue", key: "k", does: "move selection up" },
 	open: { scope: "queue", key: "Enter", does: "open the selected candidate" },
+	prevPage: { scope: "queue", key: "[", does: "previous page" },
+	nextPage: { scope: "queue", key: "]", does: "next page" },
 	accept: { scope: "review", key: "a", does: "accept the selected tags" },
 	reject: { scope: "review", key: "r", does: "reject the candidate" },
 	skip: { scope: "review", key: "x", does: "skip to the next candidate" },

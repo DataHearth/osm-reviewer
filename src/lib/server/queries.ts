@@ -1,5 +1,20 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	gte,
+	inArray,
+	isNotNull,
+	isNull,
+	lt,
+	lte,
+	notExists,
+	type SQL,
+	sql,
+} from "drizzle-orm";
 import { comma, daysSince, fmtDate, STALE_AFTER_DAYS, stamp } from "$lib/format";
+import type { QueueQuery, SortKey } from "$lib/schemas/queue";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
@@ -9,7 +24,6 @@ import type {
 	Candidate,
 	Changeset,
 	Counts,
-	Decision,
 	ScopeArea,
 	Source,
 	Staged,
@@ -180,32 +194,109 @@ export async function loadAreas(db: Db): Promise<{ areas: Area[]; yields: Yields
 	return { areas, yields };
 }
 
-/** The queue is the scoped area's, or every area's when the scope is null. */
+const cand = t.candidates;
+const tagsOf = (where?: SQL) => and(eq(t.tags.candidateId, cand.id), where);
+const tagRows = (where?: SQL) => sql`select 1 from ${t.tags} where ${tagsOf(where)}`;
+const evidencedTags = sql`select 1 from ${t.tags} inner join ${t.evidence} on ${eq(t.evidence.tagId, t.tags.id)} where ${tagsOf()}`;
+const bareTags = sql`select 1 from ${t.tags} left join ${t.evidence} on ${eq(t.evidence.tagId, t.tags.id)} where ${tagsOf(isNull(t.evidence.id))}`;
+
+/**
+ * What each column sorts by, matching what the row shows. Flags rank a candidate by
+ * its worst problem, in the order the flag chip picks the one it names. Age is the
+ * reverse of the fetch time, so its direction is flipped where the order is built.
+ */
+const SORT_EXPR: Record<SortKey, () => SQL> = {
+	type: () => sql`case ${cand.type} when 'new' then 0 when 'closure' then 1 else 2 end`,
+	name: () => sql`lower(${cand.name})`,
+	tags: () => sql`(select count(*) from ${t.tags} where ${tagsOf()})`,
+	source: () => sql`${cand.sourceId}`,
+	age: () => sql`${cand.fetchedAt}`,
+	flags: () => {
+		const staleBefore = new Date(Date.now() - STALE_AFTER_DAYS * 86_400_000);
+		return sql`case
+			when ${isNotNull(cand.headVersion)} then 5
+			when exists (${tagRows(eq(t.tags.invalid, true))}) then 4
+			when not exists (${evidencedTags}) then 3
+			when exists (${bareTags}) then 2
+			when ${lte(cand.fetchedAt, staleBefore)} then 1
+			else 0 end`;
+	},
+	conf: () => sql`${cand.conf}`,
+};
+
+const CONF_RANGE: Record<QueueQuery["conf"], SQL | undefined> = {
+	all: undefined,
+	high: gte(cand.conf, 0.85),
+	mid: and(gte(cand.conf, 0.6), lt(cand.conf, 0.85)),
+	low: lt(cand.conf, 0.6),
+};
+
+export interface QueuePage {
+	candidates: Candidate[];
+	/** Every undecided candidate the filters let through, across all pages. */
+	total: number;
+	page: number;
+	pages: number;
+	/** How many matching rows come before this page. */
+	offset: number;
+	/** The view as asked for, with `page` clamped to the pages that exist. */
+	query: QueueQuery;
+}
+
+/**
+ * One page of the queue: the undecided candidates of the scoped area, or of every area
+ * when the scope is null, filtered, sorted and paged by the view in the URL. A page past
+ * the end clamps to the last one, so deciding the last row of a page never strands the
+ * reviewer on an empty one.
+ */
 export async function loadQueue(
 	db: Db,
 	scope: string | null,
-): Promise<{
-	candidates: Candidate[];
-	decided: Record<string, Decision>;
-}> {
-	const rows = await db.query.candidates.findMany({
-		with: {
-			tags: {
-				orderBy: (x) => asc(x.position),
-				with: { evidence: { with: { parts: { orderBy: (x) => asc(x.position) } } } },
-			},
-			nearby: { orderBy: (x) => asc(x.position) },
-			conflictTags: { orderBy: (x) => asc(x.position) },
-			decision: true,
-		},
-		where: scope ? (x) => eq(x.areaId, scope) : undefined,
-		orderBy: (x) => [asc(x.areaId), desc(x.conf)],
-		limit: QUEUE_PAGE,
-	});
+	query: QueueQuery,
+	pageSize = QUEUE_PAGE,
+): Promise<QueuePage> {
+	const where = and(
+		scope ? eq(cand.areaId, scope) : undefined,
+		notExists(
+			db.select({ one: sql`1` }).from(t.decisions).where(eq(t.decisions.candidateId, cand.id)),
+		),
+		query.type === "all" ? undefined : eq(cand.type, query.type),
+		CONF_RANGE[query.conf],
+	);
+	const [{ total }] = await db.select({ total: n }).from(cand).where(where);
+	const pages = Math.max(1, Math.ceil(total / pageSize));
+	const page = Math.min(query.page, pages);
+	const offset = (page - 1) * pageSize;
 
-	const decided: Record<string, Decision> = {};
+	const ascending = (query.sort === "age") !== (query.dir === "asc");
+	const key = SORT_EXPR[query.sort]();
+	const ids = (
+		await db
+			.select({ id: cand.id })
+			.from(cand)
+			.where(where)
+			.orderBy(ascending ? asc(key) : desc(key), desc(cand.conf), asc(cand.id))
+			.limit(pageSize)
+			.offset(offset)
+	).map((r) => r.id);
+
+	const rows = ids.length
+		? await db.query.candidates.findMany({
+				with: {
+					tags: {
+						orderBy: (x) => asc(x.position),
+						with: { evidence: { with: { parts: { orderBy: (x) => asc(x.position) } } } },
+					},
+					nearby: { orderBy: (x) => asc(x.position) },
+					conflictTags: { orderBy: (x) => asc(x.position) },
+				},
+				where: (x) => inArray(x.id, ids),
+			})
+		: [];
+	const at = new Map(ids.map((id, i) => [id, i]));
+	rows.sort((x, y) => (at.get(x.id) ?? 0) - (at.get(y.id) ?? 0));
+
 	const candidates = rows.map((c) => {
-		if (c.decision) decided[c.id] = c.decision.kind;
 		const tags: Tag[] = c.tags.map((tag) => ({
 			op: tag.op,
 			k: tag.k,
@@ -258,7 +349,7 @@ export async function loadQueue(
 		} satisfies Candidate;
 	});
 
-	return { candidates, decided };
+	return { candidates, total, page, pages, offset, query: { ...query, page } };
 }
 
 export async function loadStaged(db: Db): Promise<Staged[]> {

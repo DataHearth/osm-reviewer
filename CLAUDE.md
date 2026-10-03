@@ -71,6 +71,16 @@ not data, so it rides in a `scope` cookie (an area id, or `all`) that the picker
 `loadCounts` reads; the queue and review loads take the resolved scope from `parent()`. No
 cookie, or one naming a removed area, falls back to the area with the most pending.
 
+Within the scope, the queue's view — type and confidence filters, sort column and direction,
+page — lives in the URL (`?type=closure&sort=conf&page=2`), parsed by
+`src/lib/schemas/queue.ts`, where a value that does not parse falls back to its default
+rather than failing. `loadQueue` applies all of it in SQL and fetches one page of undecided
+candidates; a page past the end clamps to the last. Never filter or sort the loaded rows on
+the client: a page is 50 of possibly thousands, so a client-side filter only ever sees those
+50. The store exposes the view as getters over `page.data.query`, and changing it is a
+`goto`, so back and forward step through views. `/review` reads the same query string and
+walks the same page, stepping across into the next one at its ends.
+
 Two bits of state are derived rather than stored, so a flag can never disagree with the
 table it describes: a candidate is **staged** when its decision is `accepted` and its
 `changeset_id` is null, and it is **in conflict** when `head_version` is not null.

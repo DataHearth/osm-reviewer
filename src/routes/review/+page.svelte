@@ -17,8 +17,9 @@ import {
 	typeText,
 } from "$lib/format";
 import { kbdLabel } from "$lib/keymap";
+import { queueSearch } from "$lib/schemas/queue";
 import { keys } from "$lib/stores/keys.svelte";
-import { review } from "$lib/stores/review.svelte";
+import { review, type Sending } from "$lib/stores/review.svelte";
 import type { PageData } from "./$types";
 
 let { data }: { data: PageData } = $props();
@@ -52,7 +53,7 @@ let rejectBtn = $state<HTMLButtonElement | null>(null);
 
 // The queue only moves on for a decision the server took, so a refusal leaves
 // the candidate exactly where it was — with the reason under the tag list.
-let sent = $state<string | null>(null);
+let sent = $state<Sending | null>(null);
 const settle = (kind: "accept" | "reject") => (valid: boolean) => {
 	if (sent && valid) review.settled(sent, kind);
 	sent = null;
@@ -64,7 +65,7 @@ const accepted = superForm(
 		id: "accept",
 		resetForm: false,
 		onSubmit: () => {
-			sent = c?.id ?? null;
+			sent = review.sending();
 		},
 		onUpdated: ({ form }) => settle("accept")(form.valid && !form.message),
 	},
@@ -75,11 +76,18 @@ const rejected = superForm(
 		id: "reject",
 		resetForm: false,
 		onSubmit: () => {
-			sent = c?.id ?? null;
+			sent = review.sending();
 		},
 		onUpdated: ({ form }) => settle("reject")(form.valid && !form.message),
 	},
 );
+
+// Without JS a post renders the page it was sent to, so the action URL carries the
+// queue's view; otherwise the page after a decision would be the unfiltered queue's.
+const actionUrl = (name: string) => {
+	const view = queueSearch(review.query);
+	return `?${view ? view + "&" : ""}/${name}`;
+};
 
 const acceptEnhance = accepted.enhance;
 const rejectEnhance = rejected.enhance;
@@ -107,16 +115,16 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 
 <section class="flex min-h-0 flex-1 flex-col font-sans">
 	{#if !c}
-		<EmptyState title={review.scopeArea && review.pendingCount ? "Nothing loaded" : "Nothing to review"}>
+		<EmptyState title={review.pendingCount ? "Nothing matches" : "Nothing to review"}>
 			<div class="text-ink-2">
-				{#if review.scopeArea && review.pendingCount}
-					No candidates loaded for {review.scopeArea.name} yet — {review.pendingCount} pending there.
+				{#if review.pendingCount}
+					None of the {review.pendingCount} pending{review.scopeArea ? " in " + review.scopeArea.name : ""} match the queue's filters.
 				{:else}
 					Every queued candidate{review.scopeArea ? " in " + review.scopeArea.name : ""} has been reviewed.
 				{/if}
 			</div>
 			<div class="mt-1 flex gap-2 max-md:flex-col">
-				<button class="btn-secondary" onclick={() => goto("/")}>Queue</button>
+				<button class="btn-secondary" onclick={() => goto(review.href("/"))}>Queue</button>
 				{#if review.scopeArea}
 					<button class="btn-secondary" onclick={() => review.setScope(null)}>Show all areas</button>
 				{/if}
@@ -132,7 +140,7 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 				<div class="flex items-center justify-between">
 					<button
 						class="-ml-1 flex min-h-[34px] cursor-pointer items-center gap-1 border-0 bg-transparent px-1 text-[13px] text-faint"
-						onclick={() => goto("/")}><span class="text-[16px] leading-none">‹</span> Queue</button
+						onclick={() => goto(review.href("/"))}><span class="text-[16px] leading-none">‹</span> Queue</button
 					>
 					<span class="font-mono text-[12px] tabular-nums text-ink-2">{review.position}</span>
 				</div>
@@ -313,7 +321,7 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 		>
 			<!-- Two actions, two schemas, so two forms. `contents` keeps them out of the
 			     bar's flex layout: the buttons stay its direct items. -->
-			<form method="POST" action="?/accept" use:acceptEnhance class="contents">
+			<form method="POST" action={actionUrl("accept")} use:acceptEnhance class="contents">
 				<input type="hidden" name="id" value={c?.id ?? ""} />
 				{#each selPositions as p (p)}<input type="hidden" name="tags" value={p} />{/each}
 				<button
@@ -328,7 +336,7 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 					></button
 				>
 			</form>
-			<form method="POST" action="?/reject" use:rejectEnhance class="contents">
+			<form method="POST" action={actionUrl("reject")} use:rejectEnhance class="contents">
 				<input type="hidden" name="id" value={c?.id ?? ""} />
 				<button bind:this={rejectBtn} type="submit" class="{action} border border-bad-line bg-transparent font-medium text-bad-ink"
 					>Reject<span class="max-md:hidden {KBD} !text-faint">{kbdLabel(keys.bindings.reject)}</span></button

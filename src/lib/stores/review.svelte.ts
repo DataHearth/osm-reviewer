@@ -1,13 +1,27 @@
-import { invalidateAll } from "$app/navigation";
+import { goto, invalidateAll } from "$app/navigation";
 import { page } from "$app/state";
 import { post } from "$lib/post";
 import type { AreaDraft } from "$lib/schemas/area";
+import {
+	DEFAULT_QUERY,
+	defaultDir,
+	type QueueQuery,
+	queueHref,
+	type SortKey,
+} from "$lib/schemas/queue";
 import type { SourceDraft } from "$lib/schemas/source";
-import type { Area, Candidate, Counts, Decision, ScopeArea, Source, Staged } from "$lib/types";
+import type { Area, Candidate, Counts, ScopeArea, Source, Staged } from "$lib/types";
 
 /** Which form a rail opened. The fields themselves live in the form's own store. */
 export interface DraftMark {
 	editId: string | null;
+}
+
+export interface Sending {
+	id: string;
+	name: string;
+	/** Where on the loaded page it sat. */
+	index: number;
 }
 
 /** Tags start selected unless they are unevidenced, invalid, or under conflict. */
@@ -28,10 +42,6 @@ class ReviewState {
 	sel = $state<Record<string, boolean[]>>({});
 	last = $state<{ kind: "accept" | "reject"; id: string; name: string } | null>(null);
 
-	typeFilter = $state<"all" | Candidate["type"]>("all");
-	confFilter = $state<"all" | "high" | "mid" | "low">("all");
-	sortKey = $state("type");
-	sortDir = $state<"asc" | "desc">("asc");
 	/** Phone filter sheet. Its trigger lives in the title bar, the sheet on the queue. */
 	filterSheet = $state(false);
 
@@ -81,8 +91,51 @@ class ReviewState {
 		return page.data.staged ?? [];
 	}
 
-	get decided(): Record<string, Decision> {
-		return page.data.decided ?? {};
+	/** The queue's view: filters, sort and page, as the URL carries them. */
+	get query(): QueueQuery {
+		return page.data.query ?? DEFAULT_QUERY;
+	}
+
+	get typeFilter() {
+		return this.query.type;
+	}
+
+	set typeFilter(type: QueueQuery["type"]) {
+		this.view({ type });
+	}
+
+	get confFilter() {
+		return this.query.conf;
+	}
+
+	set confFilter(conf: QueueQuery["conf"]) {
+		this.view({ conf });
+	}
+
+	get sortKey() {
+		return this.query.sort;
+	}
+
+	get sortDir() {
+		return this.query.dir;
+	}
+
+	get pageNo() {
+		return this.query.page;
+	}
+
+	get pages(): number {
+		return page.data.pages ?? 1;
+	}
+
+	/** Every pending candidate the view's filters let through, on any page. */
+	get matching(): number {
+		return page.data.total ?? 0;
+	}
+
+	/** How many matching candidates sort before the loaded page. */
+	get offset(): number {
+		return page.data.offset ?? 0;
 	}
 
 	private get counts(): Counts {
@@ -162,7 +215,8 @@ class ReviewState {
 	}
 
 	get position() {
-		return this.idx + 1 + " / " + this.total;
+		const c = this.candidate;
+		return this.offset + (c ? this.candidates.indexOf(c) : 0) + 1 + " / " + this.matching;
 	}
 
 	get selected() {
@@ -173,21 +227,6 @@ class ReviewState {
 
 	get selCount() {
 		return this.selected.filter(Boolean).length;
-	}
-
-	get visible() {
-		let r = this.candidates.filter((c) => !this.decided[c.id]);
-		if (this.typeFilter !== "all") r = r.filter((c) => c.type === this.typeFilter);
-		if (this.confFilter === "high") r = r.filter((c) => c.conf >= 0.85);
-		if (this.confFilter === "mid") r = r.filter((c) => c.conf >= 0.6 && c.conf < 0.85);
-		if (this.confFilter === "low") r = r.filter((c) => c.conf < 0.6);
-		const dir = this.sortDir === "asc" ? 1 : -1;
-		return r.slice().sort((a, b) => {
-			const x = this.sortValue(a, this.sortKey);
-			const y = this.sortValue(b, this.sortKey);
-			if (x !== y) return (x < y ? -1 : 1) * dir;
-			return b.conf - a.conf;
-		});
 	}
 
 	get blockedReason(): string | null {
@@ -222,27 +261,6 @@ class ReviewState {
 			},
 			{ label: "source freshness", ok: !c.stale },
 		];
-	}
-
-	sortValue(c: Candidate, k: string): string | number {
-		if (k === "type") return c.type === "new" ? 0 : c.type === "closure" ? 1 : 2;
-		if (k === "name") return c.name.toLowerCase();
-		if (k === "tags") return c.tags.length;
-		if (k === "source") return c.source;
-		if (k === "age") return parseInt(c.age, 10) || 0;
-		if (k === "flags")
-			return c.conflict
-				? 5
-				: c.hasInvalid
-					? 4
-					: c.allQuarantined
-						? 3
-						: c.hasNoEv
-							? 2
-							: c.stale
-								? 1
-								: 0;
-		return c.conf;
 	}
 
 	source(id: string | null) {
@@ -291,11 +309,34 @@ class ReviewState {
 		await invalidateAll();
 	}
 
-	sortBy(key: string) {
-		if (this.sortKey === key) this.sortDir = this.sortDir === "asc" ? "desc" : "asc";
-		else this.sortDir = key === "type" || key === "name" || key === "source" ? "asc" : "desc";
-		this.sortKey = key;
+	/** `path` carrying the queue's view, with `change` applied to it. */
+	href(path: string, change: Partial<QueueQuery> = {}) {
+		return queueHref(path, { ...this.query, ...change });
+	}
+
+	/**
+	 * Shows another view of the queue. Each is a history entry of its own, so back and
+	 * forward step through them; any change but paging starts again from page 1.
+	 */
+	private view(change: Partial<QueueQuery>) {
 		this.qIdx = 0;
+		return goto(this.href(page.url.pathname, { page: 1, ...change }), {
+			keepFocus: true,
+			noScroll: true,
+		});
+	}
+
+	sortBy(key: SortKey) {
+		const dir = this.sortKey !== key ? defaultDir(key) : this.sortDir === "asc" ? "desc" : "asc";
+		this.view({ sort: key, dir });
+	}
+
+	/** False when there is no page that way. */
+	async turnPage(d: 1 | -1) {
+		const p = this.pageNo + d;
+		if (p < 1 || p > this.pages) return false;
+		await this.view({ page: p });
+		return true;
 	}
 
 	open(c: Candidate, i = this.qIdx) {
@@ -314,11 +355,19 @@ class ReviewState {
 		}
 	}
 
-	move(d: number) {
-		const n = this.candidates.length;
-		if (!n) return;
+	/**
+	 * Steps through the loaded page, and past either end of it into the neighbouring
+	 * page. Only a queue that fits on one page wraps around.
+	 */
+	async move(d: 1 | -1) {
+		const list = this.candidates;
+		const c = this.candidate;
+		if (!c) return;
 		this.wanted = null;
-		this.idx = (this.idx + d + n) % n;
+		const next = list.indexOf(c) + d;
+		if (next >= 0 && next < list.length) this.idx = next;
+		else if (this.pages === 1) this.idx = (next + list.length) % list.length;
+		else if (await this.turnPage(d)) this.idx = d > 0 ? 0 : this.candidates.length - 1;
 	}
 
 	toggle(i: number) {
@@ -341,18 +390,28 @@ class ReviewState {
 
 	reject() {
 		const c = this.candidate;
-		if (!c || this.decided[c.id]) return;
+		if (!c) return;
 		this.submitReject?.(c.id);
 	}
 
-	/** What a decision the server has already taken does to the session. */
-	settled(id: string, kind: "accept" | "reject") {
-		const i = this.candidates.findIndex((x) => x.id === id);
-		const c = this.candidates[i];
-		if (!c) return;
-		this.last = { kind, id, name: c.name };
+	/**
+	 * The open candidate as a decision on it is sent. It has to be taken then: by the
+	 * time the decision settles, the reload has already dropped the candidate.
+	 */
+	sending(): Sending | null {
+		const c = this.candidate;
+		return c ? { id: c.id, name: c.name, index: this.candidates.indexOf(c) } : null;
+	}
+
+	/**
+	 * What a decision the server has already taken does to the session. The decided
+	 * candidate is gone from the reloaded page, so its index now holds the next one.
+	 */
+	settled(sent: Sending, kind: "accept" | "reject") {
+		this.last = { kind, id: sent.id, name: sent.name };
 		this.wanted = null;
-		this.idx = (i + 1) % this.candidates.length;
+		const i = Math.max(0, sent.index);
+		this.idx = i < this.candidates.length ? i : 0;
 	}
 
 	async undo() {

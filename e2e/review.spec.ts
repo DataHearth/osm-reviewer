@@ -42,7 +42,7 @@ test("accepting a candidate outlives a reload and takes it out of the queue", as
 	await page.goto("/");
 	await page.reload();
 	await expect(onScreen(page.getByText(CANDIDATE.name, { exact: true }))).toHaveCount(0);
-	await expect(page.getByText("9 shown · 9 pending")).toBeVisible();
+	await expect(page.getByText("9 matching · 9 pending")).toBeVisible();
 
 	// The two tags it was accepted with are what the composer would upload.
 	await page.goto("/composer");

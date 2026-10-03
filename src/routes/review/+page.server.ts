@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 
+import { parseQueueQuery } from "$lib/schemas/queue";
 import { acceptSchema, candidateSchema } from "$lib/schemas/review";
 import { db } from "$lib/server/db";
 import { rebase } from "$lib/server/mutations";
@@ -10,19 +11,14 @@ import { accept, RefusedError, reject, undo } from "$lib/server/review";
 import { requireUser } from "$lib/server/user";
 import type { Actions, PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ parent }) => {
+export const load: PageServerLoad = async ({ parent, url }) => {
 	const { counts } = await parent();
 	const [queue, acceptForm, rejectForm] = await Promise.all([
-		loadQueue(db, counts?.scope ?? null),
+		loadQueue(db, counts?.scope ?? null, parseQueueQuery(url.searchParams)),
 		superValidate(zod4(acceptSchema), { id: "accept" }),
 		superValidate(zod4(candidateSchema), { id: "reject" }),
 	]);
-	return {
-		candidates: queue.candidates,
-		decided: queue.decided,
-		acceptForm,
-		rejectForm,
-	};
+	return { ...queue, acceptForm, rejectForm };
 };
 
 export const actions: Actions = {
