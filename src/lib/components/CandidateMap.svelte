@@ -28,7 +28,13 @@ onMount(() => {
 		layer = L.layerGroup().addTo(map);
 		draw();
 	});
+	// Two instances exist (review header at md+, context pane on phone) and one
+	// is display:none at any width; the header one also grows and shrinks with
+	// its expand button. Either way the map has to re-measure when its box does.
+	const ro = new ResizeObserver(() => map?.invalidateSize());
+	if (el) ro.observe(el);
 	return () => {
+		ro.disconnect();
 		dead = true;
 		map?.remove();
 		map = null;

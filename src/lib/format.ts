@@ -11,6 +11,7 @@ export const num = (v: string | number) => {
 export const confTone = (v: number): Tone => (v >= 0.85 ? "ok" : v >= 0.6 ? "warn" : "bad");
 export const confText = (v: number) =>
 	v >= 0.85 ? "text-ok" : v >= 0.6 ? "text-warn" : "text-bad";
+export const pct = (v: number) => Math.floor(v * 100) + "%";
 export const confBg = (v: number) => (v >= 0.85 ? "bg-ok" : v >= 0.6 ? "bg-warn" : "bg-bad");
 
 export const toneText = (t: Tone | undefined) =>
@@ -22,12 +23,6 @@ export const toneDot = (t: Tone) =>
 	t === "ok" ? "bg-ok" : t === "warn" ? "bg-warn" : t === "bad" ? "bg-bad" : "bg-dim";
 
 export const OP_SIGN: Record<TagOp, string> = { add: "+", mod: "~", del: "-" };
-/** 3 px rule — fill only, so the op reads before the text does. */
-export const OP_BAR: Record<TagOp, string> = {
-	add: "border-l-add",
-	mod: "border-l-mod",
-	del: "border-l-del",
-};
 export const OP_BG: Record<TagOp, string> = {
 	add: "bg-add-bg",
 	mod: "bg-mod-bg",
@@ -40,12 +35,31 @@ export const OP_INK: Record<TagOp, string> = {
 	del: "text-bad-ink",
 };
 
+export const OP_LABEL: Record<TagOp, string> = { add: "+ add", mod: "~ modify", del: "- delete" };
+export const OP_CHIP: Record<TagOp, string> = {
+	add: "bg-add/15 text-ok-ink",
+	mod: "bg-mod/15 text-mod",
+	del: "bg-del/15 text-bad-ink",
+};
+
 export const typeLabel = (t: Candidate["type"]) =>
-	t === "new" ? "new poi" : t === "closure" ? "closure" : "tag update";
+	t === "new" ? "New POI" : t === "closure" ? "Closure" : "Tag update";
 export const typeSlug = (t: Candidate["type"]) =>
 	t === "new" ? "new-poi" : t === "closure" ? "closure" : "tag-update";
 export const typeText = (t: Candidate["type"]) =>
-	t === "new" ? "text-ok" : t === "closure" ? "text-del" : "text-muted";
+	t === "new" ? "text-ok-ink" : t === "closure" ? "text-bad-ink" : "text-muted";
+/** The dot that leads a queue row: the type, readable before the name. */
+export const typeDot = (t: Candidate["type"]) =>
+	t === "new" ? "bg-ok" : t === "closure" ? "bg-bad" : "bg-key";
+
+/** Status label: flags and banner tags. Outline or fill comes from the caller. */
+export const CHIP =
+	"inline-flex items-center rounded-md border px-2 text-[11.5px] font-medium leading-[20px] whitespace-nowrap";
+export const FLAG_BAD = "border-bad/50 text-bad-ink";
+export const FLAG_WARN = "border-warn/45 text-warn-ink";
+/** A key named in a shortcut hint, and its variant inside the accent button. */
+export const KBD = "font-mono text-[11px] font-normal text-ink-2";
+export const KBD_ACCENT = "font-mono text-[11px] font-normal opacity-65";
 
 export const statusText = (s: string) =>
 	s === "active" ? "text-ok-ink" : s === "paused" ? "text-warn" : "text-faint";

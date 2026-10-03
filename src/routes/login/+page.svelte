@@ -46,7 +46,7 @@ const facts = $derived([
 	<div class="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-8 md:px-10 md:py-10">
 		<div class="w-full max-w-[368px]">
 			<div class="mb-7 flex flex-col gap-1">
-				<span class="text-[15px] font-semibold tracking-[0.02em] text-accent">candidate-review</span>
+				<span class="text-[15px] font-semibold tracking-[0.02em] text-accent">osm-reviewer</span>
 				<span class="text-[11.5px] text-faint">{data.instance.host} · sign in to review the queue</span>
 			</div>
 

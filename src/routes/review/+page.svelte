@@ -4,7 +4,17 @@ import { superForm } from "sveltekit-superforms";
 import { goto } from "$app/navigation";
 import CandidateMap from "$lib/components/CandidateMap.svelte";
 import TagRow from "$lib/components/TagRow.svelte";
-import { osmUrl, typeSlug } from "$lib/format";
+import {
+	CHIP,
+	confText,
+	KBD,
+	KBD_ACCENT,
+	osmUrl,
+	pct,
+	typeDot,
+	typeLabel,
+	typeText,
+} from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { PageData } from "./$types";
 
@@ -20,6 +30,7 @@ const selPositions = $derived(review.selected.flatMap((on, i) => (on ? [i] : [])
 // is showing is state, but hiding is done with breakpoint classes so md and
 // up always show both regardless of it.
 let pane = $state<"tags" | "context">("tags");
+let mapOpen = $state(false);
 const failing = $derived(review.checks.filter((k) => !k.ok).length);
 
 let acceptBtn = $state<HTMLButtonElement | null>(null);
@@ -72,130 +83,154 @@ $effect(() => {
 });
 
 const action =
-	"cursor-pointer rounded-sm whitespace-nowrap px-4 py-[11px] max-md:min-h-[48px] max-md:flex-1 max-md:px-2 max-md:text-[13px] md:px-3 md:py-[5px]";
+	"inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg whitespace-nowrap px-4 py-[11px] text-[13px] max-md:min-h-[48px] max-md:flex-1 max-md:px-2 md:px-3.5 md:py-[7px]";
 const seg = (on: boolean) =>
-	"flex min-h-[38px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-sm border-0 text-[12.5px] " +
-	(on ? "bg-line text-accent" : "bg-transparent text-muted");
+	"flex min-h-[38px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border-0 text-[13px] font-medium " +
+	(on ? "bg-raised text-ink" : "bg-transparent text-muted");
+const label = "mb-1.5 text-[12px] font-medium text-faint";
+const banner = CHIP + " border-transparent font-semibold text-bg";
 </script>
 
-<section class="flex min-h-0 flex-1 flex-col">
+<section class="flex min-h-0 flex-1 flex-col font-sans">
 	<!-- On tablet the screen is one scroll column; on desktop this wrapper gets
 	     out of the way so the two panes scroll independently. -->
 	<div class="flex min-h-0 flex-1 flex-col overflow-y-auto lg:contents">
 		<!-- Phone is a pushed detail view: back affordance and position on one
-		     line, then identity. Tablet and desktop keep the single-row header. -->
-		<header class="shrink-0 border-b border-line bg-bar px-[14px] py-2 md:hidden">
+		     line, then identity. The map lives in the context pane there. -->
+		<header class="shrink-0 border-b border-line bg-bar px-4 pt-2 pb-3 md:hidden">
 			<div class="flex items-center justify-between">
 				<button
-					class="-ml-1 flex min-h-[34px] cursor-pointer items-center gap-1 border-0 bg-transparent px-1 text-[12.5px] text-faint"
-					onclick={() => goto("/")}><span class="text-[15px] leading-none">‹</span> queue</button
+					class="-ml-1 flex min-h-[34px] cursor-pointer items-center gap-1 border-0 bg-transparent px-1 text-[13px] text-faint"
+					onclick={() => goto("/")}><span class="text-[16px] leading-none">‹</span> Queue</button
 				>
-				<span class="text-[12px] tabular-nums text-ink">{review.position}</span>
+				<span class="font-mono text-[12px] tabular-nums text-ink-2">{review.position}</span>
 			</div>
-			<div class="flex items-baseline gap-2">
-				<span class="min-w-0 shrink-0 text-[15px] font-medium text-ink">{c?.name}</span>
-				<span class="min-w-0 flex-1 truncate text-[11.5px] text-faint">{c?.addr}</span>
-			</div>
-			<div class="mt-[3px] flex items-baseline gap-2.5 overflow-hidden text-[11.5px] whitespace-nowrap text-faint">
-				<a href={osmUrl(c?.osmId ?? "")} target="_blank" rel="noreferrer" class="shrink-0 text-[11.5px]">{c?.osmId}</a>
-				<span>{c ? typeSlug(c.type) : ""}</span>
-				<span class="truncate">{c?.source}</span>
-				<span class="ml-auto shrink-0">conf {c?.conf.toFixed(2)}</span>
-			</div>
+			<div class="mt-0.5 text-[17px] leading-snug font-semibold text-ink">{c?.name}</div>
+			<div class="truncate text-[13px] text-muted">{c?.addr}</div>
+			{#if c}
+				<div class="mt-2 flex items-center gap-2.5 overflow-hidden text-[12px] whitespace-nowrap text-faint">
+					<span class="flex shrink-0 items-center gap-1.5 {typeText(c.type)}"
+						><span class="h-[7px] w-[7px] rounded-full {typeDot(c.type)}"></span>{typeLabel(c.type)}</span
+					>
+					<a href={osmUrl(c.osmId)} target="_blank" rel="noreferrer" class="min-w-0 truncate font-mono text-[11.5px]">{c.osmId}</a>
+					<span class="ml-auto shrink-0">conf <span class="font-mono {confText(c.conf)}">{pct(c.conf)}</span></span>
+				</div>
+			{/if}
 		</header>
 
-		<header
-			class="hidden shrink-0 items-center justify-between gap-6 border-b border-line bg-bar px-4 py-[11px] md:flex"
-		>
-			<div class="flex min-w-0 max-w-full flex-nowrap items-baseline gap-[13px] whitespace-nowrap">
-				<a href={osmUrl(c?.osmId ?? "")} target="_blank" rel="noreferrer" class="text-[13.5px]">{c?.osmId}</a>
-				<span class="font-medium text-ink">{c?.name}</span>
-				<span class="truncate text-[12px] text-faint">{c?.addr}</span>
+		<!-- Tablet and desktop: the map sits beside the identity, so the place is
+		     read before any tag is. -->
+		<header class="hidden shrink-0 gap-4 border-b border-line bg-bar px-4 py-3.5 md:flex {mapOpen ? 'flex-col-reverse' : ''}">
+			<div
+				class="relative shrink-0 overflow-hidden rounded-lg border border-line {mapOpen
+					? 'h-[280px] w-full lg:h-[340px]'
+					: 'h-[84px] w-[132px] lg:h-[96px] lg:w-[160px]'}"
+			>
+				<CandidateMap class="h-full w-full !bg-panel" />
+				<button
+					class="absolute top-1.5 right-1.5 z-[1000] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-line bg-bar/90 text-[13px] leading-none text-muted hover:text-ink"
+					aria-label={mapOpen ? "Collapse map" : "Expand map"}
+					title={mapOpen ? "Collapse map" : "Expand map"}
+					onclick={() => (mapOpen = !mapOpen)}>{mapOpen ? "⤡" : "⤢"}</button
+				>
 			</div>
-			<div class="flex flex-nowrap items-center gap-4 text-[11.5px] whitespace-nowrap text-faint">
-				<span>{c ? typeSlug(c.type) : ""}</span>
-				<span>src={c?.source}</span>
-				<span>conf {c?.conf.toFixed(2)}</span>
-				<span class="text-ink">{review.position}</span>
+			<div class="flex min-w-0 flex-1 flex-col gap-[3px]">
+				<div class="flex items-baseline justify-between gap-3">
+					<span class="min-w-0 truncate text-[18px] font-semibold text-ink">{c?.name}</span>
+					<span class="shrink-0 font-mono text-[12px] tabular-nums text-ink-2">{review.position}</span>
+				</div>
+				<span class="truncate text-[13px] text-muted">{c?.addr}</span>
+				{#if c}
+					<div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-faint">
+						<a href={osmUrl(c.osmId)} target="_blank" rel="noreferrer" class="font-mono">{c.osmId}</a>
+						<span class="flex items-center gap-1.5 {typeText(c.type)}"
+							><span class="h-[7px] w-[7px] rounded-full {typeDot(c.type)}"></span>{typeLabel(c.type)}</span
+						>
+						<span class="font-mono">{c.source}</span>
+						<span>conf <span class="font-mono {confText(c.conf)}">{pct(c.conf)}</span></span>
+					</div>
+				{/if}
 			</div>
 		</header>
 
 		{#if c?.conflict}
 			<div class="m-rise shrink-0 border-b border-bad-line bg-bad-bg">
-				<div class="flex flex-wrap items-center gap-2.5 px-[14px] py-2 text-[12px] text-bad">
-					<span class="rounded-xs bg-bad px-1.5 py-px font-semibold tracking-[0.05em] text-bg">CONFLICT</span>
-					<span>object moved from v{c.baseVersion} to v{c.headVersion} since fetch — {c.conflictWho}</span>
+				<div class="flex flex-wrap items-center gap-2.5 px-4 py-2.5 text-[13px] text-bad-ink">
+					<span class="{banner} bg-bad">Conflict</span>
+					<span>Object moved from v{c.baseVersion} to v{c.headVersion} since fetch — {c.conflictWho}</span>
 				</div>
 				<div class="grid gap-px border-t border-bad-line bg-bad-line md:grid-cols-2">
-					<div class="bg-panel px-[14px] py-[9px]">
-						<div class="mb-[5px] font-sans text-[10.5px] tracking-[0.08em] text-muted">THEIRS — v{c.headVersion} ON OSM NOW</div>
+					<div class="bg-panel px-4 py-2.5">
+						<div class={label}>Theirs — v{c.headVersion} on OSM now</div>
 						{#each c.theirs ?? [] as t (t.k)}
-							<div class="text-[12.5px] break-words text-muted"><span class="text-muted">{t.k}=</span>{t.v}</div>
+							<div class="font-mono text-[12.5px] [overflow-wrap:anywhere] text-muted"><span class="text-key">{t.k}=</span>{t.v}</div>
 						{/each}
 					</div>
-					<div class="bg-panel px-[14px] py-[9px]">
-						<div class="mb-[5px] font-sans text-[10.5px] tracking-[0.08em] text-muted">OURS — PROPOSED FROM v{c.baseVersion}</div>
+					<div class="bg-panel px-4 py-2.5">
+						<div class={label}>Ours — proposed from v{c.baseVersion}</div>
 						{#each c.ours ?? [] as t (t.k)}
-							<div class="text-[12.5px] break-words text-ink"><span class="text-muted">{t.k}=</span>{t.v}</div>
+							<div class="font-mono text-[12.5px] [overflow-wrap:anywhere] text-ink"><span class="text-key">{t.k}=</span>{t.v}</div>
 						{/each}
 					</div>
 				</div>
-				<div class="flex flex-wrap gap-2 px-[14px] py-2 max-md:flex-col">
+				<div class="flex flex-wrap gap-2 px-4 py-2.5 max-md:flex-col">
 					<button
-						class="cursor-pointer rounded-sm border border-edge-strong bg-raised px-[11px] py-1 text-[12px] whitespace-nowrap text-ink max-md:min-h-[44px]"
-						onclick={() => review.rebase()}>rebase onto v{c.headVersion}</button
+						class="cursor-pointer rounded-lg border border-edge-strong bg-raised px-3 py-1.5 text-[13px] font-medium whitespace-nowrap text-ink max-md:min-h-[44px]"
+						onclick={() => review.rebase()}>Rebase onto v{c.headVersion}</button
 					>
 					<button
-						class="cursor-pointer rounded-sm border border-line bg-transparent px-[11px] py-1 text-[12px] whitespace-nowrap text-muted max-md:min-h-[44px]"
-						onclick={() => review.reject()}>keep theirs, drop candidate</button
+						class="cursor-pointer rounded-lg border border-line bg-transparent px-3 py-1.5 text-[13px] whitespace-nowrap text-muted max-md:min-h-[44px]"
+						onclick={() => review.reject()}>Keep theirs, drop candidate</button
 					>
-					<span class="self-center text-[11px] text-bad md:ml-auto">accept is blocked until resolved</span>
+					<span class="self-center text-[12px] text-bad md:ml-auto">Accept is blocked until resolved</span>
 				</div>
 			</div>
 		{/if}
 
 		{#if c?.stale}
-			<div
-				class="m-rise flex shrink-0 flex-wrap items-center gap-2.5 border-b border-warn-line bg-warn-bg px-[14px] py-2 text-[12px] text-warn md:px-4"
-			>
-				<span class="rounded-xs bg-warn px-1.5 py-px font-semibold tracking-[0.05em] text-bg">STALE</span>
-				<span class="text-warn-ink max-md:basis-full">source fetched {c.fetched}, {c.stale} days ago — queued {c.stale} days without review</span>
+			<div class="m-rise flex shrink-0 flex-wrap items-center gap-2.5 border-b border-warn-line bg-warn-bg px-4 py-2.5 text-[13px]">
+				<span class="{banner} bg-warn">Stale</span>
+				<span class="text-warn-ink max-md:basis-full"
+					>Source fetched <span class="font-mono text-[12px]">{c.fetched}</span>, {c.stale} days ago — queued {c.stale} days without review</span
+				>
 				<button
-					class="cursor-pointer rounded-sm border border-[#55492c] bg-[#302a1e] px-2.5 py-[3px] text-[12px] text-warn md:ml-auto"
-					onclick={() => (review.last = null)}>refetch source</button
+					class="cursor-pointer rounded-lg border border-warn-line bg-transparent px-3 py-1 text-[12.5px] font-medium text-warn md:ml-auto"
+					onclick={() => (review.last = null)}>Refetch source</button
 				>
 			</div>
 		{/if}
 
 		{#if c?.allQuarantined}
-			<div
-				class="m-rise flex shrink-0 flex-wrap items-center gap-2.5 border-b border-bad-line bg-bad-bg px-[14px] py-2 text-[12px] text-bad md:px-4"
-			>
-				<span class="rounded-xs bg-bad px-1.5 py-px font-semibold tracking-[0.05em] text-bg">QUARANTINED</span>
+			<div class="m-rise flex shrink-0 flex-wrap items-center gap-2.5 border-b border-bad-line bg-bad-bg px-4 py-2.5 text-[13px] text-bad-ink">
+				<span class="{banner} bg-bad">Quarantined</span>
 				<span
-					>no proposed value appears in the source. Extraction is unverifiable — this candidate cannot be accepted, only rejected or
+					>No proposed value appears in the source. Extraction is unverifiable — this candidate cannot be accepted, only rejected or
 					sent back for re-extraction.</span
 				>
 			</div>
 		{/if}
 
-		<div class="sticky top-0 z-2 flex shrink-0 gap-1 border-b border-line-soft bg-panel px-2 py-1.5 md:hidden">
+		<div class="sticky top-0 z-2 flex shrink-0 gap-1 border-b border-line bg-panel px-2 py-1.5 md:hidden">
 			<button class={seg(pane === "tags")} onclick={() => (pane = "tags")}>
-				tags <span class="text-[11px] opacity-70">{selCount}/{c?.tags.length ?? 0}</span>
+				Tags <span class="font-mono text-[11px] font-normal text-faint">{selCount}/{c?.tags.length ?? 0}</span>
 			</button>
 			<button class={seg(pane === "context")} onclick={() => (pane = "context")}>
-				context
-				{#if failing}<span class="rounded-full bg-bad px-[5px] py-px text-[10px] text-bg">{failing}</span>{/if}
+				Context
+				{#if failing}<span class="rounded-full bg-bad px-[6px] py-px text-[10.5px] text-bg">{failing}</span>{/if}
 			</button>
 		</div>
 
 		<div class="flex flex-col md:shrink-0 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_312px] lg:overflow-hidden">
-			<div class="min-w-0 lg:overflow-y-auto lg:border-r lg:border-line {pane === 'context' ? 'max-md:hidden' : ''}">
+			<div
+				class="flex min-w-0 flex-col gap-2 p-2 md:p-3 lg:overflow-y-auto lg:border-r lg:border-line {pane === 'context'
+					? 'max-md:hidden'
+					: ''}"
+			>
 				{#each c?.tags ?? [] as tag, i ((c?.id ?? "") + tag.k)}
 					<TagRow {tag} index={i} selected={!!review.selected[i]} onToggle={() => review.toggle(i)} />
 				{/each}
-				<div class="px-[14px] py-[9px] text-[12.5px] leading-relaxed text-faint">
-					<span>unchanged</span> &nbsp;{c?.unchanged}
+				<div class="px-2 py-2 text-[12px] leading-relaxed text-faint">
+					<span class="mr-2 font-medium">Unchanged</span><span class="font-mono">{c?.unchanged}</span>
 				</div>
 			</div>
 
@@ -205,39 +240,45 @@ const seg = (on: boolean) =>
 					? 'max-md:hidden'
 					: ''}"
 			>
-					<CandidateMap class="h-[170px] border-b border-line bg-bar md:col-span-2 md:h-[120px] lg:col-span-1 lg:h-[180px]" />
-					<div class="border-b border-line-soft px-[13px] py-[10px] text-[12px] leading-[1.65]">
-						<div class="mb-0.5 font-sans text-[10.5px] tracking-[0.08em] text-muted">CHECKS</div>
+				<CandidateMap class="h-[170px] border-b border-line !bg-bar md:hidden" />
+				<div class="border-b border-line-soft px-4 py-3 text-[12.5px] leading-[1.65]">
+					<div class={label}>Checks</div>
+					<div class="flex flex-col gap-1">
 						{#each review.checks as k (k.label)}
 							<div class="flex items-baseline gap-2">
-								<span class="shrink-0 {k.ok ? 'text-ok' : 'text-bad'}">{k.ok ? "PASS" : "FAIL"}</span>
+								<span
+									class="shrink-0 rounded-[5px] px-1.5 font-mono text-[10.5px] leading-[17px] {k.ok
+										? 'bg-ok/15 text-ok-ink'
+										: 'bg-bad/15 text-bad-ink'}">{k.ok ? "pass" : "fail"}</span
+								>
 								<span class="text-muted">{k.label}</span>
 							</div>
 						{/each}
 					</div>
-					<div class="border-b border-line-soft px-[13px] py-[10px] text-[12px] leading-[1.65] text-muted">
-						<div class="mb-0.5 font-sans text-[10.5px] tracking-[0.08em] text-muted">NEARBY</div>
-						{#each c?.nearby ?? [] as n (n)}
-							<div>{n}</div>
-						{/each}
+				</div>
+				<div class="border-b border-line-soft px-4 py-3 text-[12.5px] leading-[1.65] text-muted">
+					<div class={label}>Nearby</div>
+					{#each c?.nearby ?? [] as n (n)}
+						<div>{n}</div>
+					{/each}
+				</div>
+				<div class="px-4 py-3 text-[12.5px] leading-[1.65] text-muted md:col-span-2 lg:col-span-1">
+					<div class={label}>Provenance</div>
+					<div class="grid grid-cols-[72px_minmax(0,1fr)] gap-x-2">
+						<span class="text-faint">Pipeline</span><span class="text-faint">not implemented</span>
+						<span class="text-faint">Fetched</span><span class="font-mono text-[12px]">{c?.fetched}</span>
 					</div>
-				<div class="px-[13px] py-[10px] text-[12px] leading-[1.65] text-muted">
-					<div class="mb-0.5 font-sans text-[10.5px] tracking-[0.08em] text-muted">PROVENANCE</div>
-					<div>pipeline <span class="text-faint">not implemented</span></div>
-					<div>fetched {c?.fetched}</div>
 				</div>
 			</aside>
 		</div>
 	</div>
 
 	{#if blocked || refusal}
-		<div
-			class="m-lift shrink-0 border-t border-bad-line bg-bad-deep px-[14px] py-[7px] text-[11.5px] text-bad md:px-4"
-		>{blocked ?? refusal}</div>
+		<div class="m-lift shrink-0 border-t border-bad-line bg-bad-deep px-4 py-2 text-[12.5px] text-bad-ink">{blocked ?? refusal}</div>
 	{/if}
 
 	<div
-		class="flex shrink-0 items-stretch gap-2 border-t border-line bg-bar px-3 py-[9px] text-[12px] text-faint max-md:pb-[calc(env(safe-area-inset-bottom)+9px)] md:flex-wrap md:items-center md:gap-[18px] md:px-4 md:py-[10px]"
+		class="flex shrink-0 items-stretch gap-2 border-t border-line bg-bar px-3 py-[9px] text-[12px] text-faint max-md:pb-[calc(env(safe-area-inset-bottom)+9px)] md:flex-wrap md:items-center md:px-4 md:py-[10px]"
 	>
 		<!-- Two actions, two schemas, so two forms. `contents` keeps them out of the
 		     bar's flex layout: the buttons stay its direct items. -->
@@ -251,29 +292,35 @@ const seg = (on: boolean) =>
 				class="{action} {blocked
 					? 'cursor-not-allowed border border-line bg-raised text-faint'
 					: 'border-0 bg-accent font-semibold text-accent-ink'}"
-				><span class="max-md:hidden">a &nbsp;</span>accept {selCount}<span class="max-md:hidden"
-					>&nbsp;{selCount === 1 ? "tag" : "tags"}</span
+				><span>Accept {selCount}<span class="max-md:hidden">&nbsp;{selCount === 1 ? "tag" : "tags"}</span></span><span
+					class="max-md:hidden {KBD_ACCENT}">A</span
 				></button
 			>
 		</form>
 		<form method="POST" action="?/reject" use:rejectEnhance class="contents">
 			<input type="hidden" name="id" value={c?.id ?? ""} />
-			<button bind:this={rejectBtn} type="submit" class="{action} border border-[#43312e] bg-raised text-bad"
-				><span class="max-md:hidden">r &nbsp;</span>reject</button
+			<button bind:this={rejectBtn} type="submit" class="{action} border border-bad-line bg-transparent font-medium text-bad-ink"
+				>Reject<span class="max-md:hidden {KBD} !text-faint">R</span></button
 			>
 		</form>
-		<button type="button" class="{action} border border-line bg-transparent text-muted" onclick={() => review.move(1)}
-			><span class="max-md:hidden">x &nbsp;</span>skip</button
+		<button
+			type="button"
+			class="{action} border border-transparent bg-transparent text-muted hover:text-ink max-md:border-line"
+			onclick={() => review.move(1)}>Skip<span class="max-md:hidden {KBD} !text-faint">X</span></button
 		>
-		<span class="hidden lg:inline">
-			<span class="text-[#4a4a53]">|</span>&nbsp; <b class="text-ink">1-9</b> toggle tag &nbsp; <b class="text-ink">j/k</b> next / prev
-			&nbsp; <b class="text-ink">u</b> undo &nbsp; <b class="text-ink">esc</b> queue
+		<span class="ml-4 hidden items-center gap-1.5 lg:flex">
+			<span class={KBD}>1–9</span><span class="mr-3">toggle tag</span>
+			<span class={KBD}>J K</span><span class="mr-3">next / prev</span>
+			<span class={KBD}>U</span><span class="mr-3">undo</span>
+			<span class={KBD}>Esc</span><span>queue</span>
 		</span>
 		<span class="ml-auto hidden text-muted lg:inline">
 			{#if review.last}{review.last.kind}ed {review.last.name} · u to undo{/if}
 		</span>
-		<button type="button" class="hidden cursor-pointer border-0 bg-transparent text-ink lg:inline" onclick={() => goto("/composer")}
-			>staged {review.stagedCount}</button
+		<button
+			type="button"
+			class="hidden cursor-pointer items-center gap-1.5 border-0 bg-transparent px-1 text-[12.5px] text-muted hover:text-ink lg:inline-flex"
+			onclick={() => goto("/composer")}>Staged <span class="font-mono text-accent">{review.stagedCount}</span></button
 		>
 	</div>
 </section>

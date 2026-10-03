@@ -140,7 +140,7 @@ const defRows = $derived(
 
 			<div class="px-4 pb-4">
 				<button
-					class="cursor-pointer rounded-sm border border-[#43312e] bg-transparent px-[11px] py-1 text-[12px] text-bad"
+					class="cursor-pointer rounded-sm border border-bad-line bg-transparent px-[11px] py-1 text-[12px] text-bad"
 					onclick={() => review.removeArea(a)}>remove area</button
 				>
 				<span class="ml-2.5 text-[11px] text-faint">
