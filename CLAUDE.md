@@ -251,11 +251,19 @@ on, so the directory must be writable — not just the file. Migrations are gene
 `.env.example` lists the whole environment surface — `DATABASE_PATH`, adapter-node's
 `HOST`/`PORT`/`ORIGIN`/`BODY_SIZE_LIMIT`, the `SSO_*` provider settings
 (`SSO_CLIENT_SECRET` is the one secret among them; unset makes a public client protected by
-PKCE alone) and the `SEED_ADMIN_*` overrides. SSO is off unless `SSO_ISSUER` is set, and
-`SSO_ENABLED=false` switches it off even then — which leaves an account with no local
-password no way in. `src/lib/server/config.ts` is where the identity-provider and seed
-values are read; everything else about the instance — version, sha,
-uptime, the health rows, the keymap — is fixture text and stays in `src/lib/data.ts`.
+PKCE alone) and the `SEED_ADMIN_*` overrides. Two more are set by the packaging rather than
+the operator: `OSM_REVIEWER_REV` (the commit, from the Nix package and the Dockerfile) and
+`OSM_REVIEWER_IMAGE` (from the Nix image and the chart). SSO is off unless
+`SSO_ISSUER` is set, and `SSO_ENABLED=false` switches it off even then — which leaves an
+account with no local password no way in. `src/lib/server/config.ts` is where the
+identity-provider and seed values are read.
+
+Nothing the running app shows is fixture text. `src/lib/server/instance.ts` measures the
+instance — version from `package.json`, uptime, the database file, free disk, source health,
+an identity-provider probe — and anything with nothing behind it yet (the pipeline, OSM
+upload, notification delivery, backups, the diagnostics bundle) says **not implemented** or
+**not configured** on screen, through an inert `INERT_BTN` control where it was a button.
+The Claude Design prototype keeps its mock values; this app does not.
 Vite loads `.env*` for `pnpm dev`; the scripts
 that run outside it (drizzle-kit, `db:seed`) get the same files through `loadEnvFiles` in
 `src/lib/server/env.ts`. Precedence is shell over `.env.<mode>` over `.env`, and the e2e run

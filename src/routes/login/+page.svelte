@@ -1,7 +1,6 @@
 <script lang="ts">
 import { superForm } from "sveltekit-superforms";
 import { dev } from "$app/environment";
-import { INSTANCE } from "$lib/data";
 import { INPUT } from "$lib/format";
 import { LOCKOUT_MINUTES, MAX_TRIES, SESSION_DAYS } from "$lib/schemas/auth";
 
@@ -35,11 +34,11 @@ const error = $derived($message?.text ?? $errors.email?.[0] ?? $errors.password?
 const errorTone = $derived($message?.tone ?? "bad");
 
 const facts = $derived([
-	["host", INSTANCE.host],
-	["version", INSTANCE.version + " · " + INSTANCE.sha],
-	["uptime", INSTANCE.uptime],
-	["pipeline worker", "running · last run " + INSTANCE.built.slice(0, 10)],
-	["identity provider", data.sso.enabled ? data.sso.host : "disabled"],
+	["host", data.instance.host],
+	["version", data.instance.version + " · " + data.instance.rev],
+	["uptime", data.instance.uptime],
+	["pipeline worker", "not implemented"],
+	["identity provider", data.sso.enabled ? data.sso.host : "not configured"],
 ]);
 </script>
 
@@ -48,7 +47,7 @@ const facts = $derived([
 		<div class="w-full max-w-[368px]">
 			<div class="mb-7 flex flex-col gap-1">
 				<span class="text-[15px] font-semibold tracking-[0.02em] text-accent">candidate-review</span>
-				<span class="text-[11.5px] text-faint">{INSTANCE.host} · sign in to review the queue</span>
+				<span class="text-[11.5px] text-faint">{data.instance.host} · sign in to review the queue</span>
 			</div>
 
 			{#if locked}

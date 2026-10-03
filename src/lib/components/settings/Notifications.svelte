@@ -2,7 +2,7 @@
 import { untrack } from "svelte";
 import { type SuperValidated, superForm } from "sveltekit-superforms";
 import { zod4Client } from "sveltekit-superforms/adapters";
-import { boxBtn, ghost, INPUT } from "$lib/format";
+import { boxBtn, INERT_BTN, INPUT } from "$lib/format";
 import { type NotifForm, notifSchema } from "$lib/schemas/settings";
 import { settings } from "$lib/stores/settings.svelte";
 import Field from "./Field.svelte";
@@ -40,17 +40,6 @@ function toggleEvent(k: keyof NotifForm["events"]) {
 
 function toggleChannel(k: "ntfy" | "webhook" | "email") {
 	$form[k].on = !$form[k].on;
-	settings.testResult = null;
-}
-
-function sendTest() {
-	settings.sendTest(
-		[
-			notif.ntfy.on ? "ntfy " + notif.ntfy.topic : null,
-			notif.webhook.on && notif.webhook.url ? "webhook" : null,
-			notif.email.on ? "email " + notif.email.to : null,
-		].filter((x): x is string => !!x),
-	);
 }
 </script>
 
@@ -175,11 +164,7 @@ function sendTest() {
 	</form>
 
 	<div class="flex flex-wrap items-center gap-3 border-t border-line-faint pt-4">
-		<button class="{ghost(false)} max-md:min-h-[44px]" onclick={sendTest}>send test notification</button>
-		{#if settings.testResult}
-			<span
-				class="m-rise min-w-0 flex-1 text-[11.5px] {settings.testResult.startsWith('sent') ? 'text-ok-ink' : 'text-warn-ink'}">{settings.testResult}</span
-			>
-		{/if}
+		<button class="{INERT_BTN} max-md:min-h-[44px]" disabled>send test notification</button>
+		<span class="text-[11.5px] text-faint">sending not implemented — channels are stored, never called</span>
 	</div>
 </Pane>

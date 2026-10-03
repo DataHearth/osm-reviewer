@@ -72,21 +72,15 @@ function openRow(c: Candidate, i: number) {
 			<div class="w-full max-w-[560px] overflow-hidden rounded-lg border border-line bg-panel">
 				<div class="border-b border-line px-[14px] py-[10px] text-[12px] tracking-[0.06em] text-ok">QUEUE EMPTY</div>
 				<div class="flex flex-col gap-[10px] px-[14px] py-4 text-[13px] leading-relaxed">
-					<div class="text-ink">Nothing pending. Everything the pipeline found has been reviewed.</div>
+					<div class="text-ink">Nothing pending. Every queued candidate has been reviewed.</div>
 					<div class="grid gap-x-3 gap-y-0.5 text-[12px] text-muted max-md:gap-y-2 md:grid-cols-[170px_1fr]">
-						<span class="max-md:text-faint">last pipeline run</span><span>{data.pipeline.lastRun} · 8 min</span>
-						<span class="max-md:text-faint">candidates discovered</span><span>0 new, {review.total} already queued</span>
-						<span class="max-md:text-faint">next run</span><span>{data.pipeline.nextRun}</span>
-						<span class="max-md:text-faint">sources polled</span><span>sirene, website-crawl, data.toulouse-metropole</span>
+						<span class="max-md:text-faint">candidates reviewed</span><span>{review.total}</span>
+						<span class="max-md:text-faint">pipeline</span><span class="text-faint">not implemented — nothing refills the queue</span>
 					</div>
 					<div class="mt-1 flex gap-2 max-md:flex-col">
 						<button
 							class="cursor-pointer rounded-sm border border-edge bg-raised px-3 py-[5px] text-ink max-md:min-h-[46px]"
 							onclick={() => goto("/history")}>history</button
-						>
-						<button
-							class="cursor-pointer rounded-sm border border-line bg-transparent px-3 py-[5px] text-faint hover:text-ink max-md:min-h-[46px]"
-							onclick={() => review.dismissEmpty()}>refill demo queue</button
 						>
 					</div>
 				</div>

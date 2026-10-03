@@ -1,4 +1,3 @@
-import { PIPELINE } from "$lib/data";
 import { db } from "$lib/server/db";
 import { loadCounts, loadQueue } from "$lib/server/queries";
 import type { PageServerLoad } from "./$types";
@@ -10,6 +9,5 @@ export const load: PageServerLoad = async () => {
 		decided: queue.decided,
 		area: queue.area,
 		counts,
-		pipeline: PIPELINE,
 	};
 };

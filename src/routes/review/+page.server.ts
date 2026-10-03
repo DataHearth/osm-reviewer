@@ -1,7 +1,7 @@
 import { fail } from "@sveltejs/kit";
 import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
-import { PIPELINE } from "$lib/data";
+
 import { acceptSchema, candidateSchema } from "$lib/schemas/review";
 import { db } from "$lib/server/db";
 import { rebase } from "$lib/server/mutations";
@@ -23,7 +23,6 @@ export const load: PageServerLoad = async () => {
 		counts,
 		acceptForm,
 		rejectForm,
-		pipeline: PIPELINE,
 	};
 };
 

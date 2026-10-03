@@ -23,6 +23,7 @@ import {
 import { sso } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { users } from "$lib/server/db/schema";
+import { release } from "$lib/server/instance";
 import type { Actions, PageServerLoad } from "./$types";
 
 const adapter = zod4(loginSchema);
@@ -78,6 +79,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	return {
 		adminEmail: demoAdminEmail(),
+		instance: release(url.host),
 		sso: { enabled: sso.enabled, provider: sso.provider, host: sso.host, group: sso.group },
 		form,
 	};

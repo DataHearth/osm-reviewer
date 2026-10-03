@@ -12,7 +12,14 @@ export interface DraftMark {
 /** Tags start selected unless they are unevidenced, invalid, or under conflict. */
 const freshSel = (c: Candidate) => c.tags.map((t) => !!t.ev && !t.invalid && !c.conflict);
 
-const NO_COUNTS = { pending: 0, staged: 0, total: 0 };
+type Counts = {
+	pending: number;
+	staged: number;
+	total: number;
+	area: { id: string; name: string } | null;
+};
+
+const NO_COUNTS: Counts = { pending: 0, staged: 0, total: 0, area: null };
 
 /**
  * The review session as the browser holds it: which candidate is open, what is
@@ -31,8 +38,6 @@ class ReviewState {
 	confFilter = $state<"all" | "high" | "mid" | "low">("all");
 	sortKey = $state("type");
 	sortDir = $state<"asc" | "desc">("asc");
-	/** The queue's own escape hatch out of the empty screen. */
-	emptyDismissed = $state(false);
 
 	upload = $state<"idle" | "failed" | "retry" | "sent">("idle");
 	uploadConflict = $state<{
@@ -49,10 +54,6 @@ class ReviewState {
 	srcDraft = $state<DraftMark | null>(null);
 	draft = $state<DraftMark | null>(null);
 	areaCard = $state<{ id: string; x: number; top: number } | null>(null);
-
-	/** Sources whose rejected API key has been replaced in this session. */
-	fixed = $state<Record<string, boolean>>({});
-	started = $state<Record<string, boolean>>({});
 
 	// A range input fires while it is being dragged and again when it is let go.
 	// Only the release writes, so the value in between lives here.
@@ -92,7 +93,7 @@ class ReviewState {
 		return page.data.decided ?? {};
 	}
 
-	private get counts(): { pending: number; staged: number; total: number } {
+	private get counts(): Counts {
 		return page.data.counts ?? NO_COUNTS;
 	}
 
@@ -108,8 +109,13 @@ class ReviewState {
 		return this.counts.staged;
 	}
 
+	/** The area the queue is drawn from, which the top bar names. */
+	get queueArea() {
+		return this.counts.area;
+	}
+
 	get empty() {
-		return this.counts.pending === 0 && !this.emptyDismissed;
+		return this.counts.pending === 0;
 	}
 
 	get links(): Record<string, boolean> {
@@ -120,7 +126,7 @@ class ReviewState {
 	}
 
 	get enabled(): Record<string, boolean> {
-		return Object.fromEntries(this.sources.map((s) => [s.id, s.enabled || !!this.fixed[s.id]]));
+		return Object.fromEntries(this.sources.map((s) => [s.id, s.enabled]));
 	}
 
 	get floors(): Record<string, number> {
@@ -364,10 +370,6 @@ class ReviewState {
 		this.doUpload();
 	}
 
-	dismissEmpty() {
-		this.emptyDismissed = true;
-	}
-
 	// ── sources & areas ─────────────────────────────────────────────────────
 	async toggleLink(srcId: string, areaId: string) {
 		await post("?/link", { sourceId: srcId, areaId, on: !this.links[srcId + ":" + areaId] });
@@ -385,18 +387,7 @@ class ReviewState {
 		this.floorDrag = rest;
 	}
 
-	runNow(srcId: string) {
-		this.started = { ...this.started, [srcId]: true };
-	}
-
-	/** Replacing a rejected key is what "run now" and "enable" mean on a failing source. */
-	async repair(srcId: string) {
-		this.fixed = { ...this.fixed, [srcId]: true };
-		await post("?/enabled", { id: srcId, enabled: true });
-	}
-
 	async toggleEnabled(s: Source) {
-		if (s.failing && !this.fixed[s.id] && !this.enabled[s.id]) return this.repair(s.id);
 		await post("?/enabled", { id: s.id, enabled: !this.enabled[s.id] });
 	}
 

@@ -58,7 +58,7 @@ const TITLES: Record<string, string> = {
 const title = $derived(TITLES[path] ?? "candidate-review");
 
 function openPendingArea() {
-	review.areaId = "tls";
+	review.areaId = review.queueArea?.id ?? null;
 	review.draft = null;
 	goto("/areas");
 }
@@ -94,7 +94,7 @@ function go(href: string) {
 			class="flex min-h-[36px] cursor-pointer items-center border-0 bg-transparent text-[11px] whitespace-nowrap text-faint hover:text-muted max-md:min-h-[40px] max-md:text-[11.5px] md:max-lg:hidden"
 			onclick={openPendingArea}
 		>
-			{review.pendingCount} pending<span class="max-md:hidden"> · Toulouse ▸</span>
+			{review.pendingCount} pending{#if review.queueArea}<span class="max-md:hidden"> · {review.queueArea.name} ▸</span>{/if}
 		</button>
 
 		<button

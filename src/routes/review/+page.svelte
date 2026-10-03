@@ -223,8 +223,7 @@ const seg = (on: boolean) =>
 					</div>
 				<div class="px-[13px] py-[10px] text-[12px] leading-[1.65] text-muted">
 					<div class="mb-0.5 font-sans text-[10.5px] tracking-[0.08em] text-muted">PROVENANCE</div>
-					<div>pipeline {data.pipeline.label}</div>
-					<div>extractor {data.pipeline.extractor}</div>
+					<div>pipeline <span class="text-faint">not implemented</span></div>
 					<div>fetched {c?.fetched}</div>
 				</div>
 			</aside>

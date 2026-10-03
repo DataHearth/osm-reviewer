@@ -89,6 +89,10 @@ export const ghost = (on: boolean) =>
 		? "border border-edge-strong bg-line text-accent"
 		: "border border-line bg-transparent text-muted hover:text-ink");
 
+/** A control for a feature with nothing behind it yet: visible, so the screen keeps its shape, but inert. */
+export const INERT_BTN =
+	"cursor-not-allowed rounded-sm border border-line bg-transparent px-[11px] py-1 text-[12px] whitespace-nowrap text-faint";
+
 /** The [x] / [ ] checkbox the whole app uses instead of a real one. */
 export const boxBtn = (on: boolean) =>
 	"cursor-pointer border-0 bg-transparent p-0 text-left text-[12.5px] " +

@@ -25,7 +25,7 @@ const agg = $derived.by(() => {
 		revTotal += rev;
 		accWeighted += num(review.metric(s, "accept rate")[1]) * rev;
 		unevWeighted += num(review.metric(s, "unevidenced")[1]) * rev;
-		errs += review.fixed[s.id] ? 0 : num(review.metric(s, "errors")[1]);
+		errs += num(review.metric(s, "errors")[1]);
 	}
 	return {
 		cands,
@@ -37,9 +37,7 @@ const agg = $derived.by(() => {
 });
 
 const enabledCount = $derived(review.sources.filter((s) => review.enabled[s.id]).length);
-const failing = $derived(
-	review.sources.filter((s) => s.failing && !review.fixed[s.id] && review.enabled[s.id]).length,
-);
+const failing = $derived(review.sources.filter((s) => s.failing && review.enabled[s.id]).length);
 
 const tiles = $derived([
 	{
@@ -86,12 +84,9 @@ const runs = $derived.by(() => {
 	}[] = [];
 	for (const s of review.sources) {
 		if (!review.enabled[s.id]) continue;
-		const fixed = !!review.fixed[s.id];
 		for (const r of s.runs) {
-			const errors = fixed ? "0" : r.errors;
-			const result = fixed && r.result !== "ok" ? "ok · key replaced" : r.result;
 			const tone: Tone =
-				num(errors) > 0 ? (/401|unauthor|fail/i.test(result) ? "bad" : "warn") : "ok";
+				num(r.errors) > 0 ? (/401|unauthor|fail/i.test(r.result) ? "bad" : "warn") : "ok";
 			log.push({
 				id: s.id,
 				t: stampKey(r.when),
@@ -99,8 +94,8 @@ const runs = $derived.by(() => {
 				name: s.name,
 				fetched: r.fetched,
 				cands: r.cands,
-				errors,
-				result,
+				errors: r.errors,
+				result: r.result,
 				tone,
 			});
 		}

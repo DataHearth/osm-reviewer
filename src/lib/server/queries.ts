@@ -209,9 +209,12 @@ export async function loadStaged(db: Db): Promise<Staged[]> {
 }
 
 /** Pending and staged, which the top bar and the phone nav show on every screen. */
-export async function loadCounts(
-	db: Db,
-): Promise<{ pending: number; staged: number; total: number }> {
+export async function loadCounts(db: Db): Promise<{
+	pending: number;
+	staged: number;
+	total: number;
+	area: { id: string; name: string } | null;
+}> {
 	const area = await queueArea(db);
 	const [done] = await db.select({ n: sql<number>`count(*)`.mapWith(Number) }).from(t.decisions);
 	const [staged] = await db
@@ -220,7 +223,12 @@ export async function loadCounts(
 		.where(and(eq(t.decisions.kind, "accepted"), isNull(t.decisions.changesetId)));
 
 	const total = area?.pending ?? 0;
-	return { pending: Math.max(0, total - done.n), staged: staged.n, total };
+	return {
+		pending: Math.max(0, total - done.n),
+		staged: staged.n,
+		total,
+		area: area && { id: area.id, name: area.name },
+	};
 }
 
 export async function loadChangesets(db: Db): Promise<Changeset[]> {

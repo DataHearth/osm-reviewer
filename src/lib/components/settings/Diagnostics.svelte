@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ghost, toneDot } from "$lib/format";
+import { ghost, INERT_BTN, toneDot } from "$lib/format";
 import { settings } from "$lib/stores/settings.svelte";
 import type { MetricRow } from "$lib/types";
 import Pane from "./Pane.svelte";
@@ -11,8 +11,7 @@ let {
 }: {
 	instance: {
 		version: string;
-		sha: string;
-		built: string;
+		rev: string;
 		image: string;
 		runtime: string;
 		uptime: string;
@@ -23,15 +22,26 @@ let {
 } = $props();
 
 const facts = $derived([
-	["version", instance.version + " · " + instance.sha],
-	["built", instance.built],
+	["version", instance.version + " · " + instance.rev],
 	["image", instance.image],
 	["runtime", instance.runtime],
 	["uptime", instance.uptime],
 	["database", instance.db],
-	["identity provider", sso.enabled ? sso.provider + " · " + sso.host : "disabled"],
-	["oidc client", sso.clientId + " · " + sso.scopes],
+	["identity provider", sso.enabled ? sso.provider + " · " + sso.host : "not configured"],
+	["oidc client", sso.enabled ? sso.clientId + " · " + sso.scopes : "not configured"],
 ]);
+
+const tally = $derived.by(() => {
+	const n = (tone: string) => health.filter((h) => h[3] === tone).length;
+	return [
+		[n("ok"), "ok"],
+		[n("warn"), n("warn") === 1 ? "warning" : "warnings"],
+		[n("bad"), "failing"],
+	]
+		.filter(([c]) => c)
+		.map(([c, label]) => c + " " + label)
+		.join(", ");
+});
 </script>
 
 <Pane title="diagnostics" desc="What the container reports about itself. Admin only — everything here is instance-wide.">
@@ -51,23 +61,19 @@ const facts = $derived([
 				<span class="flex items-center gap-2 text-[12px] text-faint">
 					<span class="h-[6px] w-[6px] shrink-0 rounded-full {toneDot(h[3] ?? null)}"></span>{h[0]}
 				</span>
-				<span class="text-[12px] text-ink">{h[1]}</span>
-				<span class="text-[11.5px] text-faint">{h[2] ?? ""}</span>
+				<span class="text-[12px] {h[3] ? 'text-ink' : 'text-faint'}">{h[1]}</span>
+				<span class="text-[11.5px] break-all text-faint">{h[2] ?? ""}</span>
 			</div>
 		{/each}
 	</div>
 
 	<div class="flex flex-wrap items-center gap-2.5 border-t border-line-faint pt-4">
 		<button class="{ghost(false)} max-md:min-h-[44px]" onclick={() => settings.runHealthCheck()}>run health check</button>
-		<button class="{ghost(false)} max-md:min-h-[44px]" onclick={() => settings.makeBundle(instance.version)}>build diagnostics bundle</button>
+		<button class="{INERT_BTN} max-md:min-h-[44px]" disabled>build diagnostics bundle</button>
+		<span class="text-[11.5px] text-faint">bundle not implemented</span>
 	</div>
 
 	{#if settings.healthChecked}
-		<div class="m-rise text-[11.5px] text-ok-ink">
-			checked {settings.healthChecked} · 4 ok, 2 warnings — unchanged since the last run
-		</div>
-	{/if}
-	{#if settings.bundle}
-		<div class="m-rise text-[11.5px] break-all text-ink-2">{settings.bundle}</div>
+		<div class="m-rise text-[11.5px] text-ok-ink">checked {settings.healthChecked} · {tally}</div>
 	{/if}
 </Pane>

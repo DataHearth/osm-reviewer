@@ -11,14 +11,7 @@ function meta(s: Source) {
 	if (!review.enabled[s.id]) return areaLabel + " · disabled";
 	if (!s.runs[0] || s.runs[0].when === "queued") return areaLabel + " · first run queued";
 	const mv = (label: string) => String(review.metric(s, label)[1]);
-	return (
-		areaLabel +
-		" · " +
-		mv("candidates") +
-		" cand · " +
-		(review.fixed[s.id] ? "0" : mv("errors")) +
-		" err"
-	);
+	return areaLabel + " · " + mv("candidates") + " cand · " + mv("errors") + " err";
 }
 </script>
 
@@ -51,7 +44,7 @@ function meta(s: Source) {
 		}}
 	>
 		<div class="flex min-w-0 items-center gap-2">
-			<span class="block h-[7px] w-[7px] shrink-0 rounded-full {en ? toneDot(healthTone(review.fixed[s.id] ? 'ok' : s.health)) : 'bg-dim'}"
+			<span class="block h-[7px] w-[7px] shrink-0 rounded-full {en ? toneDot(healthTone(s.health)) : 'bg-dim'}"
 			></span>
 			<span class="truncate text-[12.5px] {on ? 'text-ink' : en ? 'text-ink-2' : 'text-faint'}">{s.name}</span>
 		</div>

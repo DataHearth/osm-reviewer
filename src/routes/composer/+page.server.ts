@@ -1,9 +1,9 @@
 import { fail } from "@sveltejs/kit";
 import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
-import { PIPELINE } from "$lib/data";
 import { uploadSchema } from "$lib/schemas/review";
 import { db } from "$lib/server/db";
+import { CREATED_BY } from "$lib/server/instance";
 import { loadCounts, loadStaged } from "$lib/server/queries";
 import { RefusedError, upload } from "$lib/server/review";
 import { loadSettings } from "$lib/server/settings";
@@ -24,7 +24,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			zod4(uploadSchema),
 		),
 	]);
-	return { staged, counts, form, createdBy: PIPELINE.createdBy };
+	return { staged, counts, form, createdBy: CREATED_BY };
 };
 
 export const actions: Actions = {

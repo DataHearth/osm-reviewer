@@ -41,6 +41,9 @@ function configuration() {
 	return discovered;
 }
 
+/** Resolves once discovery has succeeded; after the first success it answers from the cache. */
+export const providerReachable = () => configuration().then(() => undefined);
+
 const callbackUrl = (origin: string) => new URL("/login/callback", origin).href;
 
 export async function beginSignIn(

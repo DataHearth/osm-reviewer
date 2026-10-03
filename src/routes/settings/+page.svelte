@@ -82,7 +82,7 @@ function open(id: string) {
 					<Shortcuts form={data.forms.keys} keymap={data.keymap} />
 				{:else if sec === "users"}
 					<Users {data} />
-				{:else}
+				{:else if data.instance}
 					<Diagnostics instance={data.instance} health={data.health} sso={data.sso} />
 				{/if}
 			</div>

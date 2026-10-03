@@ -1,15 +1,4 @@
-import type {
-	Area,
-	Candidate,
-	Changeset,
-	Evidence,
-	KeyRow,
-	MetricRow,
-	Rel,
-	Run,
-	Source,
-	User,
-} from "./types";
+import type { Area, Candidate, Changeset, Evidence, Rel, Run, Source, User } from "./types";
 
 /** Split a quote on `|` — odd segments are the matched span. */
 const P = (s: string) => s.split("|").map((text, i) => ({ text, mark: i % 2 === 1 }));
@@ -766,14 +755,6 @@ export const HISTORY: Changeset[] = (
 	result: h[4],
 }));
 
-export const PIPELINE = {
-	label: "discover@01-09-2026 · run 8841",
-	extractor: "qwen2.5-3b-instruct q4",
-	createdBy: "osm-candidate-pipeline/0.9.3",
-	lastRun: "14-09-2026 06:12",
-	nextRun: "14-09-2026 18:12",
-};
-
 // ── accounts ─────────────────────────────────────────────────────────────────
 /** The people with access. Passwords are fixtures: a real deployment checks a
     hash server-side, and SSO-provisioned accounts have none at all. */
@@ -837,36 +818,3 @@ export const SETTINGS = {
 	confirmAccept: false,
 	showHints: true,
 };
-
-export const INSTANCE = {
-	host: "review.lan",
-	version: "0.9.3",
-	sha: "b1f4c02",
-	built: "12-09-2026 19:02",
-	uptime: "6 d 4 h",
-	runtime: "node 22.7 · sqlite 3.46",
-	image: "ghcr.io/alanglois/candidate-review:0.9.3",
-	db: "41.8 MB · 243 candidates · 18,402 cached POIs",
-};
-
-export const HEALTH: MetricRow[] = [
-	["pipeline worker", "running", "last run 14-09-2026 06:12 · 8 min", "ok"],
-	["OSM API", "reachable", "api.openstreetmap.org · 182 ms", "ok"],
-	["sources", "3 of 4 healthy", "data.toulouse-metropole rejected its key", "warn"],
-	["identity provider", "reachable", "auth.lan · discovery cached 4 h", "ok"],
-	["disk", "41.8 MB of 20 GB", "host volume /srv/review", "ok"],
-	["backup", "never", "no backup target configured", "warn"],
-];
-
-/** Mirrors the handler in src/routes/+layout.svelte. */
-export const KEYMAP: KeyRow[] = [
-	["queue", "j / k", "move selection down / up"],
-	["queue", "enter", "open the selected candidate"],
-	["review", "a", "accept the selected tags"],
-	["review", "r", "reject the candidate"],
-	["review", "x", "skip to the next candidate"],
-	["review", "1 – 9", "toggle tag n"],
-	["composer", "enter", "upload the changeset"],
-	["global", "u", "undo the last decision"],
-	["global", "esc", "back to the queue"],
-];

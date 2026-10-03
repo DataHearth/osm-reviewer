@@ -1,3 +1,4 @@
+import { invalidateAll } from "$app/navigation";
 import { nowStamp } from "$lib/format";
 import { post } from "$lib/post";
 
@@ -13,9 +14,7 @@ class SettingsState {
 	dirty = $state<Record<string, boolean>>({});
 	saved = $state<Record<string, string>>({});
 
-	testResult = $state<string | null>(null);
 	healthChecked = $state<string | null>(null);
-	bundle = $state<string | null>(null);
 	disconnected = $state(false);
 
 	get anyDirty() {
@@ -31,21 +30,10 @@ class SettingsState {
 		this.mark(s, false);
 	}
 
-	sendTest(on: string[]) {
-		this.testResult = on.length
-			? "sent · 200 ok · " + on.join(", ")
-			: "no channel enabled — nothing sent";
-	}
-
-	runHealthCheck() {
+	/** The health rows are computed by the page load, so re-running it is the check. */
+	async runHealthCheck() {
+		await invalidateAll();
 		this.healthChecked = nowStamp();
-	}
-
-	makeBundle(version: string) {
-		this.bundle =
-			"review-" +
-			version +
-			"-diagnostics.tar.gz · 184 KB · logs, config, health (no candidate data)";
 	}
 
 	async toggleOsm() {

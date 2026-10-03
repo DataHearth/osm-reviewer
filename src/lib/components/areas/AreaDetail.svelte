@@ -1,10 +1,9 @@
 <script lang="ts">
 // One saved area: the boundary it watches, what the last 30 days produced,
 // and which global sources are switched on inside it.
-import { goto } from "$app/navigation";
 import AreaMap from "$lib/components/AreaMap.svelte";
 import MetricTiles from "$lib/components/MetricTiles.svelte";
-import { boxBtn, ghost, healthTone, statusPill } from "$lib/format";
+import { boxBtn, ghost, healthTone, INERT_BTN, statusPill } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
 
@@ -68,10 +67,7 @@ const defRows = $derived(
 				onclick={() => review.editArea(a)}>edit</button
 			>
 			<button class={ghost(paused)} onclick={() => review.togglePaused(a)}>{paused ? "resume" : "pause"}</button>
-			<button
-				class="cursor-pointer rounded-sm border border-edge-strong bg-raised px-[11px] py-1 text-[12px] whitespace-nowrap text-ink"
-				onclick={() => goto("/")}>run pipeline now</button
-			>
+			<button class={INERT_BTN} disabled title="the pipeline is not implemented">run pipeline · not implemented</button>
 		</div>
 	</div>
 
@@ -86,7 +82,7 @@ const defRows = $derived(
 				{@const on = !!review.links[s.id + ":" + a.id]}
 				{@const en = !!review.enabled[s.id]}
 				{@const y = review.yieldFor(s.id, a.id)}
-				{@const tone = !en ? "off" : healthTone(review.fixed[s.id] ? "ok" : s.health)}
+				{@const tone = !en ? "off" : healthTone(s.health)}
 				<div class="grid grid-cols-[26px_minmax(0,1fr)_104px_86px] items-center gap-2 border-b border-line-faint px-4 py-[9px] text-[12.5px]">
 					<button class={boxBtn(on)} onclick={() => review.toggleLink(s.id, a.id)}>{on ? "[x]" : "[ ]"}</button>
 					<span class="truncate {on ? 'text-ink' : 'text-faint'}">{s.name}</span>

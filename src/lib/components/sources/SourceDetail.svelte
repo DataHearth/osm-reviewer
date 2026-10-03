@@ -3,57 +3,24 @@
 // what its last four runs did.
 
 import MetricTiles from "$lib/components/MetricTiles.svelte";
-import { boxBtn, ghost, num } from "$lib/format";
+import { boxBtn, ghost, INERT_BTN, num } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
 
 const s = $derived(review.source(review.srcId));
-const fixed = $derived(!!review.fixed[s.id]);
-const started = $derived(!!review.started[s.id]);
 const en = $derived(!!review.enabled[s.id]);
 const floor = $derived(review.floors[s.id] ?? s.floor);
 
-/** Replacing the rejected key rewrites the three rows that referenced it. */
-const config = $derived(
-	s.config.map((r) => {
-		let [label, value, type] = [r[0], r[1], r[2]];
-		if (fixed && type === "bad") {
-			value = "••••••••••••a10c · added 14-09-2026";
-			type = undefined;
-		}
-		if (fixed && label === "next run") value = "16-09-2026 05:00";
-		if (fixed && label === "schedule") {
-			value = "weekly · Wed 05:00";
-			type = undefined;
-		}
-		return { label, value, type };
-	}),
-);
-
 const tiles = $derived(
-	s.metrics.map((m) => ({
-		label: m[0],
-		value: fixed && m[0] === "errors" ? "0" : m[1],
-		sub: fixed && m[0] === "errors" ? "key replaced" : m[2],
-		tone: (fixed && m[3] === "bad" ? "ok" : (m[3] ?? null)) as Tone,
-	})),
+	s.metrics.map((m) => ({ label: m[0], value: m[1], sub: m[2], tone: (m[3] ?? null) as Tone })),
 );
 
-const runs = $derived([
-	...(started
-		? [
-				{
-					when: "now",
-					dur: "—",
-					fetched: "—",
-					cands: "—",
-					errors: "—",
-					result: "queued · starting",
-				},
-			]
-		: []),
-	...s.runs,
-]);
+// Runs come newest first, so the failures at the head are the current streak.
+const streak = $derived.by(() => {
+	const i = s.runs.findIndex((r) => r.result.startsWith("ok"));
+	return i === -1 ? s.runs.length : i;
+});
+const lastOk = $derived(s.runs.find((r) => r.result.startsWith("ok")));
 
 const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 </script>
@@ -75,26 +42,25 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 					: 'border border-line bg-raised text-faint'}"
 				onclick={() => review.toggleEnabled(s)}>{en ? "enabled" : "disabled"}</button
 			>
-			<button
-				class="cursor-pointer rounded-sm border border-edge-strong bg-raised px-[11px] py-1 text-[12px] whitespace-nowrap text-ink"
-				onclick={() => (s.failing && !fixed ? review.repair(s.id) : review.runNow(s.id))}>run now</button
-			>
+			<button class={INERT_BTN} disabled title="the pipeline is not implemented">run now · not implemented</button>
 		</div>
 	</div>
 
-	{#if s.failing && !fixed}
+	{#if s.failing}
 		<div class="border-b border-bad-line bg-bad-bg px-[18px] py-[11px]">
 			<div class="flex flex-wrap items-center gap-2.5 text-[12px] text-bad">
-				<span class="rounded-xs bg-bad px-1.5 py-px font-semibold tracking-[0.05em] text-bg">AUTH FAILED</span>
-				<span class="text-ink">HTTP 401 on the last 3 runs — API key rejected</span>
+				<span class="rounded-xs bg-bad px-1.5 py-px font-semibold tracking-[0.05em] text-bg">FAILING</span>
+				<span class="text-ink">{s.runs[0]?.result ?? "no run recorded"} on the last {streak === 1 ? "run" : streak + " runs"}</span>
 			</div>
 			<div class="mt-[7px] text-[12px] text-warn-ink">
-				No candidates have entered the queue from this source since 27-08-2026. Existing candidates are unaffected.
+				{lastOk
+					? "No candidates have entered the queue from this source since " + lastOk.when.slice(0, 10) + "."
+					: "No run of this source has succeeded yet."} Existing candidates are unaffected.
 			</div>
 			<div class="mt-[9px] flex flex-wrap gap-2">
 				<button
 					class="cursor-pointer rounded-sm border-0 bg-accent px-3 py-1 text-[12px] font-semibold text-accent-ink"
-					onclick={() => review.repair(s.id)}>replace key</button
+					onclick={() => review.editSource(s)}>replace key</button
 				>
 				<button
 					class="cursor-pointer rounded-sm border border-line bg-transparent px-3 py-1 text-[12px] text-faint hover:text-ink"
@@ -110,13 +76,13 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 		<div class="min-w-0 border-r border-b border-line-soft">
 			<div class="border-b border-line-soft px-4 py-[9px] font-sans text-[10.5px] tracking-[0.08em] text-muted">CONFIGURATION</div>
 			<div class="grid grid-cols-[124px_minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 px-4 py-3 text-[12.5px]">
-				{#each config as r (r.label)}
-					<span class="text-[11px] text-muted">{r.label}</span>
+				{#each s.config as [label, value, type] (label)}
+					<span class="text-[11px] text-muted">{label}</span>
 					<span
-						class="min-w-0 break-words {r.type === 'bad' ? 'text-bad' : r.type === 'warn' ? 'text-warn-ink' : 'text-ink'} {r.type ===
+						class="min-w-0 break-words {type === 'bad' ? 'text-bad' : type === 'warn' ? 'text-warn-ink' : 'text-ink'} {type ===
 						'code'
 							? 'text-[12px]'
-							: ''}">{r.value}</span
+							: ''}">{value}</span
 					>
 				{/each}
 				<span class="text-[11px] text-muted">confidence floor</span>
@@ -182,17 +148,15 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 				<div class="{runCols} border-b border-line-faint px-4 py-[7px] font-sans text-[10.5px] tracking-[0.07em] text-faint">
 					<span>WHEN</span><span>DUR</span><span>FETCHED</span><span>CANDIDATES</span><span>ERRORS</span><span>RESULT</span>
 				</div>
-				{#each runs as r, i (r.when + i)}
-					{@const errors = fixed ? "0" : r.errors}
-					{@const result = fixed && r.result !== "ok" ? "ok · key replaced" : r.result}
+				{#each s.runs as r, i (r.when + i)}
 					<div class="{runCols} items-baseline border-b border-line-faint px-4 py-2 text-[12.5px]">
 						<span class="text-ink-2">{r.when}</span>
 						<span class="text-faint">{r.dur}</span>
 						<span class="text-faint">{r.fetched}</span>
 						<span class="text-ink">{r.cands}</span>
-						<span class={num(errors) > 0 ? "text-warn" : "text-faint"}>{errors}</span>
-						<span class="truncate {/401|fail/.test(result) ? 'text-bad' : /queued/.test(result) ? 'text-warn' : 'text-faint'}"
-							>{result}</span
+						<span class={num(r.errors) > 0 ? "text-warn" : "text-faint"}>{r.errors}</span>
+						<span class="truncate {/401|fail/.test(r.result) ? 'text-bad' : 'text-faint'}"
+							>{r.result}</span
 						>
 					</div>
 				{/each}
