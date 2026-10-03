@@ -41,7 +41,9 @@ test("the area picker scopes the queue and the choice outlives a reload", async 
 	await onScreen(page.getByRole("button", { name: /^Bordeaux/ })).click();
 
 	await expect(page.getByRole("button", { name: "Area: Bordeaux" })).toContainText("0 pending");
-	await expect(page.getByText("Nothing pending.")).toBeVisible();
+	await expect(
+		page.getByText("Every queued candidate in Bordeaux has been reviewed."),
+	).toBeVisible();
 	await page.reload();
 	await expect(page.getByRole("button", { name: "Area: Bordeaux" })).toBeVisible();
 
@@ -49,8 +51,7 @@ test("the area picker scopes the queue and the choice outlives a reload", async 
 	await expect(page.getByText("Nothing to review")).toBeVisible();
 	await page.goto("/");
 
-	await page.getByRole("button", { name: "Area: Bordeaux" }).click();
-	await onScreen(page.getByRole("button", { name: /^All areas/ })).click();
+	await page.getByRole("button", { name: "Show all areas" }).click();
 	await expect(page.getByRole("button", { name: "Area: All areas" })).toContainText("10 pending");
 	await expect(page.getByText("10 shown · 10 pending")).toBeVisible();
 });

@@ -85,13 +85,18 @@ function openRow(c: Candidate, i: number) {
 <section class="flex min-h-0 flex-1 flex-col font-sans">
 	{#if review.empty}
 		<EmptyState title="Queue empty">
-			<div class="text-ink-2">Nothing pending. Every queued candidate has been reviewed.</div>
+			<div class="text-ink-2">
+				Nothing pending. Every queued candidate{review.scopeArea ? " in " + review.scopeArea.name : ""} has been reviewed.
+			</div>
 			<div class="grid gap-x-3 gap-y-1 text-[12.5px] text-muted max-md:gap-y-2 md:grid-cols-[170px_1fr]">
 				<span class="text-faint">Candidates reviewed</span><span class="font-mono text-[12px]">{review.total}</span>
 				<span class="text-faint">Pipeline</span><span class="text-ink-2">{page.data.pipeline ? "scheduler on — sources refill the queue on their schedule" : "scheduler off — only a manual run refills the queue"}</span>
 			</div>
 			<div class="mt-1 flex gap-2 max-md:flex-col">
 				<button class="btn-secondary" onclick={() => goto("/history")}>History</button>
+				{#if review.scopeArea}
+					<button class="btn-secondary" onclick={() => review.setScope(null)}>Show all areas</button>
+				{/if}
 			</div>
 		</EmptyState>
 	{:else}
