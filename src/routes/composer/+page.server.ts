@@ -21,6 +21,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				retry: false,
 			},
 			zod4(uploadSchema),
+			{ errors: false },
 		),
 	]);
 	return { staged, form, createdBy: CREATED_BY };

@@ -16,6 +16,8 @@ import {
 	typeLabel,
 	typeText,
 } from "$lib/format";
+import { kbdLabel } from "$lib/keymap";
+import { keys } from "$lib/stores/keys.svelte";
 import { review } from "$lib/stores/review.svelte";
 import type { PageData } from "./$types";
 
@@ -322,26 +324,28 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 						? 'cursor-not-allowed border border-line bg-raised text-faint'
 						: 'border-0 bg-accent font-semibold text-accent-ink'}"
 					><span>Accept {selCount}<span class="max-md:hidden">&nbsp;{selCount === 1 ? "tag" : "tags"}</span></span><span
-						class="max-md:hidden {KBD_ACCENT}">A</span
+						class="max-md:hidden {KBD_ACCENT}">{kbdLabel(keys.bindings.accept)}</span
 					></button
 				>
 			</form>
 			<form method="POST" action="?/reject" use:rejectEnhance class="contents">
 				<input type="hidden" name="id" value={c?.id ?? ""} />
 				<button bind:this={rejectBtn} type="submit" class="{action} border border-bad-line bg-transparent font-medium text-bad-ink"
-					>Reject<span class="max-md:hidden {KBD} !text-faint">R</span></button
+					>Reject<span class="max-md:hidden {KBD} !text-faint">{kbdLabel(keys.bindings.reject)}</span></button
 				>
 			</form>
 			<button
 				type="button"
 				class="{action} border border-transparent bg-transparent text-muted hover:text-ink max-md:border-line"
-				onclick={() => review.move(1)}>Skip<span class="max-md:hidden {KBD} !text-faint">X</span></button
+				onclick={() => review.move(1)}>Skip<span class="max-md:hidden {KBD} !text-faint">{kbdLabel(keys.bindings.skip)}</span></button
 			>
 			<span class="ml-4 hidden items-center gap-1.5 lg:flex">
 				<span class={KBD}>1–9</span><span class="mr-3">toggle tag</span>
-				<span class={KBD}>J K</span><span class="mr-3">next / prev</span>
-				<span class={KBD}>U</span><span class="mr-3">undo</span>
-				<span class={KBD}>Esc</span><span>queue</span>
+				{#if keys.vim}
+					<span class={KBD}>{kbdLabel(keys.bindings.down)} {kbdLabel(keys.bindings.up)}</span><span class="mr-3">next / prev</span>
+				{/if}
+				<span class={KBD}>{kbdLabel(keys.bindings.undo)}</span><span class="mr-3">undo</span>
+				<span class={KBD}>{kbdLabel(keys.bindings.back)}</span><span>queue</span>
 			</span>
 			<span class="ml-auto hidden text-muted lg:inline">
 				{#if review.last}{review.last.kind}ed {review.last.name} · u to undo{/if}

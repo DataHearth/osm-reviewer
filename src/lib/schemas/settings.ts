@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ACTION_IDS, clashes, RESERVED } from "$lib/keymap";
 
 export const UPLOAD_TARGETS = ["openstreetmap.org", "master.apis.dev.openstreetmap.org"] as const;
 
@@ -54,11 +55,31 @@ export const notifSchema = z
 		message: "A recipient address is required while email is on.",
 	});
 
-export const keysSchema = z.object({
-	vim: z.boolean(),
-	confirmAccept: z.boolean(),
-	showHints: z.boolean(),
-});
+const binding = z
+	.string()
+	.min(1)
+	.refine((k) => !RESERVED.test(k), "The arrows and 1–9 are taken.");
+
+export const keysSchema = z
+	.object({
+		vim: z.boolean(),
+		confirmAccept: z.boolean(),
+		showHints: z.boolean(),
+		bindings: z.object(
+			Object.fromEntries(ACTION_IDS.map((a) => [a, binding])) as Record<
+				(typeof ACTION_IDS)[number],
+				typeof binding
+			>,
+		),
+	})
+	.superRefine((d, ctx) => {
+		for (const a of clashes(d.bindings))
+			ctx.addIssue({
+				code: "custom",
+				path: ["bindings", a],
+				message: "Clashes with another key on the same screen.",
+			});
+	});
 
 export const ROLES = ["admin", "reviewer"] as const;
 

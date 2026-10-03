@@ -41,9 +41,9 @@ class SettingsState {
 		this.healthChecked = nowStamp();
 	}
 
-	async toggleOsm() {
-		this.disconnected = !this.disconnected;
-		await post("?/osmConnection", { connected: !this.disconnected });
+	async disconnectOsm() {
+		this.disconnected = true;
+		await post("?/osmConnection", { connected: false });
 	}
 }
 

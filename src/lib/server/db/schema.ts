@@ -9,6 +9,7 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { Bindings } from "../../keymap";
 
 export const users = sqliteTable(
 	"users",
@@ -78,6 +79,7 @@ export const userSettings = sqliteTable("user_settings", {
 	vim: integer({ mode: "boolean" }).notNull().default(true),
 	confirmAccept: integer({ mode: "boolean" }).notNull().default(false),
 	showHints: integer({ mode: "boolean" }).notNull().default(true),
+	bindings: text({ mode: "json" }).$type<Partial<Bindings>>().notNull().default({}),
 });
 
 /**

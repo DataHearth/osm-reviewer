@@ -104,7 +104,7 @@ function togglePicker() {
 			<span class="text-[14px] font-semibold text-ink"
 				>{scopeName} <span class="font-normal {picker ? 'text-accent' : 'text-faint'}">{picker ? "▴" : "▾"}</span></span
 			>
-			<span class="text-[11px] text-faint"><span class="max-lg:hidden">osm-reviewer · </span>{review.pendingCount} pending</span>
+			<span class="text-[11px] text-faint">{review.pendingCount} pending</span>
 		</span>
 	</button>
 

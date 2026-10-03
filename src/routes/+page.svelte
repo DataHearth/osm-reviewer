@@ -15,6 +15,8 @@ import {
 	typeLabel,
 	typeText,
 } from "$lib/format";
+import { kbdLabel } from "$lib/keymap";
+import { keys } from "$lib/stores/keys.svelte";
 import { review } from "$lib/stores/review.svelte";
 import type { Candidate } from "$lib/types";
 
@@ -220,11 +222,14 @@ function openRow(c: Candidate, i: number) {
 
 			<footer class="hidden shrink-0 items-center gap-2 border-t border-line px-4 py-[9px] text-[12px] text-faint md:flex">
 				<span>{rowsLabel}</span>
-				<span class="ml-auto hidden items-center gap-1.5 lg:flex">
-					<span class={KBD}>J K</span><span class="mr-3">move</span>
-					<span class={KBD}>Enter</span><span class="mr-3">open</span>
-					<span class={KBD}>Esc</span><span>back</span>
-				</span>
+				{#if keys.showHints}
+					{@const b = keys.bindings}
+					<span class="ml-auto hidden items-center gap-1.5 lg:flex">
+						<span class={KBD}>{keys.vim ? kbdLabel(b.down) + " " + kbdLabel(b.up) : "↓ ↑"}</span><span class="mr-3">move</span>
+						<span class={KBD}>{kbdLabel(b.open)}</span><span class="mr-3">open</span>
+						<span class={KBD}>{kbdLabel(b.back)}</span><span>back</span>
+					</span>
+				{/if}
 			</footer>
 		</div>
 

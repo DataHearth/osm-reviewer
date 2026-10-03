@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 import { z } from "zod";
-import { KEYMAP } from "$lib/keymap";
 import { accountSchema, keysSchema, osmSchema, passwordSchema } from "$lib/schemas/settings";
 import { hashPassword, verifyPassword } from "$lib/server/auth/password";
 import { sso } from "$lib/server/config";
@@ -26,9 +25,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const user = requireUser(locals);
 	const panes = await loadSettings(db, user.id);
 	const [account, osm, keys, password] = await Promise.all([
-		superValidate(panes.account, zod4(accountSchema)),
-		superValidate(panes.osm, zod4(osmSchema)),
-		superValidate(panes.keys, zod4(keysSchema)),
+		superValidate(panes.account, zod4(accountSchema), { errors: false }),
+		superValidate(panes.osm, zod4(osmSchema), { errors: false }),
+		superValidate(panes.keys, zod4(keysSchema), { errors: false }),
 		superValidate(zod4(passwordSchema)),
 	]);
 
@@ -45,7 +44,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 			clientId: sso.clientId,
 			scopes: sso.scopes,
 		},
-		keymap: KEYMAP,
 	};
 };
 

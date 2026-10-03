@@ -56,7 +56,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		loadRels(db),
 		superValidate(zod4(sourceDraftSchema)),
 		superValidate(zod4(areaDraftSchema)),
-		loadNotif(db).then((v) => superValidate(v, zod4(notifSchema))),
+		loadNotif(db).then((v) => superValidate(v, zod4(notifSchema), { errors: false })),
 		superValidate(zod4(newUserSchema)),
 	]);
 

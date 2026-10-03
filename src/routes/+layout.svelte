@@ -5,6 +5,7 @@ import { page } from "$app/state";
 import BottomNav from "$lib/components/BottomNav.svelte";
 import TopBar from "$lib/components/TopBar.svelte";
 import { auth } from "$lib/stores/auth.svelte";
+import { keys } from "$lib/stores/keys.svelte";
 import { review } from "$lib/stores/review.svelte";
 
 let { children } = $props();
@@ -18,13 +19,17 @@ function onkeydown(e: KeyboardEvent) {
 	if (!auth.signedIn || onLogin) return;
 	const t = e.target as HTMLElement | null;
 	if (t && /INPUT|TEXTAREA/.test(t.tagName)) return;
+	// Leave the browser's own chords alone: ctrl+r is a reload, not a reject.
+	if (e.ctrlKey || e.metaKey || e.altKey) return;
 	const k = e.key;
+	const b = keys.bindings;
+	const vim = keys.vim;
 
-	if (k === "Escape") {
+	if (k === b.back) {
 		goto("/");
 		return;
 	}
-	if (k === "u") {
+	if (k === b.undo) {
 		e.preventDefault();
 		review.undo();
 		if (review.last === null) goto("/review");
@@ -33,13 +38,13 @@ function onkeydown(e: KeyboardEvent) {
 
 	if (path === "/") {
 		const rows = review.visible;
-		if (k === "j" || k === "ArrowDown") {
+		if ((vim && k === b.down) || k === "ArrowDown") {
 			e.preventDefault();
 			review.qIdx = Math.min(rows.length - 1, review.qIdx + 1);
-		} else if (k === "k" || k === "ArrowUp") {
+		} else if ((vim && k === b.up) || k === "ArrowUp") {
 			e.preventDefault();
 			review.qIdx = Math.max(0, review.qIdx - 1);
-		} else if (k === "Enter") {
+		} else if (k === b.open) {
 			const c = rows[review.qIdx];
 			if (c) {
 				review.open(c);
@@ -50,21 +55,23 @@ function onkeydown(e: KeyboardEvent) {
 	}
 
 	if (path === "/composer") {
-		if (k === "Enter") review.doUpload();
+		if (k === b.upload) review.doUpload();
 		return;
 	}
 
 	if (path !== "/review") return;
-	if (k === "a") {
+	if (k === b.accept) {
 		e.preventDefault();
-		review.accept();
-	} else if (k === "r") {
+		// ponytail: the browser's own confirm — Enter accepts, Esc cancels, so it stays on the keyboard.
+		const ask = keys.confirmAccept && review.candidate && !review.blockedReason;
+		if (!ask || confirm("Accept the selected tags?")) review.accept();
+	} else if (k === b.reject) {
 		e.preventDefault();
 		review.reject();
-	} else if (k === "x" || k === "j") {
+	} else if (k === b.skip || (vim && k === b.down)) {
 		e.preventDefault();
 		review.move(1);
-	} else if (k === "k") {
+	} else if (vim && k === b.up) {
 		e.preventDefault();
 		review.move(-1);
 	} else if (/^[1-9]$/.test(k)) {

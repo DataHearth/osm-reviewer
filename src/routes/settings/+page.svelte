@@ -65,7 +65,7 @@ function open(id: string) {
 				{:else if sec === "osm"}
 					<OsmAccount {data} />
 				{:else}
-					<Shortcuts form={data.forms.keys} keymap={data.keymap} />
+					<Shortcuts form={data.forms.keys} />
 				{/if}
 			</div>
 		{/key}

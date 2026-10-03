@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { stamp } from "$lib/format";
+import { resolveBindings } from "$lib/keymap";
 import type { AccountForm, KeysForm, NotifForm, OsmForm } from "$lib/schemas/settings";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
@@ -39,7 +40,12 @@ export async function loadSettings(db: Db, userId: string): Promise<SettingsPane
 			hashtag: s.osmHashtag,
 			perChangeset: s.osmPerChangeset,
 		},
-		keys: { vim: s.vim, confirmAccept: s.confirmAccept, showHints: s.showHints },
+		keys: {
+			vim: s.vim,
+			confirmAccept: s.confirmAccept,
+			showHints: s.showHints,
+			bindings: resolveBindings(s.bindings),
+		},
 		identity:
 			user?.osm && s.osmConnected
 				? {
@@ -116,9 +122,25 @@ export async function saveNotif(db: Db, v: NotifForm) {
 export async function saveKeys(db: Db, userId: string, v: KeysForm) {
 	await rowFor(db, userId);
 	db.update(t.userSettings)
-		.set({ vim: v.vim, confirmAccept: v.confirmAccept, showHints: v.showHints })
+		.set({
+			vim: v.vim,
+			confirmAccept: v.confirmAccept,
+			showHints: v.showHints,
+			bindings: v.bindings,
+		})
 		.where(eq(t.userSettings.userId, userId))
 		.run();
+}
+
+/** What the root layout's key handler needs, on every screen. */
+export async function loadKeys(db: Db, userId: string) {
+	const s = await rowFor(db, userId);
+	return {
+		vim: s.vim,
+		confirmAccept: s.confirmAccept,
+		showHints: s.showHints,
+		bindings: resolveBindings(s.bindings),
+	};
 }
 
 export function saveAccount(db: Db, userId: string, v: AccountForm) {

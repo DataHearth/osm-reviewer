@@ -2,7 +2,7 @@
 import { untrack } from "svelte";
 import { superForm } from "sveltekit-superforms";
 import { zod4Client } from "sveltekit-superforms/adapters";
-import { ghost, INPUT } from "$lib/format";
+import { ghost, INERT_BTN, INPUT } from "$lib/format";
 import { osmSchema, UPLOAD_TARGETS } from "$lib/schemas/settings";
 import { settings } from "$lib/stores/settings.svelte";
 import type { PageData } from "../../../routes/settings/$types";
@@ -41,9 +41,9 @@ const connected = $derived(!!identity && !settings.disconnected);
 		<div class="rounded-md border border-warn-line bg-warn-bg px-3 py-2.5">
 			<div class="text-[12.5px] text-warn-ink">no OSM account connected</div>
 			<p class="mt-1 text-[11.5px] leading-relaxed text-muted">
-				The composer can stage writes but cannot upload them. Connecting opens openstreetmap.org and asks for write_api.
+				The composer can stage writes but cannot upload them.
 			</p>
-			<button class="mt-2 {ghost(true)} max-md:min-h-[44px]" onclick={() => settings.toggleOsm()}>connect OSM account</button>
+			<button class="mt-2 {INERT_BTN} max-md:min-h-[44px]" disabled title="OSM sign-in is not implemented">connect OSM account · not implemented</button>
 		</div>
 	{:else}
 		<div class="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md border border-line bg-panel px-3 py-2.5">
@@ -51,7 +51,7 @@ const connected = $derived(!!identity && !settings.disconnected);
 				<div class="text-[12.5px] text-ink">{identity?.user}</div>
 				<div class="mt-0.5 text-[11.5px] text-faint">connected {identity?.connected} · {identity?.scopes}</div>
 			</div>
-			<button class="{ghost(false)} max-md:min-h-[44px]" onclick={() => settings.toggleOsm()}>disconnect</button>
+			<button class="{ghost(false)} max-md:min-h-[44px]" onclick={() => settings.disconnectOsm()}>disconnect</button>
 		</div>
 	{/if}
 

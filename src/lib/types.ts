@@ -188,9 +188,6 @@ export interface OsmIdentity {
 	scopes: string;
 }
 
-/** [action, keys, what it does] — the keymap +layout.svelte implements. */
-export type KeyRow = [string, string, string];
-
 /** A row of the admin's users pane. */
 export interface ManagedUser {
 	id: string;
