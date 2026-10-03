@@ -3,7 +3,7 @@
 // and which global sources are switched on inside it.
 import AreaMap from "$lib/components/AreaMap.svelte";
 import MetricTiles from "$lib/components/MetricTiles.svelte";
-import { boxBtn, ghost, healthTone, INERT_BTN, statusPill } from "$lib/format";
+import { boxBtn, ghost, healthTone, statusPill } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
 
@@ -67,7 +67,7 @@ const defRows = $derived(
 				onclick={() => review.editArea(a)}>edit</button
 			>
 			<button class={ghost(paused)} onclick={() => review.togglePaused(a)}>{paused ? "resume" : "pause"}</button>
-			<button class={INERT_BTN} disabled title="the pipeline is not implemented">run pipeline · not implemented</button>
+			<button class={ghost(false)} onclick={() => review.runPipeline(a)}>run pipeline</button>
 		</div>
 	</div>
 

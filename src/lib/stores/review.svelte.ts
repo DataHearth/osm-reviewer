@@ -403,6 +403,14 @@ class ReviewState {
 		await post("?/enabled", { id: s.id, enabled: !this.enabled[s.id] });
 	}
 
+	async runNow(s: Source) {
+		await post("?/runNow", { id: s.id });
+	}
+
+	async runPipeline(a: Area) {
+		await post("?/runArea", { id: a.id });
+	}
+
 	async togglePaused(a: Area) {
 		await post("?/paused", { id: a.id, paused: a.status !== "paused" });
 	}

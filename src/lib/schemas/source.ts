@@ -44,3 +44,5 @@ export const sourceLinkSchema = z.object({
 	areaId: z.string().min(1),
 	on: z.boolean(),
 });
+
+export const sourceIdSchema = z.object({ id: z.string().min(1) });

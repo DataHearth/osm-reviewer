@@ -18,9 +18,10 @@ import {
 	sourceDraftSchema,
 	sourceEnabledSchema,
 	sourceFloorSchema,
+	sourceIdSchema,
 	sourceLinkSchema,
 } from "$lib/schemas/source";
-import { sso } from "$lib/server/config";
+import { pipeline, sso } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { health, instanceFacts, release } from "$lib/server/instance";
 import {
@@ -34,6 +35,7 @@ import {
 	setSourceFloor,
 } from "$lib/server/mutations";
 import { sendTest } from "$lib/server/notify";
+import { kick, requestRuns, sourcesOfArea } from "$lib/server/pipeline/runner";
 import { loadAreas, loadSources } from "$lib/server/queries";
 import { loadNotif, saveNotif } from "$lib/server/settings";
 import { requireAdmin, requireUser } from "$lib/server/user";
@@ -86,7 +88,32 @@ export const actions: Actions = {
 		const form = await superValidate(request, zod4(sourceDraftSchema));
 		if (!form.valid) return fail(400, { form });
 		const id = applySourceDraft(db, form.data);
+		if (!form.data.editId && pipeline.enabled) kick(db);
 		return { form, id };
+	},
+
+	runNow: async ({ request, locals }) => {
+		requireUser(locals);
+		const form = await superValidate(request, zod4(sourceIdSchema));
+		if (!form.valid) return fail(400, { form });
+		if (requestRuns(db, [form.data.id]) === 0)
+			return message(form, "A run of this source is already in progress.", { status: 409 });
+		return { form };
+	},
+
+	runArea: async ({ request, locals }) => {
+		requireUser(locals);
+		const form = await superValidate(request, zod4(areaIdSchema));
+		if (!form.valid) return fail(400, { form });
+		if (requestRuns(db, sourcesOfArea(db, form.data.id)) === 0)
+			return message(
+				form,
+				"No enabled source is linked to this area, or its runs are already going.",
+				{
+					status: 409,
+				},
+			);
+		return { form };
 	},
 
 	enabled: async ({ request, locals }) => {

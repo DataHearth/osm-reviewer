@@ -1,4 +1,5 @@
 import { redirect } from "@sveltejs/kit";
+import { pipeline } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { loadCounts } from "$lib/server/queries";
 import { loadKeys } from "$lib/server/settings";
@@ -20,6 +21,7 @@ export const load: LayoutServerLoad = async ({ locals, url, cookies }) => {
 	return {
 		user: locals.user,
 		session: locals.session,
+		pipeline: pipeline.enabled,
 		counts: locals.user ? await loadCounts(db, cookies.get("scope")) : null,
 		keys: locals.user ? await loadKeys(db, locals.user.id) : null,
 	};

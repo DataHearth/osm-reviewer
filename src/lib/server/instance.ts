@@ -1,10 +1,11 @@
 import { statfsSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import { count, sql } from "drizzle-orm";
+import { and, count, eq, isNotNull, sql } from "drizzle-orm";
 import { env } from "$env/dynamic/private";
+import { stamp } from "$lib/format";
 import { providerReachable } from "$lib/server/auth/oidc";
 import { backupHealth } from "$lib/server/backup";
-import { osm, sso } from "$lib/server/config";
+import { osm, pipeline, sso } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import { resolveDatabasePath } from "$lib/server/db/path";
 import { candidates, sources } from "$lib/server/db/schema";
@@ -35,7 +36,13 @@ function uptime() {
 const rev = () => env.OSM_REVIEWER_REV || "unknown rev";
 
 /** What the login screen may say about the instance before anyone has signed in. */
-export const release = (host: string) => ({ host, version, rev: rev(), uptime: uptime() });
+export const release = (host: string) => ({
+	host,
+	version,
+	rev: rev(),
+	uptime: uptime(),
+	pipeline: pipeline.enabled ? "scheduler on" : "scheduler off",
+});
 
 /** WAL keeps recent writes beside the main file until a checkpoint, so it counts too. */
 function databaseBytes(path: string) {
@@ -119,10 +126,40 @@ function sourceHealth(db: Db): MetricRow {
 	];
 }
 
+function pipelineWorker(db: Db): MetricRow {
+	if (!pipeline.enabled)
+		return [
+			"pipeline worker",
+			"scheduler off",
+			"PIPELINE_ENABLED=false · runs only on request",
+			"warn",
+		];
+	const running = db
+		.select({ name: sources.name })
+		.from(sources)
+		.where(isNotNull(sources.runningSince))
+		.all();
+	const upcoming = db
+		.select({ at: sources.nextRunAt })
+		.from(sources)
+		.where(and(eq(sources.enabled, true), eq(sources.failing, false), isNotNull(sources.nextRunAt)))
+		.all()
+		.map((r) => r.at as Date);
+	const next = upcoming.length ? new Date(Math.min(...upcoming.map((d) => d.getTime()))) : null;
+	if (running.length)
+		return ["pipeline worker", "running", running.map((r) => r.name).join(", "), "ok"];
+	return [
+		"pipeline worker",
+		"idle",
+		next ? "next run " + stamp(next) : "no source is scheduled",
+		"ok",
+	];
+}
+
 /** Rows that read a fixed value are features with nothing behind them yet: no dot, no tone. */
 export async function health(db: Db): Promise<MetricRow[]> {
 	return [
-		["pipeline worker", NOT_IMPLEMENTED, "nothing feeds the queue yet"],
+		pipelineWorker(db),
 		await osmApi(),
 		sourceHealth(db),
 		await identityProvider(),

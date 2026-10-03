@@ -1,5 +1,6 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
+import { page } from "$app/state";
 import EmptyState from "$lib/components/EmptyState.svelte";
 import QueueFilterSheet from "$lib/components/QueueFilterSheet.svelte";
 import {
@@ -87,7 +88,7 @@ function openRow(c: Candidate, i: number) {
 			<div class="text-ink-2">Nothing pending. Every queued candidate has been reviewed.</div>
 			<div class="grid gap-x-3 gap-y-1 text-[12.5px] text-muted max-md:gap-y-2 md:grid-cols-[170px_1fr]">
 				<span class="text-faint">Candidates reviewed</span><span class="font-mono text-[12px]">{review.total}</span>
-				<span class="text-faint">Pipeline</span><span class="text-faint">not implemented — nothing refills the queue</span>
+				<span class="text-faint">Pipeline</span><span class="text-ink-2">{page.data.pipeline ? "scheduler on — sources refill the queue on their schedule" : "scheduler off — only a manual run refills the queue"}</span>
 			</div>
 			<div class="mt-1 flex gap-2 max-md:flex-col">
 				<button class="btn-secondary" onclick={() => goto("/history")}>History</button>

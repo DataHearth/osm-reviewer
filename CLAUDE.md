@@ -25,6 +25,8 @@ are considered settled: change where data and validation live, not how a screen 
   account's own (account, OSM account, shortcuts), opened from the account menu;
   `/server` is everything instance-wide (sources, areas, notifications, users,
   diagnostics), behind the gear. `/server?s=<section>` opens a section directly.
+- `src/lib/server/pipeline/` — the in-process pipeline that fills the queue (see "The
+  pipeline"). Server-only, started from `src/hooks.server.ts`.
 - `src/lib/components/**` — shared markup. `areas/`, `sources/` and `settings/` hold the
   pieces of those screens.
 - `src/lib/server/db/` — schema, client, migration runner, seed. Server-only: nothing
@@ -100,7 +102,7 @@ passwords, never reach the client bundle.
 
 ## What the app fetches at runtime
 
-One external request, deliberately: **OSM raster tiles** from `tile.openstreetmap.org`,
+The browser makes one external request, deliberately: **OSM raster tiles** from `tile.openstreetmap.org`,
 via `darkMap()` in `src/lib/leaflet.ts`, on `/review` and the three area maps. It is the
 basemap a reviewer judges a POI's position against, so it earns its place — but it does
 tell the tile CDN which areas are being reviewed and when. If that ever matters, PMTiles
@@ -108,7 +110,8 @@ through `protomaps-leaflet` serves the same basemap from this origin without cha
 Leaflet; dropping the tile layer entirely is cheaper but guts `/review`, whose whole job is
 locating a POI at zoom 17.
 
-Everything else is local and should stay that way:
+Everything else the browser loads is local and should stay that way, and every host the
+server calls is configuration rather than code:
 
 - **Fonts are self-hosted** — `@fontsource/jetbrains-mono` and `@fontsource/public-sans`, weights 400/500/600,
   latin subset, imported at the top of `src/app.css`. Do not reintroduce the Google Fonts
@@ -116,7 +119,7 @@ Everything else is local and should stay that way:
   then falls back to system fonts and stops looking like the design), and it reports every
   page load to a third party.
 - **Leaflet is bundled**, and its marker sprites are inlined as `data:` URIs.
-- **The server talks to one host: the identity provider, and only while SSO is on.**
+- **Sign-in talks to one host: the identity provider, and only while SSO is on.**
   Discovery happens on the first SSO sign-in rather than at boot, so a provider that is
   down never stops the server starting; token exchange, JWKS and userinfo follow during
   each sign-in.
@@ -131,7 +134,10 @@ Everything else is local and should stay that way:
   map), the model at `LLM_URL`, and each source's own endpoint. All are read in
   `src/lib/server/config.ts`, and `PIPELINE_ENABLED=false` switches off the scheduler and
   every fetch at boot — the e2e run sets it so the suite stays offline. Every call carries a
-  timeout, and a failure is a recorded run or upload failure, never a crash.
+  timeout, and a failure is a recorded run or upload failure, never a crash. Calls to the OSM
+  family (Overpass, and the sites a crawl reads) send `osm-reviewer/<version> (+<ORIGIN>)`
+  as their User-Agent, so set `ORIGIN` to something an operator of those services can
+  contact.
 - **Boundary search goes through the server.** The area form's relation picker calls
   `GET /server/boundaries`, which asks `NOMINATIM_URL` (`src/lib/server/nominatim.ts`) — the
   browser never does, so the visitor's address stays off Nominatim and one process-wide
@@ -152,6 +158,46 @@ Everything else is local and should stay that way:
   client id is set.
 - Links to `openstreetmap.org` on `/review` and `/history` are anchors; they fetch nothing
   until clicked.
+
+## The pipeline
+
+Sources are read by a runner inside the server process, not a separate worker: one run at a
+time, process-wide, started by a one-minute timer (`startPipeline`, after migrations, only
+while `PIPELINE_ENABLED` is not `false`) or by a "run now" / "run pipeline" button, which
+only sets `sources.run_requested_at` and nudges the runner. An explicit request ignores
+`enabled`, the failure hold and the clock; the clock honours `next_run_at` (null on an enabled
+source means due). The run claim is `running_since`, cleared at boot and ignored once it is
+three hours old, so a crash cannot wedge a source.
+
+A run is source × linked area. A **registry** is streamed once for every area (the IRVE file is
+158 MB and never in memory; a data.gouv.fr dataset URL is resolved to its current CSV, because
+the file URL changes with every publish). An **api** is an Opendatasoft explore v2.1 endpoint,
+paged by 100 and switched to the `jsonl` export past the 10 000 offset ceiling. A **crawl**'s
+seed rule is either URLs or `key=*` on OSM POIs (`website=*`): the pages OSM already points
+at, same host only, robots.txt honoured, the budget and per-host delay read from the free
+text, and only the model extractor reads them. Relation areas are cut by their bounding box
+while a source is read, which lets in a neighbour's corner of the box; the OSM side uses
+Overpass's exact `area`.
+
+The **deterministic** extractor is a preset (`presets.ts`): `irve` and `annuaire-education`,
+named on the source or detected from the columns, and a source that fits none fails its run
+rather than guessing. The **model** extractor sends one record or page per call
+(`llm.ts`; OpenAI-compatible `/chat/completions` with a JSON schema, or the Anthropic Messages
+API with structured output, both by plain `fetch`) and treats the answer as a witness: a tag
+survives only if its quote is really on the page, its key matches the source's allowed
+patterns and its confidence clears the floor, which is also capped.
+
+Matching asks Overpass once per area for the source's `matching` selector plus whatever main
+tag the records carry (a filter written for `amenity=school` still finds kindergartens), then
+matches by shared ref (`ref:EU:EVSE`, `ref:UAI`, `ref:FR:SIRET`) before distance and name.
+Candidates upsert on `(source_id, source_record_key)`; a record whose `content_hash` is
+unchanged is left as the reviewer saw it, and a queued candidate whose OSM object has a newer
+version than its base is flagged in conflict instead of being silently recomputed. A candidate
+with a decision is never touched, and one the source no longer lists is swept only if
+undecided and only after a run that read the source to the end (a crawl never sweeps).
+
+Three failed runs in a row hold a source (`failing`) until someone runs it by hand; a failed
+run retries in an hour. The licence on the source travels in each evidence row's `kind`.
 
 ## Conventions
 
@@ -302,8 +348,8 @@ exception: the relay is an operator-edited instance setting, not environment.
 
 Nothing the running app shows is fixture text. `src/lib/server/instance.ts` measures the
 instance — version from `package.json`, uptime, the database file, free disk, source health,
-an identity-provider probe — and anything with nothing behind it yet (the pipeline, OSM
-upload) says **not implemented** or
+an identity-provider probe, the pipeline worker, the OSM API, backups — and anything with
+nothing behind it yet says **not implemented** or
 **not configured** on screen, through an inert `INERT_BTN` control where it was a button.
 The Claude Design prototype keeps its mock values; this app does not.
 

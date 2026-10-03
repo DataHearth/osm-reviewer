@@ -5,10 +5,12 @@ import { pipeline } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { bootstrapAdmin } from "$lib/server/db/bootstrap";
 import { runMigrations } from "$lib/server/db/migrate";
+import { startPipeline } from "$lib/server/pipeline/runner";
 
 export const init: ServerInit = async () => {
 	runMigrations(db);
 	await bootstrapAdmin(db);
+	startPipeline(db);
 	if (pipeline.enabled) startBackups(db);
 };
 

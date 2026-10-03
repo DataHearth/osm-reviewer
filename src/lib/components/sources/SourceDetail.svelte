@@ -3,7 +3,7 @@
 // what its last four runs did.
 
 import MetricTiles from "$lib/components/MetricTiles.svelte";
-import { boxBtn, ghost, INERT_BTN, num } from "$lib/format";
+import { boxBtn, ghost, num } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
 
@@ -42,7 +42,7 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 					: 'border border-line bg-raised text-faint'}"
 				onclick={() => review.toggleEnabled(s)}>{en ? "enabled" : "disabled"}</button
 			>
-			<button class={INERT_BTN} disabled title="the pipeline is not implemented">run now · not implemented</button>
+			<button class={ghost(false)} onclick={() => review.runNow(s)}>run now</button>
 		</div>
 	</div>
 

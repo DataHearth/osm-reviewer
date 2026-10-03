@@ -37,7 +37,7 @@ const facts = $derived([
 	["host", data.instance.host],
 	["version", data.instance.version + " · " + data.instance.rev],
 	["uptime", data.instance.uptime],
-	["pipeline worker", "not implemented"],
+	["pipeline worker", data.instance.pipeline],
 	["identity provider", data.sso.enabled ? data.sso.host : "not configured"],
 ]);
 </script>

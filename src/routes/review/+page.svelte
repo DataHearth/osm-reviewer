@@ -296,7 +296,7 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 					<div class="px-4 py-3 text-[12.5px] leading-[1.65] text-muted md:col-span-2 lg:col-span-1">
 						<div class={label}>Provenance</div>
 						<div class="grid grid-cols-[72px_minmax(0,1fr)] gap-x-2">
-							<span class="text-faint">Pipeline</span><span class="text-faint">not implemented</span>
+							<span class="text-faint">Source</span><span class="font-mono text-[12px]">{c?.source}</span>
 							<span class="text-faint">Fetched</span><span class="font-mono text-[12px]">{c?.fetched}</span>
 						</div>
 					</div>
