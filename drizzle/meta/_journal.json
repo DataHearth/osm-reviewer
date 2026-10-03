@@ -15,6 +15,13 @@
 			"when": 1789907405558,
 			"tag": "0001_stormy_unicorn",
 			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "6",
+			"when": 1791049452096,
+			"tag": "0002_fearless_doorman",
+			"breakpoints": true
 		}
 	]
 }

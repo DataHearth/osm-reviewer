@@ -65,7 +65,8 @@ in
       type = lib.types.attrsOf lib.types.str;
       default = { };
       example = {
-        SSO_ENABLED = "false";
+        SSO_ISSUER = "https://auth.example.net";
+        SSO_PROVIDER = "Authelia";
       };
       description = "Extra environment variables for the container.";
     };
@@ -75,7 +76,8 @@ in
       default = [ ];
       description = ''
         Files of secrets read into the container's environment, e.g. the first admin's
-        SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD. Not copied into the Nix store.
+        SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD, or SSO_CLIENT_SECRET. Not copied into
+        the Nix store.
       '';
     };
   };

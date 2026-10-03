@@ -39,7 +39,7 @@ const facts = $derived([
 	["version", INSTANCE.version + " · " + INSTANCE.sha],
 	["uptime", INSTANCE.uptime],
 	["pipeline worker", "running · last run " + INSTANCE.built.slice(0, 10)],
-	["identity provider", data.sso.enabled ? data.sso.host + " · reachable" : "disabled"],
+	["identity provider", data.sso.enabled ? data.sso.host : "disabled"],
 ]);
 </script>
 
@@ -138,7 +138,7 @@ const facts = $derived([
 					<span class="text-[12.5px] text-ink"
 						>{pending === "sso" ? "waiting for " + data.sso.host + "…" : "continue with " + data.sso.provider}</span
 					>
-					<span class="text-[11px] text-faint">{data.sso.host} · group {data.sso.group}</span>
+					<span class="text-[11px] text-faint">{data.sso.host}{data.sso.group ? " · group " + data.sso.group : ""}</span>
 				</button>
 			{/if}
 

@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import { E2E_DATABASE_DIR, E2E_DATABASE_PATH } from "./db";
+import { E2E_ENV } from "./env";
 
 /**
  * Chromium with no font installed measures every glyph as zero wide, so anything
@@ -47,7 +48,7 @@ export default async function globalSetup() {
 	await requireAFont();
 
 	execFileSync("pnpm", ["db:seed"], {
-		env: { ...process.env, DATABASE_PATH: E2E_DATABASE_PATH },
+		env: { ...process.env, ...E2E_ENV, DATABASE_PATH: E2E_DATABASE_PATH },
 		stdio: "inherit",
 	});
 

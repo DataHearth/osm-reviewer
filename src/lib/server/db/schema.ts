@@ -19,10 +19,17 @@ export const users = sqliteTable(
 		initials: text().notNull(),
 		/** Null for accounts the identity provider owns — `User.ssoOnly` is this being null. */
 		passwordHash: text(),
+		/** The identity provider's `sub`, set on the first SSO sign-in. Email can change there; this cannot. */
+		ssoSubject: text(),
+		/** Blocks every sign-in path but keeps the row, which decisions still point at. */
+		disabled: integer({ mode: "boolean" }).notNull().default(false),
 		osm: text(),
 		lastSeen: integer({ mode: "timestamp" }),
 	},
-	(t) => [uniqueIndex("users_email_idx").on(t.email)],
+	(t) => [
+		uniqueIndex("users_email_idx").on(t.email),
+		uniqueIndex("users_sso_subject_idx").on(t.ssoSubject),
+	],
 );
 
 export const sessions = sqliteTable(

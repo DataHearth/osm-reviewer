@@ -10,6 +10,11 @@ import type { Session, User } from "$lib/types";
 
 export const SESSION_COOKIE = "osm-session";
 
+/** The value arrives from a query string or a cookie, so only same-site paths are honoured.
+    Browsers read `/\` as `//`, so a backslash second is as off-site as a slash. */
+export const safePath = (value: string | null | undefined) =>
+	value?.startsWith("/") && !/^\/[/\\]/.test(value) ? value : "/";
+
 /**
  * Sessions are long-lived on purpose: the instance sits on a trusted LAN and a
  * sign-in is meant to survive reloads and restarts. The row still carries a real
@@ -83,7 +88,7 @@ export function deleteSession(token: string): void {
 // Secure cookie over plain http, so pinning it on would make sign-in fail with no error on
 // an http:// LAN deployment. Behind a TLS-terminating proxy adapter-node only reports https
 // here once PROTOCOL_HEADER is set, which the NixOS module passes through `environment`.
-const cookieOptions = (url: URL) =>
+export const cookieOptions = (url: URL) =>
 	({
 		path: "/",
 		httpOnly: true,

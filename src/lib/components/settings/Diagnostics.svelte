@@ -19,7 +19,7 @@ let {
 		db: string;
 	};
 	health: MetricRow[];
-	sso: { provider: string; host: string; clientId: string; scopes: string };
+	sso: { enabled: boolean; provider: string; host: string; clientId: string; scopes: string };
 } = $props();
 
 const facts = $derived([
@@ -29,7 +29,7 @@ const facts = $derived([
 	["runtime", instance.runtime],
 	["uptime", instance.uptime],
 	["database", instance.db],
-	["identity provider", sso.provider + " · " + sso.host],
+	["identity provider", sso.enabled ? sso.provider + " · " + sso.host : "disabled"],
 	["oidc client", sso.clientId + " · " + sso.scopes],
 ]);
 </script>

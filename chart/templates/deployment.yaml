@@ -49,10 +49,16 @@ spec:
             - name: {{ $name }}
               value: {{ $value | quote }}
             {{- end }}
-          {{- if or .Values.admin.existingSecret .Values.admin.email }}
+          {{- if or .Values.admin.existingSecret .Values.admin.email .Values.ssoSecret }}
           envFrom:
+            {{- if or .Values.admin.existingSecret .Values.admin.email }}
             - secretRef:
                 name: {{ include "osm-reviewer.adminSecret" . }}
+            {{- end }}
+            {{- with .Values.ssoSecret }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
           {{- end }}
           # /login is the one page that answers without a session.
           readinessProbe:

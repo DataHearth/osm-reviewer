@@ -8,21 +8,20 @@ import { loadEnvFiles } from "./env";
  */
 loadEnvFiles();
 
-/**
- * The identity provider a deployment points at. Still only quoted, never contacted: the
- * SSO action in `src/routes/login/+page.server.ts` is a stub, so `issuer` and `clientId`
- * reach the diagnostics pane and nothing else. A real exchange also needs a client secret,
- * which is why none is read here — it would be a variable nothing consumes.
- */
+const issuer = process.env.SSO_ISSUER ?? "";
+
+/** The OpenID Connect provider. Off unless an issuer is configured. */
 export const sso = {
-	/** Off hides the button and refuses the action; the remaining fields stay readable. */
-	enabled: process.env.SSO_ENABLED !== "false",
-	provider: process.env.SSO_PROVIDER || "Authelia",
-	host: process.env.SSO_HOST || "auth.lan",
-	issuer: process.env.SSO_ISSUER || "https://auth.lan/.well-known/openid-configuration",
-	clientId: process.env.SSO_CLIENT_ID || "candidate-review",
+	enabled: issuer !== "" && process.env.SSO_ENABLED !== "false",
+	provider: process.env.SSO_PROVIDER || "SSO",
+	host: issuer ? new URL(issuer).host : "",
+	issuer,
+	clientId: process.env.SSO_CLIENT_ID || "osm-reviewer",
+	/** Unset makes this a public client, which PKCE alone protects. */
+	clientSecret: process.env.SSO_CLIENT_SECRET || undefined,
 	scopes: process.env.SSO_SCOPES || "openid profile email groups",
-	group: process.env.SSO_GROUP || "osm-reviewers",
+	/** Required in the `groups` claim on every SSO sign-in. Set it empty to let any account at the provider in. */
+	group: process.env.SSO_GROUP ?? "osm-reviewers",
 };
 
 /**

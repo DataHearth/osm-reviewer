@@ -21,10 +21,14 @@ admin:
   # optionally SEED_ADMIN_NAME. The three values above are then ignored.
   existingSecret: ""
 
-# Extra environment. The app also reads SSO_* (see .env.example) and adapter-node's
-# BODY_SIZE_LIMIT. The SSO sign-in is still a stub, hence off by default.
-env:
-  SSO_ENABLED: "false"
+# Extra environment: adapter-node's BODY_SIZE_LIMIT, and the OpenID Connect sign-in, which
+# stays off until SSO_ISSUER is set. SSO_PROVIDER, SSO_CLIENT_ID, SSO_SCOPES and SSO_GROUP
+# are described in .env.example.
+env: {}
+
+# A Secret you manage with the key SSO_CLIENT_SECRET, for a confidential OIDC client. Leave
+# empty for a public client, which PKCE alone protects.
+ssoSecret: ""
 
 persistence:
   size: 1Gi

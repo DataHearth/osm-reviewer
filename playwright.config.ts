@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { E2E_DATABASE_PATH } from "./e2e/db";
+import { E2E_ENV } from "./e2e/env";
 
 const PORT = 4173;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -40,6 +41,7 @@ export default defineConfig({
 			// Pinned so the origin SvelteKit checks a form POST against is the same
 			// one the browser sends, however the host resolves.
 			ORIGIN,
+			...E2E_ENV,
 		},
 	},
 });
