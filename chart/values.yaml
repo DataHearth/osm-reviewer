@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/datahearth/osm-reviewer
-  # Required: the app release to run, e.g. 0.9.3.
+  # Required: the app release to run, e.g. 0.1.0.
   tag: ""
   pullPolicy: IfNotPresent
 

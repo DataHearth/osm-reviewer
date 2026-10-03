@@ -19,7 +19,7 @@ in
       # podman files a loaded image without a registry under localhost/.
       default = "localhost/${image.imageName}:${image.imageTag}";
       defaultText = lib.literalExpression ''"localhost/osm-reviewer:''${version}"'';
-      example = "ghcr.io/datahearth/osm-reviewer:0.9.3";
+      example = "ghcr.io/datahearth/osm-reviewer:0.1.0";
       description = "Image reference to run. Set `imageStream` to null when this names a registry image.";
     };
 

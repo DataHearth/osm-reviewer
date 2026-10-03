@@ -19,7 +19,7 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end -}}
 
 {{- define "osm-reviewer.imageTag" -}}
-{{- required "image.tag is required: the app release to run, e.g. 0.9.3" .Values.image.tag -}}
+{{- required "image.tag is required: the app release to run, e.g. 0.1.0" .Values.image.tag -}}
 {{- end -}}
 
 {{- define "osm-reviewer.origin" -}}

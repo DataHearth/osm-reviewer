@@ -1,7 +1,7 @@
 {
 	"name": "osm-reviewer",
 	"private": true,
-	"version": "0.9.3",
+	"version": "0.0.0",
 	"type": "module",
 	"description": "Review queue for OSM POI candidates found by the extraction pipeline.",
 	"packageManager": "pnpm@12.3.4",
