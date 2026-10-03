@@ -31,6 +31,17 @@ const selPositions = $derived(review.selected.flatMap((on, i) => (on ? [i] : [])
 // up always show both regardless of it.
 let pane = $state<"tags" | "context">("tags");
 let mapOpen = $state(false);
+// The map grows below the identity rather than beside it, so the header stacks
+// while it is open. Expanding stacks at once; collapsing stays stacked until the
+// 200ms m-grow shrink is over, or the map would jump back beside the name full size.
+let stacked = $state(false);
+let unstack: ReturnType<typeof setTimeout> | undefined;
+function toggleMap() {
+	clearTimeout(unstack);
+	mapOpen = !mapOpen;
+	if (mapOpen) stacked = true;
+	else unstack = setTimeout(() => (stacked = false), 200);
+}
 const failing = $derived(review.checks.filter((k) => !k.ok).length);
 
 let acceptBtn = $state<HTMLButtonElement | null>(null);
@@ -120,9 +131,9 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 
 		<!-- Tablet and desktop: the map sits beside the identity, so the place is
 		     read before any tag is. -->
-		<header class="hidden shrink-0 gap-4 border-b border-line bg-bar px-4 py-3.5 md:flex {mapOpen ? 'flex-col-reverse' : ''}">
+		<header class="hidden shrink-0 gap-4 border-b border-line bg-bar px-4 py-3.5 md:flex {stacked ? 'flex-col-reverse' : ''}">
 			<div
-				class="relative shrink-0 overflow-hidden rounded-lg border border-line {mapOpen
+				class="m-grow relative shrink-0 overflow-hidden rounded-lg border border-line {mapOpen
 					? 'h-[280px] w-full lg:h-[340px]'
 					: 'h-[84px] w-[132px] lg:h-[96px] lg:w-[160px]'}"
 			>
@@ -131,7 +142,7 @@ const banner = CHIP + " border-transparent font-semibold text-bg";
 					class="absolute top-1.5 right-1.5 z-[1000] flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border border-line bg-bar/90 text-[13px] leading-none text-muted hover:text-ink"
 					aria-label={mapOpen ? "Collapse map" : "Expand map"}
 					title={mapOpen ? "Collapse map" : "Expand map"}
-					onclick={() => (mapOpen = !mapOpen)}>{mapOpen ? "⤡" : "⤢"}</button
+					onclick={toggleMap}>{mapOpen ? "⤡" : "⤢"}</button
 				>
 			</div>
 			<div class="flex min-w-0 flex-1 flex-col gap-[3px]">

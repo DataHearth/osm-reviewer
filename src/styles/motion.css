@@ -108,6 +108,14 @@
 	animation: om-sheet-out 200ms cubic-bezier(0.32, 0, 0.67, 0) both;
 }
 
+/* 200ms — a box changing size in place (the review map expanding). A transition,
+   not an animation: it runs between whatever two sizes the classes give it. */
+.m-grow {
+	transition:
+		width 200ms cubic-bezier(0.33, 1, 0.68, 1),
+		height 200ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
 /* 200ms — a rail drilling into a list (m-push) and backing out (m-back). The
    outgoing layer gets the -out class and is dropped on a 200ms timer. */
 .m-push {
@@ -137,5 +145,8 @@
 	.m-back,
 	.m-back-out {
 		animation: none;
+	}
+	.m-grow {
+		transition: none;
 	}
 }
