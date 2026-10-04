@@ -620,6 +620,35 @@ describe("matchWarnings", () => {
 		expect(matchWarnings(ime, null, [school])[0]).toMatch(/^Possible duplicate: amenity=school /);
 	});
 
+	it("names a school carrying another UAI at the record's address or phone, never matching it", () => {
+		const college = {
+			lat: 45.7406,
+			lon: 4.8493,
+			name: "Collège privé la Chrysalide",
+			tags: [
+				tag("amenity", "school"),
+				tag("phone", "+33 9 50 12 86 71"),
+				tag("addr:housenumber", "4"),
+				tag("addr:street", "Rue de Cronstadt"),
+			],
+			refs: { "ref:UAI": "0694314P" },
+		};
+		const sister = el(7, 45.7405, 4.8491, {
+			amenity: "school",
+			name: "École primaire privée La Chrysalide",
+			"ref:UAI": "0694243M",
+			phone: "+33950128671",
+		});
+		expect(findMatch(college, [sister], indexRefs([sister], ["ref:UAI"]))).toBeNull();
+		expect(matchWarnings(college, null, [sister])).toContainEqual(
+			expect.stringMatching(
+				/^Another establishment \(ref:UAI=0694243M\) with the same phone or email is mapped at node\/7/,
+			),
+		);
+		const elsewhere = el(8, 45.7405, 4.8491, { amenity: "school", "ref:UAI": "0694243M" });
+		expect(matchWarnings(college, null, [elsewhere]).join()).not.toMatch(/Another establishment/);
+	});
+
 	it("does not take another school in the same building for a part of the site", () => {
 		const school = {
 			lat: 45.7,

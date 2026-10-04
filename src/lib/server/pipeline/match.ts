@@ -515,12 +515,47 @@ function duplicates(x: Placed, els: OsmElement[]): string[] {
 	const alike = nearest(
 		(tags) => lookalike(main.k, main.v, tags) && !sameKind(main.k, main.v, tags),
 	);
-	return [kin, alike]
+	const out = [kin, alike]
 		.filter((n) => n !== undefined)
 		.map(({ e, d }) => {
 			const k = [...MAIN, "man_made", "building"].find((key) => e.tags[key]) ?? main.k;
 			return `Possible duplicate: ${k}=${e.tags[k]} already mapped at ${label(e, d)}`;
 		});
+	const sibling = siblingOf(x, els);
+	if (sibling) out.push(sibling);
+	return out;
+}
+
+const contactOf = (tags: Record<string, string>) =>
+	[
+		...["phone", "contact:phone"].map((k) => tags[k]?.replace(/\D/g, "").slice(-9)),
+		...["email", "contact:email"].map((k) => tags[k]?.toLowerCase()),
+	].filter((v): v is string => !!v);
+
+/**
+ * An object carrying another establishment's id is never the match, but one at the record's
+ * address or reached by its phone or email may be this place under a stale id, or its sister
+ * school on one site: the reviewer has to see it.
+ */
+function siblingOf(x: Placed, els: OsmElement[]): string | null {
+	const at = addressOf(tagsOf(x));
+	const contact = new Set(contactOf(tagsOf(x)));
+	const hit = els
+		.filter((e) => otherPlace(e, x.refs))
+		.map((e) => {
+			const why =
+				at && addressOf(e.tags) === at
+					? "the same address"
+					: contactOf(e.tags).some((c) => contact.has(c))
+						? "the same phone or email"
+						: null;
+			return { e, d: distance(x.lat, x.lon, e.lat, e.lon), why };
+		})
+		.filter((h) => h.why && h.d <= SAME_OPERATOR_RADIUS_M)
+		.sort((a, b) => a.d - b.d)[0];
+	if (!hit) return null;
+	const id = hit.e.tags["ref:UAI"] ? ` (ref:UAI=${hit.e.tags["ref:UAI"]})` : "";
+	return `Another establishment${id} with ${hit.why} is mapped at ${label(hit.e, hit.d)}: check this is not it`;
 }
 
 /** What a reviewer must check before trusting this match, or this "new". */
