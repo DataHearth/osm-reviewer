@@ -12,6 +12,7 @@ import {
 	matchWarnings,
 	nearbyLabels,
 	newOps,
+	REF_SELECTORS,
 	sharedRefs,
 	splitParts,
 	type TagOp,
@@ -136,15 +137,15 @@ export async function processArea(
 		}
 	}
 
+	const refKeys = [...new Set(extracted.flatMap((e) => Object.keys(e.x.refs)))];
 	const selectors = mergeSelectors(
 		parseMatching(source.matching),
 		selectorsFromTags(extracted.flatMap((e) => e.x.tags)),
+		...refKeys.map((k) => REF_SELECTORS[k] ?? []),
 	);
 	const elements = input.elements ?? (await fetchElements(area, selectors));
 
-	const refIndex = indexRefs(elements, [
-		...new Set(extracted.flatMap((e) => Object.keys(e.x.refs))),
-	]);
+	const refIndex = indexRefs(elements, refKeys);
 	const shared = sharedRefs(extracted.map((e) => e.x));
 	const matched = extracted.map((e) => ({
 		...e,

@@ -22,6 +22,12 @@ function scope(a: OverpassArea): { head: string; where: string } {
 }
 
 /**
+ * About 220 m, over the 150 m duplicate radius: a record just inside the box edge has its
+ * OSM object just outside it. Longitude gets 1.5× for the latitudes France sits at.
+ */
+const MATCH_MARGIN_DEG = 0.002;
+
+/**
  * What a candidate is matched against has to cover the same ground its records were cut
  * by, and a relation's records are cut by its box (`inArea`). Fetched with the exact
  * boundary instead, everything in a neighbouring commune's corner of the box finds no OSM
@@ -30,7 +36,9 @@ function scope(a: OverpassArea): { head: string; where: string } {
 function matchScope(a: OverpassArea): { head: string; where: string } {
 	if (a.def === "radius" || !a.bbox) return scope(a);
 	const [s, w, n, e] = a.bbox;
-	return { head: "", where: `(${s},${w},${n},${e})` };
+	const m = MATCH_MARGIN_DEG;
+	const box = [s - m, w - m * 1.5, n + m, e + m * 1.5].map((x) => Number(x.toFixed(6)));
+	return { head: "", where: `(${box.join(",")})` };
 }
 
 /**

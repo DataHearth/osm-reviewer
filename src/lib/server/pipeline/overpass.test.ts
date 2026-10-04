@@ -4,13 +4,13 @@ import { buildQuery, parseElements } from "./overpass";
 const base = { bbox: null, centerLat: 45.76, centerLon: 4.83, km: null };
 
 describe("buildQuery", () => {
-	it("matches a relation area over the box its records are cut by", () => {
+	it("matches a relation area over the box its records are cut by, with a margin", () => {
 		const q = buildQuery(
 			{ ...base, def: "relation", rel: "120965", radius: null, bbox: [45.7, 4.77, 45.81, 4.9] },
 			[{ k: "amenity", v: ["charging_station"] }],
 		);
 		expect(q).not.toContain("area(id:");
-		expect(q).toContain('nwr["amenity"="charging_station"](45.7,4.77,45.81,4.9);');
+		expect(q).toContain('nwr["amenity"="charging_station"](45.698,4.767,45.812,4.903);');
 		expect(q).toContain("out center tags meta;");
 	});
 
@@ -47,7 +47,7 @@ describe("buildQuery", () => {
 			{ ...base, def: "relation", rel: null, radius: null, bbox: [1, 2, 3, 4] },
 			[{ k: "amenity", v: null }],
 		);
-		expect(q).toContain('nwr["amenity"](1,2,3,4);');
+		expect(q).toContain('nwr["amenity"](0.998,1.997,3.002,4.003);');
 	});
 });
 

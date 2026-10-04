@@ -38,12 +38,23 @@ const MAIN_KEYS = [
 	"public_transport",
 ];
 
+/**
+ * Kinds a mapper picks between for one place, so a record of one finds the others: a lycée's
+ * STS is often mapped as the lycée's school, a private post-bac school as a university.
+ * `amenity=kindergarten` is a crèche in France, another place altogether.
+ */
+const FAMILIES: Record<string, string[][]> = { amenity: [["school", "college", "university"]] };
+
+export const kinValues = (k: string, v: string) => FAMILIES[k]?.find((f) => f.includes(v)) ?? [v];
+
 /** What a source's extracted tags say its records are, so a filter written for one kind still finds the other. */
 export function selectorsFromTags(tags: { k: string; v: string }[]): Selector[] {
 	const byKey = new Map<string, Set<string>>();
 	for (const t of tags) {
 		if (!MAIN_KEYS.includes(t.k)) continue;
-		byKey.set(t.k, (byKey.get(t.k) ?? new Set()).add(t.v));
+		const set = byKey.get(t.k) ?? new Set();
+		for (const v of kinValues(t.k, t.v)) set.add(v);
+		byKey.set(t.k, set);
 	}
 	return [...byKey].map(([k, v]) => ({ k, v: [...v] }));
 }

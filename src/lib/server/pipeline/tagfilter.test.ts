@@ -41,15 +41,19 @@ describe("selectors", () => {
 		expect(overpassFilter({ k: "website", v: null })).toBe('["website"]');
 	});
 
-	it("derives main-tag selectors from what was extracted, and merges duplicates", () => {
+	it("derives main-tag selectors, with the kinds mapped in their place, and merges duplicates", () => {
 		const derived = selectorsFromTags([
 			{ k: "amenity", v: "school" },
 			{ k: "amenity", v: "kindergarten" },
 			{ k: "phone", v: "1" },
 		]);
-		expect(derived).toEqual([{ k: "amenity", v: ["school", "kindergarten"] }]);
-		expect(mergeSelectors(derived, [{ k: "amenity", v: ["kindergarten", "school"] }])).toHaveLength(
-			1,
-		);
+		expect(derived).toEqual([
+			{ k: "amenity", v: ["school", "college", "university", "kindergarten"] },
+		]);
+		expect(
+			mergeSelectors(derived, [
+				{ k: "amenity", v: ["kindergarten", "university", "college", "school"] },
+			]),
+		).toHaveLength(1);
 	});
 });

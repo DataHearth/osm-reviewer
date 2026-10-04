@@ -1,4 +1,5 @@
 import { distance, nameSimilarity, normaliseName } from "./geo";
+import { kinValues, type Selector } from "./tagfilter";
 import { type Extraction, type OsmElement, osmRef, type ProposedTag } from "./types";
 
 /** Keys OSM mappers have used for the same identifier. */
@@ -69,6 +70,11 @@ const refKeys = (refs: Record<string, string>) =>
  * Identifiers several records carry, which therefore pick none of them: a SIRET is the
  * organisation's, and one organisation can run several establishments.
  */
+/** Fetched whatever else they carry: a school ground tagged only `building=school` still has its UAI. */
+export const REF_SELECTORS: Record<string, Selector[]> = {
+	"ref:UAI": ALIASES["ref:UAI"].map((k) => ({ k, v: null })),
+};
+
 export function sharedRefs(xs: Pick<Extraction, "refs">[]): Set<string> {
 	const seen = new Set<string>();
 	const shared = new Set<string>();
@@ -93,8 +99,19 @@ export function indexRefs(els: OsmElement[], keys: string[]): Map<string, OsmEle
 	return idx;
 }
 
+/** Who runs a place, which an OSM object with no name often still says. */
+const WHO = ["operator", "network", "brand"];
+
+/** How well the record's operator or network agrees with an unnamed object's; null when either side says nothing. */
+function whoSimilarity(x: Pick<Extraction, "tags">, e: OsmElement): number | null {
+	const ours = (x.tags ?? []).filter((t) => WHO.includes(t.k)).map((t) => t.v);
+	const theirs = WHO.map((k) => e.tags[k]).filter(Boolean);
+	if (!ours.length || !theirs.length) return null;
+	return Math.max(...ours.flatMap((a) => theirs.map((b) => nameSimilarity(a, b))));
+}
+
 export function findMatch(
-	x: Pick<Extraction, "lat" | "lon" | "name" | "refs">,
+	x: Pick<Extraction, "lat" | "lon" | "name" | "refs"> & Partial<Pick<Extraction, "tags">>,
 	els: OsmElement[],
 	refIndex: Map<string, OsmElement[]>,
 	shared: Set<string> = new Set(),
@@ -115,7 +132,11 @@ export function findMatch(
 		const d = distance(x.lat, x.lon, e.lat, e.lon);
 		if (d > MATCH_RADIUS_M) continue;
 		const en = e.tags.name;
-		const sim = en && x.name ? nameSimilarity(x.name, en) : null;
+		// Most charging stations on OSM have no name, and the registry places them up to tens of
+		// metres off; the operator agreeing is what lets one match beyond a coincident point.
+		const who = en ? null : whoSimilarity({ tags: x.tags ?? [] }, e);
+		const sim =
+			en && x.name ? nameSimilarity(x.name, en) : who !== null && who >= NAME_MATCH ? who : null;
 		const ok = sim === null ? d <= BARE_RADIUS_M : sim >= NAME_MATCH;
 		if (!ok) continue;
 		const score = (sim ?? 0.4) - d / 1000;
@@ -239,12 +260,13 @@ const kinOf = (
 	const main = x.tags.find((t) => MAIN.includes(t.k));
 	if (!main) return null;
 	const from = el ?? x;
-	const kin = els
-		.filter((e) => e.tags[main.k] === main.v && (!el || osmRef(e) !== osmRef(el)))
+	const kin = kinValues(main.k, main.v);
+	const near = els
+		.filter((e) => kin.includes(e.tags[main.k]) && (!el || osmRef(e) !== osmRef(el)))
 		.filter((e) => !otherPlace(e, x.refs))
 		.map((e) => ({ e, d: distance(from.lat, from.lon, e.lat, e.lon) }))
 		.sort((a, b) => a.d - b.d);
-	return { main, kin };
+	return { main, kin: near };
 };
 
 /**

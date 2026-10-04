@@ -168,6 +168,19 @@ describe("findMatch", () => {
 		).toBeNull();
 	});
 
+	it("matches an unnamed station further out when its operator or network agrees", () => {
+		const reveo = [el(13, 45.7002, 4.8, { amenity: "charging_station", operator: "Révéo" })];
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "Reveo Av. Frédéric Estèbe",
+			refs: {},
+			tags: [tag("operator", "Bouygues Energies & Services"), tag("network", "Reveo")],
+		};
+		expect(findMatch(x, reveo, new Map())?.id).toBe(13);
+		expect(findMatch({ ...x, tags: [tag("operator", "Izivia")] }, reveo, new Map())).toBeNull();
+	});
+
 	it("trusts only a coincident point when a name is missing", () => {
 		const bare = [el(5, 45.7, 4.8, {})];
 		expect(
@@ -331,7 +344,13 @@ describe("matchWarnings", () => {
 	});
 
 	it("does not take another school in the same building for a part of the site", () => {
-		const school = { lat: 45.7, lon: 4.8, name: "ESARC", tags: [tag("amenity", "school")], refs: {} };
+		const school = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "ESARC",
+			tags: [tag("amenity", "school")],
+			refs: {},
+		};
 		const esarc = el(4, 45.7, 4.8, { amenity: "school", name: "ESARC Évolution" });
 		const lisaa = el(5, 45.70005, 4.8, { amenity: "school", name: "LISAA Toulouse" });
 		const annex = el(6, 45.70005, 4.8, { amenity: "school" });
