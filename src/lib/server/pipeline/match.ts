@@ -1,4 +1,4 @@
-import { distance, nameSimilarity, normaliseName } from "./geo";
+import { distance, nameSimilarity, normaliseName, tokens } from "./geo";
 import { kinValues, type Selector } from "./tagfilter";
 import { type Extraction, type OsmElement, osmRef, type ProposedTag } from "./types";
 
@@ -14,8 +14,10 @@ const NAME_MATCH = 0.5;
 /** With a name missing on either side only a near-coincident point is trusted. */
 const BARE_RADIUS_M = 15;
 const NEARBY_RADIUS_M = 300;
-/** Degrees of latitude a bit over the match radius: a cheap cut before the haversine. */
-const LAT_PREFILTER = 0.0006;
+/** A name this close to the record's is the place even as far off as a directory puts it. */
+const STRONG_NAME = 0.6;
+/** Degrees of latitude a bit over the farthest match: a cheap cut before the haversine. */
+const LAT_PREFILTER = 0.0014;
 
 /**
  * An identifier keeps its meaning without its separators: mappers write `FR*TLS*P31555019`
@@ -47,34 +49,52 @@ export function otherPlace(e: OsmElement, refs: Record<string, string>): boolean
 	return theirs.length > 0 && !theirs.some((x) => ours.has(x));
 }
 
-/** `FR*TLS*P31555019` belongs to operator `FRTLS`. */
-const operatorCodes = (v: string) =>
-	new Set(ids(v).flatMap((x) => /^[A-Z]{2}[A-Z0-9]{3}(?=[EP])/.exec(x)?.[0] ?? []));
+/**
+ * An EVSE id the way stations are told apart. The `E`/`P` type letter goes, since mappers write
+ * a point's id as a pool (`FR*GLY*PLYON2221` for `FRGLYELYON2221`). The part after the operator
+ * code also stands alone when it is long enough to name the station by itself, since a network
+ * that changed hands keeps its pool ids under the new operator's code
+ * (`FR*E13*PDARTYLIMONEST69760*1` for `FRSSDPDARTYLIMONEST697601`).
+ */
+function evseKeys(id: string): string[] {
+	const m = /^([A-Z]{2}[A-Z0-9]{3})[EP](.+)$/.exec(id);
+	if (!m) return [id];
+	return m[2].length >= 8 ? [m[1] + m[2], `~${m[2]}`] : [m[1] + m[2]];
+}
+
+const keysOf = (k: string, v: string) =>
+	k === "ref:EU:EVSE" ? [...new Set(ids(v).flatMap(evseKeys))] : [...new Set(ids(v))];
 
 /**
- * Whether `e` carries only another operator's EVSE ids. A mapper's pool id is often finer than
- * the registry's, so whole ids prove nothing, but the operator code does. It only rules out a
- * name or distance match: a network that changed hands keeps its old code on OSM, and the
- * duplicate banner must still see it.
+ * Whether `e` carries EVSE ids none of which is this station's. A mapper's pool id is often
+ * finer than the registry's (`PLYON13011` under `PLYON130`), so one id under the other still
+ * agrees. It only rules out a name or distance match, and a neighbour as part of the site: the
+ * duplicate banner must still see such an object.
  */
-function otherOperator(e: OsmElement, refs: Record<string, string>): boolean {
-	const ours = operatorCodes(refs["ref:EU:EVSE"] ?? "");
-	const theirs = operatorCodes(e.tags["ref:EU:EVSE"] ?? "");
-	return ours.size > 0 && theirs.size > 0 && ![...theirs].some((x) => ours.has(x));
+function otherStation(e: OsmElement, refs: Record<string, string>): boolean {
+	const ours = keysOf("ref:EU:EVSE", refs["ref:EU:EVSE"] ?? "");
+	const theirs = keysOf("ref:EU:EVSE", e.tags["ref:EU:EVSE"] ?? "");
+	if (!ours.length || !theirs.length) return false;
+	const related = (a: string, b: string) =>
+		a === b || (a[0] !== "~" && b[0] !== "~" && (a.startsWith(b) || b.startsWith(a)));
+	return !theirs.some((t) => ours.some((o) => related(t, o)));
 }
 
 const refKeys = (refs: Record<string, string>) =>
-	Object.entries(refs).flatMap(([k, v]) => [...new Set(ids(v))].map((one) => `${k}\u0000${one}`));
+	Object.entries(refs).flatMap(([k, v]) => keysOf(k, v).map((one) => `${k}\u0000${one}`));
+
+/** Fetched whatever else they carry: a school ground tagged only `building=school` still has its UAI. */
+export const REF_SELECTORS: Record<string, Selector[]> = {
+	"ref:UAI": ALIASES["ref:UAI"].map((k) => ({ k, v: null })),
+	// A station mapped without its `amenity` still carries its pool id; charge points carry
+	// theirs too, and would be matched as stations.
+	"ref:EU:EVSE": [{ k: "ref:EU:EVSE", v: null, not: { k: "man_made", v: ["charge_point"] } }],
+};
 
 /**
  * Identifiers several records carry, which therefore pick none of them: a SIRET is the
  * organisation's, and one organisation can run several establishments.
  */
-/** Fetched whatever else they carry: a school ground tagged only `building=school` still has its UAI. */
-export const REF_SELECTORS: Record<string, Selector[]> = {
-	"ref:UAI": ALIASES["ref:UAI"].map((k) => ({ k, v: null })),
-};
-
 export function sharedRefs(xs: Pick<Extraction, "refs">[]): Set<string> {
 	const seen = new Set<string>();
 	const shared = new Set<string>();
@@ -88,9 +108,10 @@ export function indexRefs(els: OsmElement[], keys: string[]): Map<string, OsmEle
 	for (const key of keys)
 		for (const alias of ALIASES[key] ?? [key])
 			for (const e of els) {
-				const v = e.tags[alias];
-				if (!v) continue;
-				for (const one of ids(v)) {
+				const v = [e.tags[alias], key === "ref:UAI" ? mailUai(e) : undefined]
+					.filter(Boolean)
+					.join(";");
+				for (const one of keysOf(key, v)) {
 					const at = `${key}\u0000${one}`;
 					const list = idx.get(at) ?? [];
 					if (!list.includes(e)) idx.set(at, [...list, e]);
@@ -102,12 +123,50 @@ export function indexRefs(els: OsmElement[], keys: string[]): Map<string, OsmEle
 /** Who runs a place, which an OSM object with no name often still says. */
 const WHO = ["operator", "network", "brand"];
 
+const whoOf = (x: Partial<Pick<Extraction, "tags">>) =>
+	(x.tags ?? []).filter((t) => WHO.includes(t.k)).map((t) => t.v);
+
 /** How well the record's operator or network agrees with an unnamed object's; null when either side says nothing. */
-function whoSimilarity(x: Pick<Extraction, "tags">, e: OsmElement): number | null {
-	const ours = (x.tags ?? []).filter((t) => WHO.includes(t.k)).map((t) => t.v);
+function whoSimilarity(x: Partial<Pick<Extraction, "tags">>, e: OsmElement): number | null {
+	const ours = whoOf(x);
 	const theirs = WHO.map((k) => e.tags[k]).filter(Boolean);
 	if (!ours.length || !theirs.length) return null;
 	return Math.max(...ours.flatMap((a) => theirs.map((b) => nameSimilarity(a, b))));
+}
+
+/** Words that say what an object is or its status, not which one it is. */
+const GENERIC = new Set([
+	"borne",
+	"bornes",
+	"recharge",
+	"station",
+	"charging",
+	"irve",
+	"electrique",
+	"vehicules",
+	"prive",
+	"privee",
+	"public",
+	"publique",
+]);
+
+/**
+ * How well an OSM name names the record, or null when it names nothing: a generic label
+ * ("Recharge", "Borne de recharge Révéo") or the operator's own name ("Allego"), which leave
+ * the operator to decide. A mapper's short name all inside the record's long one ("La Fourmi"
+ * in "École élémentaire privée La Fourmi") counts as a strong match.
+ */
+function nameScore(
+	x: Pick<Extraction, "name"> & Partial<Pick<Extraction, "tags">>,
+	e: OsmElement,
+): number | null {
+	const words = (s: string) => [...tokens(s)].filter((w) => !GENERIC.has(w));
+	const theirs = words(e.tags.name ?? "");
+	const who = new Set([...whoOf(x), ...WHO.map((k) => e.tags[k] ?? "")].flatMap(words));
+	if (!theirs.length || theirs.every((w) => who.has(w))) return null;
+	const dice = nameSimilarity(x.name, e.tags.name);
+	const ours = new Set(words(x.name));
+	return theirs.every((w) => ours.has(w)) ? Math.max(dice, 0.8) : dice;
 }
 
 export function findMatch(
@@ -127,16 +186,15 @@ export function findMatch(
 
 	let best: { el: OsmElement; score: number } | null = null;
 	for (const e of els) {
-		if (otherPlace(e, x.refs) || otherOperator(e, x.refs)) continue;
+		if (otherPlace(e, x.refs) || otherStation(e, x.refs)) continue;
 		if (Math.abs(e.lat - x.lat) > LAT_PREFILTER) continue;
 		const d = distance(x.lat, x.lon, e.lat, e.lon);
-		if (d > MATCH_RADIUS_M) continue;
-		const en = e.tags.name;
+		const named = e.tags.name && x.name ? nameScore(x, e) : null;
 		// Most charging stations on OSM have no name, and the registry places them up to tens of
 		// metres off; the operator agreeing is what lets one match beyond a coincident point.
-		const who = en ? null : whoSimilarity({ tags: x.tags ?? [] }, e);
-		const sim =
-			en && x.name ? nameSimilarity(x.name, en) : who !== null && who >= NAME_MATCH ? who : null;
+		const who = named === null ? whoSimilarity(x, e) : null;
+		const sim = named ?? (who !== null && who >= NAME_MATCH ? who : null);
+		if (d > (sim !== null && sim >= STRONG_NAME ? DUPLICATE_RADIUS_M : MATCH_RADIUS_M)) continue;
 		const ok = sim === null ? d <= BARE_RADIUS_M : sim >= NAME_MATCH;
 		if (!ok) continue;
 		const score = (sim ?? 0.4) - d / 1000;
@@ -289,8 +347,15 @@ export function splitParts(
 	els: OsmElement[],
 ): { e: OsmElement; d: number }[] {
 	const names = [x.name, el.tags.name].filter(Boolean);
-	const samePlace = (e: OsmElement) =>
-		!e.tags.name || names.some((n) => nameSimilarity(n, e.tags.name) >= NAME_MATCH);
+	const open = x.tags.find((t) => t.k === "access")?.v === "yes";
+	const samePlace = (e: OsmElement) => {
+		if (e.tags.name && !names.some((n) => nameSimilarity(n, e.tags.name) >= NAME_MATCH))
+			return false;
+		if (otherStation(e, x.refs)) return false;
+		const who = whoSimilarity(x, e);
+		if (who !== null && who < NAME_MATCH) return false;
+		return !(open && /^(private|no|customers)$/.test(e.tags.access ?? ""));
+	};
 	return (kinOf(x, el, els)?.kin ?? []).filter((k) => k.d <= SPLIT_RADIUS_M && samePlace(k.e));
 }
 
@@ -305,7 +370,7 @@ export function matchWarnings(
 		const near = found?.kin[0];
 		return found && near && near.d <= DUPLICATE_RADIUS_M
 			? [
-					`Possible duplicate: ${found.main.k}=${found.main.v} already mapped at ${label(near.e, near.d)}`,
+					`Possible duplicate: ${found.main.k}=${near.e.tags[found.main.k]} already mapped at ${label(near.e, near.d)}`,
 				]
 			: [];
 	}

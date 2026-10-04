@@ -161,11 +161,66 @@ describe("findMatch", () => {
 		).toBeNull();
 		expect(
 			findMatch(
-				{ lat: 45.701, lon: 4.8, name: "Pharmacie du Capitole", refs: {} },
+				{ lat: 45.7016, lon: 4.8, name: "Pharmacie du Capitole", refs: {} },
 				[els[0]],
 				new Map(),
 			),
 		).toBeNull();
+	});
+
+	it("reaches as far as a directory misplaces a place for a name that clearly names it", () => {
+		const fourmi = [el(14, 45.7012, 4.8, { amenity: "school", name: "La Fourmi" })];
+		const x = { lat: 45.7, lon: 4.8, name: "École élémentaire privée La Fourmi", refs: {} };
+		expect(findMatch(x, fourmi, new Map())?.id).toBe(14);
+		expect(findMatch({ ...x, name: "École La Ruche" }, fourmi, new Map())).toBeNull();
+	});
+
+	it("leaves a brand or a generic label to the operator, not the name", () => {
+		const allego = [el(15, 45.7003, 4.8, { name: "Allego", operator: "Allego" })];
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "Tisséo Borderouge",
+			refs: {},
+			tags: [tag("operator", "Allego")],
+		};
+		expect(findMatch(x, allego, new Map())?.id).toBe(15);
+		const generic = [el(16, 45.7001, 4.8, { name: "Recharge" })];
+		expect(findMatch({ ...x, tags: [] }, generic, new Map())?.id).toBe(16);
+	});
+
+	it("tells stations apart by their EVSE ids, across a change of operator code", () => {
+		const b02 = [
+			el(17, 45.7, 4.8, { name: "Parvis Saint Martin - B02", "ref:EU:EVSE": "FR*M31*E31555*030" }),
+		];
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "Parvis Saint Martin",
+			refs: { "ref:EU:EVSE": "FRM31P31555029" },
+		};
+		expect(findMatch(x, b02, new Map())).toBeNull();
+		const darty = [el(18, 45.7006, 4.8, { "ref:EU:EVSE": "FR*E13*PDARTYLIMONEST69760*1" })];
+		const refs = { "ref:EU:EVSE": "FRSSDPDARTYLIMONEST697601" };
+		expect(
+			findMatch({ lat: 45.7, lon: 4.8, name: "", refs }, darty, indexRefs(darty, ["ref:EU:EVSE"]))
+				?.id,
+		).toBe(18);
+		const perPoint = [el(19, 45.7, 4.8, { "ref:EU:EVSE": "FR*GLY*PLYON2221" })];
+		const points = { "ref:EU:EVSE": "FRGLYPLYON222;FRGLYELYON2221" };
+		expect(
+			findMatch(
+				{ lat: 45.7, lon: 4.8, name: "", refs: points },
+				perPoint,
+				indexRefs(perPoint, ["ref:EU:EVSE"]),
+			)?.id,
+		).toBe(19);
+	});
+
+	it("matches a school by its académie mailbox", () => {
+		const dottin = [el(20, 45.7012, 4.8, { "contact:email": "ce.0312819W@ac-toulouse.fr" })];
+		const x = { lat: 45.7, lon: 4.8, name: "", refs: { "ref:UAI": "0312819W" } };
+		expect(findMatch(x, dottin, indexRefs(dottin, ["ref:UAI"]))?.id).toBe(20);
 	});
 
 	it("matches an unnamed station further out when its operator or network agrees", () => {
@@ -377,6 +432,37 @@ describe("matchWarnings", () => {
 		};
 		const sibling = el(3, 45.7002, 4.8, { amenity: "school", "ref:UAI": "0690002B" });
 		expect(matchWarnings(school, null, [sibling])).toEqual([]);
+	});
+
+	it("does not take another operator's or a private station for a part of the site", () => {
+		const lidl = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "Lidl",
+			tags: [tag("amenity", "charging_station"), tag("operator", "Lidl"), tag("access", "yes")],
+			refs: { "ref:EU:EVSE": "FRLDLPLFR3657EVCP" },
+		};
+		const a = el(1, 45.7, 4.8, { amenity: "charging_station" });
+		const izivia = el(2, 45.7001, 4.8, { amenity: "charging_station", operator: "Izivia" });
+		const other = el(3, 45.7001, 4.8, {
+			amenity: "charging_station",
+			"ref:EU:EVSE": "FR*GLY*PLYON2212",
+		});
+		const closed = el(4, 45.7001, 4.8, { amenity: "charging_station", access: "private" });
+		const part = el(5, 45.7001, 4.8, { amenity: "charging_station" });
+		expect(splitParts(lidl, a, [a, izivia, other, closed, part]).map((k) => k.e.id)).toEqual([5]);
+	});
+
+	it("names the kind of object it found, and sees an institute mapped as a school", () => {
+		const ime = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "IME",
+			tags: [tag("amenity", "social_facility")],
+			refs: {},
+		};
+		const school = el(6, 45.7005, 4.8, { amenity: "school" });
+		expect(matchWarnings(ime, null, [school])[0]).toMatch(/^Possible duplicate: amenity=school /);
 	});
 
 	it("does not take another school in the same building for a part of the site", () => {

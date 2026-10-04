@@ -8,6 +8,8 @@ export interface Selector {
 	k: string;
 	/** Null matches any value. */
 	v: string[] | null;
+	/** Elements to leave out even when they match. */
+	not?: { k: string; v: string[] };
 }
 
 const TERM = /^([A-Za-z0-9_:]+)=(\S+)$/;
@@ -40,12 +42,21 @@ const MAIN_KEYS = [
 
 /**
  * Kinds a mapper picks between for one place, so a record of one finds the others: a lycée's
- * STS is often mapped as the lycée's school, a private post-bac school as a university.
- * `amenity=kindergarten` is a crèche in France, another place altogether.
+ * STS is often mapped as the lycée's school, a private post-bac school as a university, and a
+ * medico-social institute as a school. `amenity=kindergarten` is a crèche in France, another
+ * place altogether.
  */
-const FAMILIES: Record<string, string[][]> = { amenity: [["school", "college", "university"]] };
+const SCHOOLS = ["school", "college", "university"];
+const KIN: Record<string, Record<string, string[]>> = {
+	amenity: {
+		school: SCHOOLS,
+		college: SCHOOLS,
+		university: SCHOOLS,
+		social_facility: ["social_facility", "school"],
+	},
+};
 
-export const kinValues = (k: string, v: string) => FAMILIES[k]?.find((f) => f.includes(v)) ?? [v];
+export const kinValues = (k: string, v: string) => KIN[k]?.[v] ?? [v];
 
 /** What a source's extracted tags say its records are, so a filter written for one kind still finds the other. */
 export function selectorsFromTags(tags: { k: string; v: string }[]): Selector[] {
@@ -73,7 +84,8 @@ const reEscape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The bracket filter of one Overpass statement. */
 export function overpassFilter(s: Selector): string {
-	if (s.v === null) return `[${q(s.k)}]`;
-	if (s.v.length === 1) return `[${q(s.k)}=${q(s.v[0])}]`;
-	return `[${q(s.k)}~${q(`^(${s.v.map(reEscape).join("|")})$`)}]`;
+	const not = s.not ? `[${q(s.not.k)}!~${q(`^(${s.not.v.map(reEscape).join("|")})$`)}]` : "";
+	if (s.v === null) return `[${q(s.k)}]${not}`;
+	if (s.v.length === 1) return `[${q(s.k)}=${q(s.v[0])}]${not}`;
+	return `[${q(s.k)}~${q(`^(${s.v.map(reEscape).join("|")})$`)}]${not}`;
 }

@@ -39,6 +39,9 @@ describe("selectors", () => {
 			'["amenity"~"^(school|kindergarten)$"]',
 		);
 		expect(overpassFilter({ k: "website", v: null })).toBe('["website"]');
+		expect(
+			overpassFilter({ k: "ref:EU:EVSE", v: null, not: { k: "man_made", v: ["charge_point"] } }),
+		).toBe('["ref:EU:EVSE"]["man_made"!~"^(charge_point)$"]');
 	});
 
 	it("derives main-tag selectors, with the kinds mapped in their place, and merges duplicates", () => {
