@@ -115,6 +115,41 @@ describe("IRVE preset", () => {
 		expect(fee({ paiement_cb: "true" })).toMatchObject({ v: "yes", path: "paiement_cb" });
 	});
 
+	it("fills in what the registry knows beyond the sockets, and nothing it does not", () => {
+		const tags = (over: Row) =>
+			Object.fromEntries((irve.extract([irveRow(over)], "u")?.tags ?? []).map((t) => [t.k, t.v]));
+		expect(
+			tags({
+				paiement_cb: "true",
+				reservation: "False",
+				date_mise_en_service: "2021-08-05",
+				nom_amenageur: "Toulouse Métropole",
+				telephone_operateur: "tel:+33-9-70-25-24-00",
+				accessibilite_pmr: "Accessible mais non réservé PMR",
+				restriction_gabarit: "1,9",
+			}),
+		).toMatchObject({
+			motorcar: "yes",
+			"authentication:none": "yes",
+			"payment:credit_cards": "yes",
+			reservation: "no",
+			start_date: "2021-08-05",
+			owner: "Toulouse Métropole",
+			"operator:phone": "+33 9 70 25 24 00",
+			wheelchair: "yes",
+			maxheight: "1.9",
+		});
+		const unknown = tags({
+			date_mise_en_service: "2025-01-01",
+			telephone_operateur: "+33-1-23-45-67-89",
+			accessibilite_pmr: "Accessibilité inconnue",
+			station_deux_roues: "true",
+		});
+		expect(unknown).toMatchObject({ motorcycle: "yes" });
+		for (const k of ["start_date", "operator:phone", "wheelchair", "motorcar"])
+			expect(unknown[k]).toBeUndefined();
+	});
+
 	it("names the sockets it rules out, and a connector it cannot name", () => {
 		const x = irve.extract([irveRow()], "u");
 		expect(x?.absent).toEqual(expect.arrayContaining(["socket:chademo", "socket:type3"]));
@@ -280,6 +315,16 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(edu.extract([row({ type_etablissement: "Service Administratif" })], "u")).toBeNull();
 		expect(edu.extract([row({ type_etablissement: "" })], "u")).toBeNull();
 		expect(edu.extract([row({ code_nature: "809" })], "u")).toBeNull();
+	});
+
+	it("proposes the directory's email and opening date", () => {
+		const tags = Object.fromEntries(
+			(
+				edu.extract([row({ mail: "ce.0690001A@ac-lyon.fr", date_ouverture: "1966-10-17" })], "u")
+					?.tags ?? []
+			).map((t) => [t.k, t.v]),
+		);
+		expect(tags).toMatchObject({ email: "ce.0690001A@ac-lyon.fr", start_date: "1966-10-17" });
 	});
 
 	it("fills a missing name but never renames", () => {

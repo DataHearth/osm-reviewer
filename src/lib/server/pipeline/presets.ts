@@ -172,6 +172,34 @@ export const POWER_KW = (n: number) => {
 	return `${Math.abs(n - whole) < 0.15 ? whole : Number(n.toFixed(1))} kW`;
 };
 
+/**
+ * The earliest commissioning date. A bare 1 January is how several operators fill a date they
+ * do not have, so it is left out rather than written as history.
+ */
+function serviceDate(rows: Row[]): string | null {
+	const dates = rows
+		.map((r) => str(r, "date_mise_en_service"))
+		.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !d.endsWith("-01-01"))
+		.sort();
+	return dates[0] ?? null;
+}
+
+/** A filler number some operators declare when they have none to give. */
+const PLACEHOLDER_PHONE = "+33 1 23 45 67 89";
+
+function operatorPhone(raw: string): string | null {
+	const phone = phoneFR(raw.replace(/^tel:/i, ""));
+	return phone === PLACEHOLDER_PHONE ? null : phone;
+}
+
+/** Only an answer the registry actually gives: "Accessibilité inconnue" proposes nothing. */
+function wheelchair(raw: string): string | null {
+	if (/^réservé pmr/i.test(raw)) return "designated";
+	if (/^accessible/i.test(raw)) return "yes";
+	if (/^non accessible/i.test(raw)) return "no";
+	return null;
+}
+
 /** A tariff column says the charge is paid only when it gives a price or where to find one. */
 const isTariff = (v: string) => /\d|€|kwh|tarif|https?:/i.test(v) && !/inconnu|gratuit/i.test(v);
 
@@ -339,6 +367,48 @@ const irve: Preset = {
 		const hours = openingHours(str(first, "horaires"));
 		if (hours) t.add("opening_hours", hours, 0.7, "horaires");
 
+		const anyRow = (f: string) => rows.some((r) => truthy(str(r, f)));
+		const twoWheel = anyRow("station_deux_roues");
+		fill(
+			t.add(
+				twoWheel ? "motorcycle" : "motorcar",
+				"yes",
+				0.75,
+				"station_deux_roues",
+				str(first, "station_deux_roues") || "false",
+				"derived",
+			),
+		);
+		if (anyRow("paiement_acte"))
+			fill(t.add("authentication:none", "yes", 0.7, "paiement_acte", "true", "derived"));
+		if (anyRow("paiement_cb"))
+			fill(t.add("payment:credit_cards", "yes", 0.75, "paiement_cb", "true", "derived"));
+		const booking = str(first, "reservation");
+		if (booking)
+			fill(
+				t.add(
+					"reservation",
+					truthy(booking) ? "yes" : "no",
+					0.7,
+					"reservation",
+					booking,
+					"derived",
+				),
+			);
+		const since = serviceDate(rows);
+		if (since) fill(t.add("start_date", since, 0.65, "date_mise_en_service", since));
+		const owner = str(first, "nom_amenageur");
+		if (normaliseName(owner) !== normaliseName(operator))
+			fill(t.add("owner", owner, 0.7, "nom_amenageur"));
+		const phone = operatorPhone(str(first, "telephone_operateur"));
+		if (phone)
+			fill(t.add("operator:phone", phone, 0.7, "telephone_operateur", undefined, "normalised"));
+		const pmr = wheelchair(str(first, "accessibilite_pmr"));
+		if (pmr) fill(t.add("wheelchair", pmr, 0.7, "accessibilite_pmr", undefined, "derived"));
+		const height = str(first, "restriction_gabarit").replace(",", ".");
+		if (/^\d(\.\d+)?$/.test(height) && Number(height) >= 1.5)
+			fill(t.add("maxheight", String(Number(height)), 0.7, "restriction_gabarit"));
+
 		const known = [...stations, ...points].join(";");
 		const refs: Record<string, string> = known ? { "ref:EU:EVSE": known } : {};
 		const commune = str(first, "consolidated_commune");
@@ -476,6 +546,11 @@ const education: Preset = {
 		if (phone) t.add("phone", phone, 0.85, "telephone", undefined, "normalised");
 		const site = website(str(r, "web", "site_web"));
 		if (site) t.add("website", site, 0.8, "web");
+		const mail = str(r, "mail");
+		if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail)) fill(t.add("email", mail, 0.8, "mail"));
+		const opened = str(r, "date_ouverture");
+		if (/^\d{4}-\d{2}-\d{2}$/.test(opened))
+			fill(t.add("start_date", opened, 0.65, "date_ouverture"));
 		const status = str(r, "statut_public_prive");
 		if (/^public/i.test(status)) t.add("operator:type", "public", 0.9, "statut_public_prive");
 		else if (/priv/i.test(status)) t.add("operator:type", "private", 0.9, "statut_public_prive");
