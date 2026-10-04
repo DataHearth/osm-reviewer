@@ -24,6 +24,11 @@ export interface ProposedTag {
 	kind: string;
 	/** Proposed only where OSM has no value: the source is too coarse to overrule what a mapper set. */
 	addOnly?: boolean;
+	/**
+	 * Tags that only make sense together, like an address's parts: when one of them differs
+	 * from what the object has, none of them is proposed.
+	 */
+	group?: string;
 	/** Why the value cannot be written as it stands; the reviewer sees it and has to type over it. */
 	invalid?: string;
 }

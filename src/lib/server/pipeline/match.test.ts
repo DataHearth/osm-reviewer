@@ -220,6 +220,20 @@ describe("updateOps", () => {
 		expect(sameValue("name", "a", "b")).toBe(false);
 	});
 
+	it("proposes an address whole or not at all", () => {
+		const addr = (k: string, v: string) => ({ ...tag(k, v), addOnly: true, group: "addr" });
+		const proposed = [
+			addr("addr:housenumber", "6"),
+			addr("addr:street", "Boulevard Michelet"),
+			addr("addr:postcode", "31000"),
+		];
+		expect(updateOps(proposed, { "addr:street": "Boulevard Jules Michelet" })).toEqual([]);
+		expect(updateOps(proposed, { "addr:street": "boulevard michelet" }).map((o) => o.k)).toEqual([
+			"addr:housenumber",
+			"addr:postcode",
+		]);
+	});
+
 	it("never replaces a list of ids that already holds the record's", () => {
 		expect(updateOps([tag("ref:UAI", "0692864N")], { "ref:UAI": "0692864N;0690053H" })).toEqual([]);
 		expect(updateOps([tag("ref:UAI", "0692864N")], { "ref:UAI": "0690053H" })).toHaveLength(1);

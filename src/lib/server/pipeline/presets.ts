@@ -560,12 +560,23 @@ const STREET =
 	/^(rue|avenue|boulevard|chemin|place|allée|allées|impasse|route|quai|cours|square|voie|passage|esplanade|rond-point|montée|chaussée|parvis|promenade|sentier|faubourg|clos|cité|grande rue|petite rue)\b/i;
 
 /**
+ * Whether a postcode is a place's rather than a CEDEX mail route, which the address lines do
+ * not always say (69321, 31506). La Poste gives places codes ending in 0, except the
+ * arrondissements of Paris, Lyon and Marseille and the overseas departments.
+ */
+export const placePostcode = (cp: string) =>
+	/^\d{4}0$|^750\d\d$|^6900\d$|^130\d\d$|^9[78]\d{3}$/.test(cp);
+
+/**
  * `adresse_1` split into number and street, with the commune the address uses: Lyon, not
  * "Lyon 6e Arrondissement", and no CEDEX postcode, which routes mail, not places. Null when
  * the line is not a plain street address or is written in capitals.
  */
 export function schoolAddress(r: Row) {
-	const line = str(r, "adresse_1").replace(/\s+/g, " ");
+	const line = str(r, "adresse_1")
+		.replace(/\s*\([^)]*\)/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
 	const m = /^(\d+(?: ?(?:bis|ter|quater|[a-z]))?) (.+)$/i.exec(line);
 	const number = m ? m[1].replace(/ /g, "") : "";
 	const street = m ? m[2] : line;
@@ -574,7 +585,10 @@ export function schoolAddress(r: Row) {
 	return {
 		number,
 		street: street[0].toUpperCase() + street.slice(1),
-		postcode: /cedex|\bbp\b|\bcs ?\d/i.test(mail) ? "" : str(r, "code_postal"),
+		postcode:
+			/cedex|\bbp\b|\bcs ?\d/i.test(mail) || !placePostcode(str(r, "code_postal"))
+				? ""
+				: str(r, "code_postal"),
 		city: str(r, "nom_commune")
 			.replace(/\s+/g, " ")
 			.replace(/ \d+(?:er|e|ème)? arrondissement$/i, ""),
@@ -670,12 +684,16 @@ const education: Preset = {
 		// An address fills gaps only, and only whole: a postcode and city on an object with no
 		// street is half an address, and the directory's street is sometimes in capitals.
 		const at = schoolAddress(r);
-		if (at) {
-			fill(t.add("addr:housenumber", at.number, 0.8, "adresse_1"));
-			fill(t.add("addr:street", at.street, 0.8, "adresse_1"));
-			fill(t.add("addr:postcode", at.postcode, 0.85, "code_postal"));
-			fill(t.add("addr:city", at.city, 0.85, "nom_commune"));
-		}
+		if (at)
+			for (const tag of [
+				t.add("addr:housenumber", at.number, 0.8, "adresse_1"),
+				t.add("addr:street", at.street, 0.8, "adresse_1"),
+				t.add("addr:postcode", at.postcode, 0.85, "code_postal"),
+				t.add("addr:city", at.city, 0.85, "nom_commune"),
+			]) {
+				fill(tag);
+				if (tag) tag.group = "addr";
+			}
 
 		return {
 			key,

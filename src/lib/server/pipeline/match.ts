@@ -154,7 +154,7 @@ const site = (s: string) =>
 		.replace(/\/$/, "");
 
 /** Accents, case, punctuation and `&` for "et" are how a registry and a mapper differ, not what they say. */
-const NAMES = ["name", "operator", "network", "brand", "owner"];
+const NAMES = ["name", "operator", "network", "brand", "owner", "addr:street", "addr:city"];
 const fold = (s: string) => normaliseName(s.replace(/&/g, " et "));
 
 /** Registries write "open all day" as the last minute they bother to count to. */
@@ -207,8 +207,14 @@ function keyOn(k: string, current: Record<string, string>): string {
 
 /** Tag operations that turn the element's tags into what the source says; nothing for what already agrees. */
 export function updateOps(proposed: ProposedTag[], current: Record<string, string>): TagOp[] {
+	const clash = new Set(
+		proposed
+			.filter((p) => p.group && current[p.k] !== undefined && !sameValue(p.k, p.v, current[p.k]))
+			.map((p) => p.group),
+	);
 	const ops: TagOp[] = [];
 	for (const p of proposed) {
+		if (p.group && clash.has(p.group)) continue;
 		const k = keyOn(p.k, current);
 		const had = current[k];
 		if (had === undefined) ops.push({ ...p, k, op: "add", was: null });

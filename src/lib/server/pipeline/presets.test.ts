@@ -481,6 +481,13 @@ describe("schoolAddress", () => {
 		expect(at({ adresse_1: "75 rue SAINT ROCH" })).toBeNull();
 		expect(at({ adresse_1: "BP 41023" })).toBeNull();
 	});
+	it("keeps a note out of the street and a mail route out of the postcode", () => {
+		expect(at({ adresse_1: "12 rue de la Solidarité (site Ariane)" })?.street).toBe(
+			"Rue de la Solidarité",
+		);
+		expect(at({ code_postal: "69321" })?.postcode).toBe("");
+		expect(at({ code_postal: "69005" })?.postcode).toBe("69005");
+	});
 });
 
 describe("openedForSure", () => {
