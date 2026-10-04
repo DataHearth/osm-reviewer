@@ -617,7 +617,14 @@ const ACRONYMS = new Set([
 	"LEGTA",
 	"LEPA",
 	"ITEP",
+	"DITEP",
+	"IME",
+	"IMPRO",
+	"IEM",
+	"IES",
 	"SESSAD",
+	"SEPAD",
+	"CAMSP",
 	"CMPP",
 	"IFSI",
 ]);
@@ -636,20 +643,28 @@ const PARTICLES = new Set(["DE", "DES", "DU", "LA", "LE", "LES", "ET", "AU", "AU
  */
 export function schoolName(raw: string): string {
 	const shouting = raw === raw.toUpperCase();
+	const quiet = (w: string) => w[0] + w.slice(1).toLowerCase();
 	const out = raw
 		.replace(/\s+/g, " ")
-		.replace(/ hors contrat\b/i, "")
-		.replace(/\p{Lu}{2,}/gu, (w) => {
+		.replace(/ hors[- ]contrat\b/i, "")
+		.replace(/\p{Lu}{2,}/gu, (w, at: number, all: string) => {
 			if (ACRONYMS.has(w)) return w;
-			if (shouting && PARTICLES.has(w)) return w.toLowerCase();
-			return w.length >= 4 || shouting ? w[0] + w.slice(1).toLowerCase() : w;
+			if (shouting) return PARTICLES.has(w) ? w.toLowerCase() : quiet(w);
+			// In a name written in mixed case, capitals after a first name or a particle are a
+			// surname ("Rosa PARKS", "Pierre de FERMAT"); anywhere else an initialism ("ESTM").
+			const before = all.slice(0, at).trimEnd().split(" ").pop() ?? "";
+			return SURNAME_AFTER.test(before) ? quiet(w) : w;
 		})
-		.replace(/\bEcole(s?)\b/g, "École$1");
+		.replace(/\bEcole(s?)\b/g, "École$1")
+		.replace(/\bEtablissement(s?)\b/g, "Établissement$1")
+		.replace(/\bEducation\b/g, "Éducation");
 	return out[0].toUpperCase() + out.slice(1);
 }
 
+const SURNAME_AFTER = /^(\p{Lu}\p{Ll}+([-'’]\p{Lu}\p{Ll}+)*|de|du|des|d'|la|le)$/u;
+
 const STREET =
-	/^(rue|avenue|boulevard|chemin|place|allée|allées|impasse|route|quai|cours|square|voie|passage|esplanade|rond-point|montée|chaussée|parvis|promenade|sentier|faubourg|clos|cité|grande rue|petite rue)\b/i;
+	/^(rue|avenue|boulevard|chemin|place|allée|allées|impasse|route|quai|cours|square|voie|passage|esplanade|rond-point|montée|chaussée|parvis|promenade|sentier|faubourg|clos|cité|grande? rue|petite rue)\b/i;
 
 /**
  * Whether a postcode is a place's rather than a CEDEX mail route, which the address lines do
@@ -698,6 +713,9 @@ export function openedForSure(date: string, level: string | null): boolean {
 	return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= "1978" && level !== "primaire";
 }
 
+/** Positions the directory gives to the building; anything coarser is worth a look. */
+const EXACT = /^(parfaite|num[ée]ro de rue)$/i;
+
 /** A school's address at a webmail provider is often a person's, which does not belong on the map. */
 const WEBMAIL =
 	/@(gmail|hotmail|outlook|live|yahoo|icloud|wanadoo|orange|free|laposte|sfr|neuf)\.[a-z.]+$/i;
@@ -729,6 +747,7 @@ const education: Preset = {
 		const siret = str(r, "siren_siret", "numero_siren_siret").replace(/\s/g, "");
 
 		const nature = str(r, "libelle_nature");
+		const precision = str(r, "precision_localisation");
 		const mat = str(r, "ecole_maternelle") || "0";
 		const elem = str(r, "ecole_elementaire") || "0";
 		const amenity = t.add("amenity", kind.amenity, 0.9, "libelle_nature", nature, "derived");
@@ -736,7 +755,7 @@ const education: Preset = {
 			// Already mapped, an institute is a school to some mappers and a social facility to
 			// others; which main tag it keeps is theirs to decide.
 			fill(amenity);
-			fill(t.add("social_facility:for", kind.for, 0.8, "type_etablissement", undefined, "derived"));
+			fill(t.add("social_facility:for", kind.for, 0.8, "libelle_nature", nature, "derived"));
 		}
 		if (kind.level && /^[ée]cole/i.test(str(r, "type_etablissement")))
 			t.add(
@@ -814,12 +833,16 @@ const education: Preset = {
 				string
 			>,
 			tags: t.list,
-			notes:
-				rows.length > 1
+			notes: [
+				...(rows.length > 1
 					? [
 							`The directory lists this UAI at ${rows.length} sites; the details are ${str(r, "adresse_1")}'s, the main one`,
 						]
-					: [],
+					: []),
+				...(precision && !EXACT.test(precision)
+					? [`The directory places it only to the precision of: ${precision}`]
+					: []),
+			],
 		};
 	},
 };

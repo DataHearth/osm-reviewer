@@ -456,6 +456,13 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(tags.find((t) => t.k === "email")).toBeUndefined();
 	});
 
+	it("says when the directory places a school only roughly", () => {
+		expect(edu.extract([row({ precision_localisation: "Rue" })], "u")?.notes).toEqual([
+			"The directory places it only to the precision of: Rue",
+		]);
+		expect(edu.extract([row({ precision_localisation: "Parfaite" })], "u")?.notes).toEqual([]);
+	});
+
 	it("proposes nothing for a section housed in its parent establishment", () => {
 		const section = { type_rattachement_etablissement_mere: "FILIERE OU DEPARTEMENT OU SECTION" };
 		expect(edu.extract([row(section)], "u")).toBeNull();
@@ -600,6 +607,12 @@ describe("schoolName", () => {
 			"Association de Gestion des Écoles du Campus Vidal",
 		);
 		expect(schoolName("IME Les Troënes")).toBe("IME Les Troënes");
+		expect(schoolName("DITEP La Maison des enfants")).toBe("DITEP La Maison des enfants");
+		expect(schoolName("Ecole Technique privée ESTM Lebreton")).toBe(
+			"École Technique privée ESTM Lebreton",
+		);
+		expect(schoolName("Lycée Pierre de FERMAT")).toBe("Lycée Pierre de Fermat");
+		expect(schoolName("Ecole privée hors-contrat Rose Carmin")).toBe("École privée Rose Carmin");
 	});
 });
 
