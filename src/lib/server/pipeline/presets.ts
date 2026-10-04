@@ -124,6 +124,27 @@ const DC_SOCKETS = new Set(["socket:type2_combo", "socket:chademo"]);
 
 const POWER_KW = (n: number) => `${Number.isInteger(n) ? n : Number(n.toFixed(1))} kW`;
 
+const NOT_A_POINT = /^non concern/i;
+
+/**
+ * The consolidated file keeps every declaration a station has had, so a charge point can
+ * come back once per declaration, the older ones carrying stale counts and operators.
+ * Only the newest row of each point counts, and the newest comes first so the station's
+ * single values are read from it.
+ */
+function newestPerPoint(rows: Row[]): Row[] {
+	const seen = new Set<string>();
+	return [...rows]
+		.sort((a, b) => str(b, "date_maj").localeCompare(str(a, "date_maj")))
+		.filter((r) => {
+			const id = str(r, "id_pdc_itinerance");
+			if (!id || NOT_A_POINT.test(id)) return true;
+			if (seen.has(id)) return false;
+			seen.add(id);
+			return true;
+		});
+}
+
 /** IRVE "statique" v2.3, consolidated: one row per charge point, grouped into one station. */
 const irve: Preset = {
 	id: "irve",
@@ -139,7 +160,8 @@ const irve: Preset = {
 		const xy = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec(str(r, "coordonneesXY"));
 		return xy ? coord(xy[2], xy[1]) : null;
 	},
-	extract(rows, url) {
+	extract(declared, url) {
+		const rows = newestPerPoint(declared);
 		const first = rows[0];
 		const pos = irve.position(first);
 		const key = irve.key(first);
@@ -148,7 +170,7 @@ const irve: Preset = {
 
 		const points = [
 			...new Set(
-				rows.map((r) => str(r, "id_pdc_itinerance")).filter((v) => v && !/^non concern/i.test(v)),
+				rows.map((r) => str(r, "id_pdc_itinerance")).filter((v) => v && !NOT_A_POINT.test(v)),
 			),
 		];
 		const capacity = points.length || Number.parseInt(str(first, "nbre_pdc"), 10) || 0;

@@ -57,6 +57,25 @@ describe("IRVE preset", () => {
 		expect(x?.lat).toBe(45.764);
 	});
 
+	it("reads each charge point from its newest declaration only", () => {
+		const point = (n: number, over: Row) =>
+			irveRow({ id_pdc_itinerance: `FR*S63*E0001*${n}`, ...over });
+		const old = { date_maj: "2026-07-21", nbre_pdc: "4", nom_operateur: "Ancien SA" };
+		const x = irve.extract(
+			[
+				point(1, old),
+				point(1, { date_maj: "2026-10-04" }),
+				point(2, old),
+				point(2, { date_maj: "2026-10-04" }),
+			],
+			"u",
+		);
+		const tags = Object.fromEntries((x?.tags ?? []).map((t) => [t.k, t]));
+		expect(tags.capacity).toMatchObject({ v: "2", parts: [{}, { text: "2" }] });
+		expect(tags["socket:type2"]?.v).toBe("2");
+		expect(tags.operator?.v).toBe("Operateur SA");
+	});
+
 	it("proposes access=yes only to fill a gap, and nothing for reserved access", () => {
 		const access = (condition: string) =>
 			irve
