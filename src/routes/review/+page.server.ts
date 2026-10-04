@@ -4,6 +4,7 @@ import { zod4 } from "sveltekit-superforms/adapters";
 
 import { parseQueueQuery } from "$lib/schemas/queue";
 import { acceptSchema, candidateSchema } from "$lib/schemas/review";
+import { osm } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { rebase } from "$lib/server/mutations";
 import { loadQueue } from "$lib/server/queries";
@@ -18,7 +19,7 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 		superValidate(zod4(acceptSchema), { id: "accept" }),
 		superValidate(zod4(candidateSchema), { id: "reject" }),
 	]);
-	return { ...queue, acceptForm, rejectForm };
+	return { ...queue, osmBase: osm.url, acceptForm, rejectForm };
 };
 
 export const actions: Actions = {

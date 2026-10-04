@@ -71,10 +71,9 @@ export const statusPill = (s: string) =>
 			: "bg-raised text-muted";
 
 /** No link for a candidate that has no OSM object yet. */
-export const osmUrl = (osmId: string | null) =>
-	osmId === null
-		? undefined
-		: `https://www.openstreetmap.org/${osmId.startsWith("node/") ? osmId : ""}`;
+/** `base` is the instance's `OSM_URL`, so the link opens the map the upload writes to. */
+export const osmUrl = (base: string, osmId: string | null) =>
+	osmId === null ? undefined : `${base}/${osmId}`;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 

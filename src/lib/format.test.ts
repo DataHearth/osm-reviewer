@@ -25,8 +25,12 @@ describe("daysSince", () => {
 });
 
 describe("osmUrl", () => {
+	const base = "https://master.apis.dev.openstreetmap.org";
 	it("has no link for a POI OSM does not have yet", () => {
-		expect(osmUrl(null)).toBeUndefined();
-		expect(osmUrl("node/1")).toBe("https://www.openstreetmap.org/node/1");
+		expect(osmUrl(base, null)).toBeUndefined();
+	});
+	it("opens nodes, ways and relations on the configured instance", () => {
+		expect(osmUrl(base, "node/1")).toBe(`${base}/node/1`);
+		expect(osmUrl(base, "way/2")).toBe(`${base}/way/2`);
 	});
 });

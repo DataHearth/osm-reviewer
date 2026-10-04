@@ -177,7 +177,7 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 						<span class="flex shrink-0 items-center gap-1.5 {typeText(c.type)}"
 							><span class="h-[7px] w-[7px] rounded-full {typeDot(c.type)}"></span>{typeLabel(c.type)}</span
 						>
-						<a href={osmUrl(c.osmId)} target="_blank" rel="noreferrer" class="min-w-0 truncate font-mono text-[11.5px]">{c.osmId ?? "new POI"}</a>
+						<a href={osmUrl(data.osmBase, c.osmId)} target="_blank" rel="noreferrer" class="min-w-0 truncate font-mono text-[11.5px]">{c.osmId ?? "new POI"}</a>
 						<span class="ml-auto shrink-0">conf <span class="font-mono {confText(c.conf)}">{pct(c.conf)}</span></span>
 					</div>
 				{/if}
@@ -213,7 +213,7 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 					<span class="truncate text-[13px] text-muted">{c?.addr}</span>
 					{#if c}
 						<div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-faint">
-							<a href={osmUrl(c.osmId)} target="_blank" rel="noreferrer" class="font-mono">{c.osmId ?? "new POI"}</a>
+							<a href={osmUrl(data.osmBase, c.osmId)} target="_blank" rel="noreferrer" class="font-mono">{c.osmId ?? "new POI"}</a>
 							<span class="flex items-center gap-1.5 {typeText(c.type)}"
 								><span class="h-[7px] w-[7px] rounded-full {typeDot(c.type)}"></span>{typeLabel(c.type)}</span
 							>
