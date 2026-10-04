@@ -431,7 +431,10 @@ export function sourcesOfArea(db: Db, areaId: string): string[] {
 		.select({ id: t.sources.id })
 		.from(t.areaSources)
 		.innerJoin(t.sources, eq(t.sources.id, t.areaSources.sourceId))
-		.where(and(eq(t.areaSources.areaId, areaId), eq(t.sources.enabled, true)))
+		.innerJoin(t.areas, eq(t.areas.id, t.areaSources.areaId))
+		.where(
+			and(eq(t.areaSources.areaId, areaId), eq(t.sources.enabled, true), eq(t.areas.paused, false)),
+		)
 		.all()
 		.map((r) => r.id);
 }

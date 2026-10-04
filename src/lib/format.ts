@@ -62,11 +62,11 @@ export const KBD = "font-mono text-[11px] font-normal text-ink-2";
 export const KBD_ACCENT = "font-mono text-[11px] font-normal opacity-65";
 
 export const statusText = (s: string) =>
-	s === "active" ? "text-ok-ink" : s === "paused" ? "text-warn" : "text-faint";
+	s === "active" ? "text-ok-ink" : s === "disabled" ? "text-warn" : "text-faint";
 export const statusPill = (s: string) =>
 	s === "active"
 		? "bg-ok-bg text-ok-ink"
-		: s === "paused"
+		: s === "disabled"
 			? "bg-warn-bg text-warn"
 			: "bg-raised text-muted";
 

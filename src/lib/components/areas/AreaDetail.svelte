@@ -10,7 +10,7 @@ import type { Tone } from "$lib/types";
 
 const a = $derived(review.area(review.areaId));
 const paused = $derived(!!review.paused[a.id]);
-const status = $derived(paused ? "paused" : a.status);
+const status = $derived(paused ? "disabled" : a.status);
 const radius = $derived(review.radiusOf(a));
 const sqkm = $derived(review.sqkmOf(a));
 
@@ -67,7 +67,7 @@ const defRows = $derived(
 				class="cursor-pointer rounded-sm border border-line bg-transparent px-[11px] py-1 text-[12px] text-muted hover:text-ink"
 				onclick={() => review.editArea(a)}>edit</button
 			>
-			<button class={ghost(paused)} onclick={() => review.togglePaused(a)}>{paused ? "resume" : "pause"}</button>
+			<button class={ghost(paused)} onclick={() => review.togglePaused(a)}>{paused ? "enable" : "disable"}</button>
 			<button class={ghost(false)} onclick={() => review.runPipeline(a)}>run pipeline</button>
 		</div>
 	</div>

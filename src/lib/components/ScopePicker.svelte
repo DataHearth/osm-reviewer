@@ -23,7 +23,7 @@ const list = $derived(review.scopeAreas);
 const total = $derived(list.reduce((n, a) => n + a.pending, 0));
 
 const dot = (s: string) =>
-	s === "active" ? "bg-ok" : s === "paused" ? "bg-warn" : "border border-faint bg-transparent";
+	s === "active" ? "bg-ok" : s === "disabled" ? "bg-warn" : "border border-faint bg-transparent";
 function meta(a: ScopeArea): [string, string | null] {
 	if (a.lastRun === "never") return [a.status, null];
 	const reach =
@@ -94,7 +94,7 @@ const sheetRow = (on: boolean) =>
 					<span></span>
 					<span class="col-span-2 flex items-center gap-1.5 text-[11.5px] text-faint">
 						<span class="h-1.5 w-1.5 shrink-0 rounded-full {dot(s)}"></span>
-						<span class={s === "paused" ? "text-warn-ink" : ""}>{s}</span>{#if line}<span class="truncate">· {line}</span>{/if}
+						<span class={s === "disabled" ? "text-warn-ink" : ""}>{s}</span>{#if line}<span class="truncate">· {line}</span>{/if}
 					</span>
 				</button>
 			{/each}
@@ -132,7 +132,7 @@ const sheetRow = (on: boolean) =>
 					<span class="truncate {on ? 'font-semibold text-ink' : a.pending ? 'text-ink' : 'text-muted'}">{a.name}</span>
 					<span class="flex items-center gap-1.5 text-[12px] text-faint">
 						<span class="h-1.5 w-1.5 shrink-0 rounded-full {dot(s)}"></span>
-						<span class={s === "paused" ? "text-warn-ink" : ""}>{s}</span>{#if line}<span class="truncate">· {line}</span>{/if}
+						<span class={s === "disabled" ? "text-warn-ink" : ""}>{s}</span>{#if line}<span class="truncate">· {line}</span>{/if}
 					</span>
 				</span>
 				<span class={num(on, a.pending)}>{a.pending}</span>

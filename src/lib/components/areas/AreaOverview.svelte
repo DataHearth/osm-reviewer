@@ -23,7 +23,7 @@ const tiles = $derived([
 	{
 		label: "areas",
 		value: `${list.length - paused} of ${list.length}`,
-		sub: paused ? `${paused} paused` : "all active",
+		sub: paused ? `${paused} disabled` : "all active",
 		tone: (paused ? "warn" : "ok") as Tone,
 	},
 	{ label: "pending review", value: comma(totals.pending), sub: "in the queue now" },
@@ -42,7 +42,7 @@ const card = $derived.by(() => {
 	const a = c ? list.find((x) => x.id === c.id) : null;
 	if (!c || !a) return null;
 	const status = review.paused[a.id]
-		? "paused"
+		? "disabled"
 		: a.status === "first run queued"
 			? "queued"
 			: a.status;
@@ -73,7 +73,7 @@ const card = $derived.by(() => {
 			{#if never}
 				{never}{never === 1 ? " area has" : " areas have"} never run
 			{:else if paused}
-				{paused}{paused === 1 ? " area is" : " areas are"} paused — nothing is fetched for {paused === 1 ? "it" : "them"}
+				{paused}{paused === 1 ? " area is" : " areas are"} disabled — nothing is fetched for {paused === 1 ? "it" : "them"}
 			{:else}
 				every area fetched on schedule
 			{/if}

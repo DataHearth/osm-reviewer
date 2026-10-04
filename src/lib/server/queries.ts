@@ -75,7 +75,7 @@ async function areaTallies(db: Db) {
 
 /** The area's own state in the words the screens use. */
 const areaStatus = (a: { paused: boolean; lastRunAt: Date | null }) =>
-	a.paused ? "paused" : a.lastRunAt ? "active" : "first run queued";
+	a.paused ? "disabled" : a.lastRunAt ? "active" : "first run queued";
 const areaLastRun = (a: { lastRunAt: Date | null }) => (a.lastRunAt ? stamp(a.lastRunAt) : "never");
 
 export async function loadSources(db: Db): Promise<Source[]> {

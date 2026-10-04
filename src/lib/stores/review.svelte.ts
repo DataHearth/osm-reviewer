@@ -198,7 +198,7 @@ class ReviewState {
 	}
 
 	get paused(): Record<string, boolean> {
-		return Object.fromEntries(this.areas.map((a) => [a.id, a.status === "paused"]));
+		return Object.fromEntries(this.areas.map((a) => [a.id, a.status === "disabled"]));
 	}
 
 	get visibleAreas() {
@@ -551,7 +551,7 @@ class ReviewState {
 	}
 
 	async togglePaused(a: Area) {
-		await post("?/paused", { id: a.id, paused: a.status !== "paused" });
+		await post("?/paused", { id: a.id, paused: a.status !== "disabled" });
 	}
 
 	async removeArea(a: Area) {

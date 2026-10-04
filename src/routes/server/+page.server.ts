@@ -94,7 +94,7 @@ export const actions: Actions = {
 		if (requestRuns(db, sourcesOfArea(db, form.data.id)) === 0)
 			return message(
 				form,
-				"No enabled source is linked to this area, or its runs are already going.",
+				"The area is disabled, no enabled source is linked to it, or its runs are already going.",
 				{
 					status: 409,
 				},

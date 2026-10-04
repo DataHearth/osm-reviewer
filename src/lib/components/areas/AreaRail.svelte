@@ -26,7 +26,7 @@ const overviewOn = $derived(!review.areaId && !review.draft);
 
 {#each review.visibleAreas as a (a.id)}
 	{@const on = a.id === review.areaId && (!review.draft || review.draft.editId === a.id)}
-	{@const st = review.paused[a.id] ? "paused" : a.status}
+	{@const st = review.paused[a.id] ? "disabled" : a.status}
 	<button
 		class={railRow(on)}
 		onclick={() => {
