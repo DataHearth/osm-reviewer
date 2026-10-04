@@ -24,6 +24,8 @@ export interface ProposedTag {
 	kind: string;
 	/** Proposed only where OSM has no value: the source is too coarse to overrule what a mapper set. */
 	addOnly?: boolean;
+	/** Why the value cannot be written as it stands; the reviewer sees it and has to type over it. */
+	invalid?: string;
 }
 
 export interface Extraction {

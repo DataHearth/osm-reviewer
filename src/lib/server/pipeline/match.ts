@@ -16,19 +16,50 @@ const NEARBY_RADIUS_M = 300;
 /** Degrees of latitude a bit over the match radius: a cheap cut before the haversine. */
 const LAT_PREFILTER = 0.0006;
 
+/**
+ * An identifier keeps its meaning without its separators: mappers write `FR*TLS*P31555019`
+ * where a registry writes `FRTLSP31555019`, and case varies.
+ */
+const ids = (v: string) =>
+	v
+		.split(";")
+		.map((x) => x.replace(/[\s*]/g, "").toUpperCase())
+		.filter(Boolean);
+
 const values = (v: string) =>
 	v
 		.split(";")
 		.map((x) => x.trim().replace(/\s+/g, ""))
 		.filter(Boolean);
 
-export function indexRefs(els: OsmElement[], keys: string[]): Map<string, OsmElement> {
-	const idx = new Map<string, OsmElement>();
+/** Identifiers that name one establishment, so an object carrying another value is another place. */
+const ONE_PLACE = ["ref:UAI"];
+
+/** Whether `e` carries one of these identifiers with a value the record does not have. */
+function otherPlace(e: OsmElement, refs: Record<string, string>): boolean {
+	return ONE_PLACE.some((k) => {
+		if (!refs[k]) return false;
+		const ours = new Set(ids(refs[k]));
+		return (ALIASES[k] ?? [k]).some((alias) => {
+			const v = e.tags[alias];
+			return v !== undefined && !ids(v).some((x) => ours.has(x));
+		});
+	});
+}
+
+/** Every element per identifier: a SIRET or an EVSE pool can sit on several objects. */
+export function indexRefs(els: OsmElement[], keys: string[]): Map<string, OsmElement[]> {
+	const idx = new Map<string, OsmElement[]>();
 	for (const key of keys)
 		for (const alias of ALIASES[key] ?? [key])
 			for (const e of els) {
 				const v = e.tags[alias];
-				if (v) for (const one of values(v)) idx.set(`${key}\u0000${one}`, e);
+				if (!v) continue;
+				for (const one of ids(v)) {
+					const at = `${key}\u0000${one}`;
+					const list = idx.get(at) ?? [];
+					if (!list.includes(e)) idx.set(at, [...list, e]);
+				}
 			}
 	return idx;
 }
@@ -36,16 +67,20 @@ export function indexRefs(els: OsmElement[], keys: string[]): Map<string, OsmEle
 export function findMatch(
 	x: Pick<Extraction, "lat" | "lon" | "name" | "refs">,
 	els: OsmElement[],
-	refIndex: Map<string, OsmElement>,
+	refIndex: Map<string, OsmElement[]>,
 ): OsmElement | null {
-	for (const [k, v] of Object.entries(x.refs))
-		for (const one of values(v)) {
-			const hit = refIndex.get(`${k}\u0000${one}`);
-			if (hit) return hit;
-		}
+	const hits = Object.entries(x.refs).flatMap(([k, v]) =>
+		ids(v).flatMap((one) => refIndex.get(`${k}\u0000${one}`) ?? []),
+	);
+	const byRef = hits
+		.filter((e) => !otherPlace(e, x.refs))
+		.map((e) => ({ e, d: distance(x.lat, x.lon, e.lat, e.lon) }))
+		.sort((a, b) => a.d - b.d)[0];
+	if (byRef) return byRef.e;
 
 	let best: { el: OsmElement; score: number } | null = null;
 	for (const e of els) {
+		if (otherPlace(e, x.refs)) continue;
 		if (Math.abs(e.lat - x.lat) > LAT_PREFILTER) continue;
 		const d = distance(x.lat, x.lon, e.lat, e.lon);
 		if (d > MATCH_RADIUS_M) continue;
@@ -72,6 +107,11 @@ export function sameValue(k: string, a: string, b: string): boolean {
 	if (a === b) return true;
 	if (k === "phone" || k === "fax") return digits(a) === digits(b);
 	if (k === "website") return site(a) === site(b);
+	if (k.startsWith("ref:")) {
+		const sa = new Set(ids(a));
+		const sb = new Set(ids(b));
+		return sa.size === sb.size && [...sa].every((x) => sb.has(x));
+	}
 	if (a.includes(";") || b.includes(";")) {
 		const sa = new Set(values(a));
 		const sb = new Set(values(b));

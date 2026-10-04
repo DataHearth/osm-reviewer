@@ -126,6 +126,8 @@ export function saveCandidate(db: Db, w: CandidateWrite, existing: Existing | un
 					v: op.v,
 					was: op.was,
 					conf: op.conf,
+					invalid: !!op.invalid,
+					invalidMsg: op.invalid ?? null,
 				})
 				.returning({ id: t.tags.id })
 				.get();

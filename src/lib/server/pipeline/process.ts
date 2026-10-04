@@ -16,7 +16,7 @@ import {
 	updateOps,
 } from "./match";
 import { countPois, fetchElements } from "./overpass";
-import { mergeSites, str } from "./presets";
+import { mergeSites, OSM_MAX, str } from "./presets";
 import { hash, type Reader } from "./reader";
 import { existingCandidates, saveCandidate, sweepVanished, touchSeen } from "./store";
 import { allowedBy, mergeSelectors, parseMatching, selectorsFromTags } from "./tagfilter";
@@ -156,6 +156,8 @@ export async function processArea(
 			ops = newOps(x.tags);
 		}
 		if (ops.length === 0) continue;
+		for (const o of ops)
+			if (o.v.length > OSM_MAX) o.invalid = `${o.v.length} characters, over OSM's ${OSM_MAX}`;
 
 		// What the source proposes, not the rows it was read from: a fixed preset or a new
 		// model answer has to reach an undecided candidate as surely as a change in the data.

@@ -80,8 +80,7 @@ export function decisionOps(
 	for (const position of new Set(picks.tags)) {
 		const p = proposals.find((x) => x.position === position);
 		if (!p) throw new RefusedError("no such tag.");
-		if (p.invalid)
-			throw new RefusedError("accept blocked — opening_hours fails syntax validation.");
+		if (p.invalid) throw new RefusedError(`accept blocked — ${p.k} fails validation.`);
 		if (!p.ev) throw new RefusedError("accept blocked — an unevidenced tag cannot be written.");
 		push({ tagId: p.id, op: p.op, k: p.k, v: p.v, was: p.was });
 	}

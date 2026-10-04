@@ -279,8 +279,9 @@ class ReviewState {
 		const sel = this.selected;
 		const e = this.edit;
 		const typed = (i: number) => i in e.vals;
-		if (c.tags.some((t, i) => t.invalid && sel[i] && !typed(i)))
-			return "accept blocked — opening_hours fails syntax validation. Fix the value or deselect the tag.";
+		const bad = c.tags.find((t, i) => t.invalid && sel[i] && !typed(i));
+		if (bad)
+			return `accept blocked — ${bad.k} fails validation. Fix the value or deselect the tag.`;
 		if (c.tags.some((t, i) => !t.ev && sel[i] && !typed(i)))
 			return "accept blocked — an unevidenced tag cannot be written. Type its value to vouch for it, or deselect it.";
 		const empty = [

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectPreset, mergeSites, phoneFR, presetById, website } from "./presets";
+import { detectPreset, mergeSites, phoneFR, poolId, presetById, website } from "./presets";
 import type { Row } from "./types";
 
 const irveRow = (over: Row = {}): Row => ({
@@ -50,10 +50,10 @@ describe("IRVE preset", () => {
 			fee: "yes",
 			access: "yes",
 			opening_hours: "24/7",
-			"ref:EU:EVSE": "FR*S63*E0001*1;FR*S63*E0001*2",
+			"ref:EU:EVSE": "FR*S63*P0001",
 		});
 		expect(tags["socket:type2_combo"]).toBeUndefined();
-		expect(x?.refs["ref:EU:EVSE"]).toBe("FR*S63*E0001*1;FR*S63*E0001*2");
+		expect(x?.refs["ref:EU:EVSE"]).toBe("FRS63P0001;FR*S63*E0001*1;FR*S63*E0001*2");
 		expect(x?.lat).toBe(45.764);
 	});
 
@@ -92,7 +92,8 @@ describe("IRVE preset", () => {
 		const tags = Object.fromEntries(
 			(irve.extract(merged[0].rows, "u")?.tags ?? []).map((t) => [t.k, t.v]),
 		);
-		expect(tags).toMatchObject({ capacity: "3", "socket:type2": "3", "ref:EU:EVSE": "S1;S2;S3" });
+		expect(tags).toMatchObject({ capacity: "3", "socket:type2": "3" });
+		expect(tags["ref:EU:EVSE"]).toBeUndefined();
 	});
 
 	it("proposes access=yes only to fill a gap, and nothing for reserved access", () => {
@@ -255,5 +256,17 @@ describe("website", () => {
 		expect(website("example.org")).toBe("https://example.org");
 		expect(website("http://example.org/a/")).toBe("http://example.org/a/");
 		expect(website("not a url")).toBeNull();
+	});
+});
+
+describe("poolId", () => {
+	it("writes a station's pool id with the standard's separators", () => {
+		expect(poolId("FRTLSP31555019")).toBe("FR*TLS*P31555019");
+		expect(poolId("fr*gly*plyon13222")).toBe("FR*GLY*PLYON13222");
+	});
+	it("proposes nothing for a point id or an operator's own id", () => {
+		expect(poolId("FRDRVEACJU1")).toBeNull();
+		expect(poolId("DKMONE4198725")).toBeNull();
+		expect(poolId("S1")).toBeNull();
 	});
 });

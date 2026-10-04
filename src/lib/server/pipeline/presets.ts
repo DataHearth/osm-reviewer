@@ -157,6 +157,19 @@ const POWER_KW = (n: number) => `${Number.isInteger(n) ? n : Number(n.toFixed(1)
 const NOT_A_POINT = /^non concern/i;
 
 /**
+ * A station's `ref:EU:EVSE` is its pool id, written the way French mappers and the EVSE id
+ * standard do: `FR*TLS*P31555019`. Point ids (`E`) belong on charge points, not here, and an
+ * id outside the standard shape is the operator's own, so neither is proposed.
+ */
+export function poolId(raw: string): string | null {
+	const m = /^([A-Z]{2})\*?([A-Z0-9]{3})\*?(P[A-Z0-9*]+)$/i.exec(raw.replace(/\s/g, ""));
+	return m ? `${m[1]}*${m[2]}*${m[3]}`.toUpperCase() : null;
+}
+
+/** OSM refuses a longer value, and the upload batch with it. */
+export const OSM_MAX = 255;
+
+/**
  * The consolidated file keeps every declaration a station has had, so a charge point can
  * come back once per declaration, the older ones carrying stale counts and operators.
  * Only the newest row of each point counts, and the newest comes first so the station's
@@ -226,7 +239,10 @@ const irve: Preset = {
 				"nbre_pdc",
 				str(first, "nbre_pdc") || String(capacity),
 			);
-		t.add("ref:EU:EVSE", points.join(";"), 0.95, "id_pdc_itinerance", points.join(";"));
+		const stations = [...new Set(rows.map((r) => str(r, "id_station_itinerance")).filter(Boolean))];
+		const pools = [...new Set(stations.map(poolId).filter((v) => v !== null))].join(";");
+		if (pools.length <= OSM_MAX)
+			t.add("ref:EU:EVSE", pools, 0.95, "id_station_itinerance", stations.join(";"));
 
 		const sockets: [string, string][] = [
 			["socket:type2", "prise_type_2"],
@@ -278,7 +294,8 @@ const irve: Preset = {
 		const hours = openingHours(str(first, "horaires"));
 		if (hours) t.add("opening_hours", hours, 0.7, "horaires");
 
-		const refs: Record<string, string> = points.length ? { "ref:EU:EVSE": points.join(";") } : {};
+		const known = [...stations, ...points].join(";");
+		const refs: Record<string, string> = known ? { "ref:EU:EVSE": known } : {};
 		const commune = str(first, "consolidated_commune");
 		const cp = str(first, "consolidated_code_postal");
 		return {

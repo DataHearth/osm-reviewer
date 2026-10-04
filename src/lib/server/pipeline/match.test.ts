@@ -44,6 +44,54 @@ describe("findMatch", () => {
 		expect(m?.id).toBe(2);
 	});
 
+	it("matches an identifier whatever its separators and case", () => {
+		const starred = [el(4, 0, 0, { "ref:EU:EVSE": "FR*TLS*P31555019" })];
+		expect(
+			findMatch(
+				{ lat: 1, lon: 1, name: "", refs: { "ref:EU:EVSE": "frtlsp31555019;FRTLSE1" } },
+				starred,
+				indexRefs(starred, ["ref:EU:EVSE"]),
+			)?.id,
+		).toBe(4);
+		expect(sameValue("ref:EU:EVSE", "FR*TLS*P31555019", "FRTLSP31555019")).toBe(true);
+	});
+
+	it("takes the nearest of the objects sharing an identifier, never one with another UAI", () => {
+		const siret = { "ref:UAI": "0311213A", "ref:FR:SIRET": "67080157000037" };
+		const two = [
+			el(5, 45.701, 4.8, { "ref:FR:SIRET": "67080157000037", "ref:UAI": "0312062Y" }),
+			el(6, 45.71, 4.8, { "ref:FR:SIRET": "67080157000037" }),
+			el(7, 45.7, 4.8, { "ref:FR:SIRET": "67080157000037" }),
+		];
+		const idx = indexRefs(two, ["ref:UAI", "ref:FR:SIRET"]);
+		expect(findMatch({ lat: 45.7, lon: 4.8, name: "", refs: siret }, two, idx)?.id).toBe(7);
+		expect(
+			findMatch(
+				{ lat: 45.7011, lon: 4.8, name: "", refs: siret },
+				two.slice(0, 2),
+				indexRefs(two.slice(0, 2), ["ref:FR:SIRET"]),
+			)?.id,
+		).toBe(6);
+	});
+
+	it("never matches a sibling school carrying another UAI by name and distance", () => {
+		const sibling = [
+			el(8, 45.7, 4.8, { name: "École maternelle Jules Ferry", "ref:UAI": "0690002B" }),
+		];
+		expect(
+			findMatch(
+				{
+					lat: 45.7,
+					lon: 4.8,
+					name: "École élémentaire Jules Ferry",
+					refs: { "ref:UAI": "0690001A" },
+				},
+				sibling,
+				indexRefs(sibling, ["ref:UAI"]),
+			),
+		).toBeNull();
+	});
+
 	it("matches an alias of a ref key and a ;-separated list", () => {
 		const aliased = [el(9, 0, 0, { "ref:FR:UAI": "0690001A" })];
 		expect(
