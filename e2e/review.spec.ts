@@ -21,7 +21,7 @@ test.afterEach(async ({ page }) => {
 
 test("a candidate opens with its tags and evidence", async ({ page }) => {
 	await onScreen(page.getByText(CANDIDATE.name, { exact: true })).click();
-	await expect(page).toHaveURL(/\/review\?id=/);
+	await expect(page).toHaveURL(`/review?id=${CANDIDATE.id}`);
 
 	await expect(page.getByRole("button", { name: "Deselect shop" })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Deselect name" })).toBeVisible();

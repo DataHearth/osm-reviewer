@@ -55,7 +55,7 @@ function onkeydown(e: KeyboardEvent) {
 			const c = rows[review.qIdx];
 			if (c) {
 				review.open(c);
-				goto(review.href("/review"));
+				goto(review.reviewHref(c.id));
 			}
 		}
 		return;

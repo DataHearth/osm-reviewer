@@ -85,9 +85,8 @@ const errBody = $derived(
 					type="button"
 					class="cursor-pointer rounded-sm border border-edge-strong bg-raised px-[13px] py-[5px] text-ink"
 					onclick={() => {
-						review.openCandidate(conflict.candidateId);
 						review.upload = "idle";
-						goto("/review");
+						goto(review.reviewHref(conflict.candidateId));
 					}}>open {conflict.osmId}</button
 				>
 				<button

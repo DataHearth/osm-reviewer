@@ -94,7 +94,7 @@ const sortBtn = (k: string) =>
 
 function openRow(c: Candidate, i: number) {
 	review.open(c, i);
-	goto(review.href("/review"));
+	goto(review.reviewHref(c.id));
 }
 </script>
 

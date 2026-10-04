@@ -7,6 +7,7 @@ import {
 	defaultDir,
 	type QueueQuery,
 	queueHref,
+	queueSearch,
 	type SortKey,
 } from "$lib/schemas/queue";
 import type { SourceDraft } from "$lib/schemas/source";
@@ -357,6 +358,13 @@ class ReviewState {
 	/** `path` carrying the queue's view, with `change` applied to it. */
 	href(path: string, change: Partial<QueueQuery> = {}) {
 		return queueHref(path, { ...this.query, ...change });
+	}
+
+	/** `/review` on one candidate, inside the queue's view. */
+	reviewHref(id: string) {
+		const q = new URLSearchParams(queueSearch(this.query));
+		q.set("id", id);
+		return `/review?${q}`;
 	}
 
 	/**
