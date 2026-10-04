@@ -447,7 +447,7 @@ const irve: Preset = {
 				),
 			);
 		const since = serviceDate(rows);
-		if (since) fill(t.add("start_date", since, 0.65, "date_mise_en_service", since));
+		if (since) fill(t.add("start_date", since, 0.7, "date_mise_en_service", since));
 		const owner = str(first, "nom_amenageur");
 		if (normaliseName(owner) !== normaliseName(operator))
 			fill(t.add("owner", owner, 0.7, "nom_amenageur"));
@@ -558,6 +558,17 @@ export function schoolAddress(r: Row) {
 	};
 }
 
+/**
+ * `date_ouverture` is when the UAI entered the register, not when the school opened. Every
+ * school that already existed was entered in batches up to the late 1970s (98 on two days of
+ * 1965 alone, the Lycée du Parc's 1914 among them); from 1978 the dates fall on the first
+ * day of a school year and read as real openings. A primaire is usually a maternelle and an
+ * élémentaire merged under a new UAI, so its date is the merger's.
+ */
+export function openedForSure(date: string, level: string | null): boolean {
+	return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= "1978" && level !== "primaire";
+}
+
 /** Annuaire de l'éducation. */
 const education: Preset = {
 	id: "annuaire-education",
@@ -600,8 +611,7 @@ const education: Preset = {
 		const mail = str(r, "mail");
 		if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail)) fill(t.add("email", mail, 0.8, "mail"));
 		const opened = str(r, "date_ouverture");
-		if (/^\d{4}-\d{2}-\d{2}$/.test(opened))
-			fill(t.add("start_date", opened, 0.65, "date_ouverture"));
+		if (openedForSure(opened, kind.level)) fill(t.add("start_date", opened, 0.7, "date_ouverture"));
 		const status = str(r, "statut_public_prive");
 		if (/^public/i.test(status)) t.add("operator:type", "public", 0.9, "statut_public_prive");
 		else if (/priv/i.test(status)) t.add("operator:type", "private", 0.9, "statut_public_prive");

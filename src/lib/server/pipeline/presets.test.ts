@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	detectPreset,
 	mergeSites,
+	openedForSure,
 	openingHours,
 	phoneFR,
 	poolId,
@@ -361,11 +362,19 @@ describe("Annuaire de l'éducation preset", () => {
 	it("proposes the directory's email and opening date", () => {
 		const tags = Object.fromEntries(
 			(
-				edu.extract([row({ mail: "ce.0690001A@ac-lyon.fr", date_ouverture: "1966-10-17" })], "u")
-					?.tags ?? []
+				edu.extract(
+					[
+						row({
+							mail: "ce.0690001A@ac-lyon.fr",
+							date_ouverture: "2023-09-01",
+							ecole_elementaire: "0",
+						}),
+					],
+					"u",
+				)?.tags ?? []
 			).map((t) => [t.k, t.v]),
 		);
-		expect(tags).toMatchObject({ email: "ce.0690001A@ac-lyon.fr", start_date: "1966-10-17" });
+		expect(tags).toMatchObject({ email: "ce.0690001A@ac-lyon.fr", start_date: "2023-09-01" });
 	});
 
 	it("fills a missing name but never renames", () => {
@@ -428,6 +437,16 @@ describe("schoolAddress", () => {
 		expect(at({ adresse_3: "31076 TOULOUSE CEDEX 3" })?.postcode).toBe("");
 		expect(at({ adresse_1: "75 rue SAINT ROCH" })).toBeNull();
 		expect(at({ adresse_1: "BP 41023" })).toBeNull();
+	});
+});
+
+describe("openedForSure", () => {
+	it("trusts a register date only after the bulk entries, and never a merged primaire's", () => {
+		expect(openedForSure("1965-05-01", "lycée")).toBe(false);
+		expect(openedForSure("1977-03-08", "élémentaire")).toBe(false);
+		expect(openedForSure("2023-09-01", "maternelle")).toBe(true);
+		expect(openedForSure("2017-09-01", "primaire")).toBe(false);
+		expect(openedForSure("", null)).toBe(false);
 	});
 });
 
