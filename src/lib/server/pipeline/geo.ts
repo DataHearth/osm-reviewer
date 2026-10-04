@@ -42,9 +42,9 @@ export function hasShape(a: AreaShape): boolean {
 
 /**
  * A relation area is its bounding box while a source is read, so records in a neighbouring
- * commune's corner of the box are let in. Exact membership would need the boundary geometry;
- * Overpass's own `area` filter is exact for the OSM side, but a registry dump can only be cut
- * by something cheap while it streams.
+ * commune's corner of the box are let in. Exact membership would need the boundary geometry,
+ * and a registry dump can only be cut by something cheap while it streams. Matching fetches
+ * OSM over the same box (`matchScope`), so those records still find what is mapped there.
  */
 export function inArea(a: AreaShape, lat: number, lon: number): boolean {
 	const r = circle(a);

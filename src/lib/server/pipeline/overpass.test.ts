@@ -4,13 +4,22 @@ import { buildQuery, parseElements } from "./overpass";
 const base = { bbox: null, centerLat: 45.76, centerLon: 4.83, km: null };
 
 describe("buildQuery", () => {
-	it("scopes a relation area through the area id offset", () => {
+	it("matches a relation area over the box its records are cut by", () => {
+		const q = buildQuery(
+			{ ...base, def: "relation", rel: "120965", radius: null, bbox: [45.7, 4.77, 45.81, 4.9] },
+			[{ k: "amenity", v: ["charging_station"] }],
+		);
+		expect(q).not.toContain("area(id:");
+		expect(q).toContain('nwr["amenity"="charging_station"](45.7,4.77,45.81,4.9);');
+		expect(q).toContain("out center tags meta;");
+	});
+
+	it("falls back to the area id while a relation has no box yet", () => {
 		const q = buildQuery({ ...base, def: "relation", rel: "120965", radius: null }, [
 			{ k: "amenity", v: ["charging_station"] },
 		]);
 		expect(q).toContain("area(id:3600120965)->.a;");
 		expect(q).toContain('nwr["amenity"="charging_station"](area.a);');
-		expect(q).toContain("out center tags meta;");
 	});
 
 	it("scopes a radius area with around", () => {

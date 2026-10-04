@@ -22,11 +22,23 @@ function scope(a: OverpassArea): { head: string; where: string } {
 }
 
 /**
+ * What a candidate is matched against has to cover the same ground its records were cut
+ * by, and a relation's records are cut by its box (`inArea`). Fetched with the exact
+ * boundary instead, everything in a neighbouring commune's corner of the box finds no OSM
+ * object at all and comes out as a new POI, duplicating what is already mapped there.
+ */
+function matchScope(a: OverpassArea): { head: string; where: string } {
+	if (a.def === "radius" || !a.bbox) return scope(a);
+	const [s, w, n, e] = a.bbox;
+	return { head: "", where: `(${s},${w},${n},${e})` };
+}
+
+/**
  * `require` filters are ANDed onto every statement (a crawl wants POIs *with* a website);
  * `selectors` are alternatives. With no selectors the requirement alone picks the elements.
  */
 export function buildQuery(a: OverpassArea, selectors: Selector[], require: Selector[] = []) {
-	const { head, where } = scope(a);
+	const { head, where } = matchScope(a);
 	const and = require.map(overpassFilter).join("");
 	const filters = selectors.length ? selectors.map(overpassFilter) : [""];
 	const statements = filters.map((f) => `nwr${f}${and}${where};`).join("");

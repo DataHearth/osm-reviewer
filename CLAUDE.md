@@ -180,8 +180,10 @@ paged by 100 and switched to the `jsonl` export past the 10 000 offset ceiling. 
 seed rule is either URLs or `key=*` on OSM POIs (`website=*`): the pages OSM already points
 at, same host only, robots.txt honoured, the budget and per-host delay read from the free
 text, and only the model extractor reads them. Relation areas are cut by their bounding box
-while a source is read, which lets in a neighbour's corner of the box; the OSM side uses
-Overpass's exact `area`.
+while a source is read, which lets in a neighbour's corner of the box, and matching fetches
+OSM over that same box: cut by the exact `area` instead, a neighbour's records find nothing to
+match and all come out as duplicate "new" POIs. Only the "POIs watched" count uses the exact
+`area`.
 
 The **deterministic** extractor is a preset (`presets.ts`): `irve` and `annuaire-education`,
 named on the source or detected from the columns, and a source that fits none fails its run
