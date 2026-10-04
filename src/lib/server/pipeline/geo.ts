@@ -85,10 +85,13 @@ export const tokens = (s: string) =>
 			.filter((w) => w && !STOP.has(w)),
 	);
 
-/** Dice coefficient over word tokens, which survives "Pharmacie du Capitole" vs "Pharmacie Capitole". */
-export function nameSimilarity(a: string, b: string): number {
-	const ta = tokens(a);
-	const tb = tokens(b);
+/**
+ * Dice coefficient over word tokens, which survives "Pharmacie du Capitole" vs "Pharmacie Capitole".
+ * Words in `ignore` count on neither side.
+ */
+export function nameSimilarity(a: string, b: string, ignore: Set<string> = new Set()): number {
+	const ta = new Set([...tokens(a)].filter((w) => !ignore.has(w)));
+	const tb = new Set([...tokens(b)].filter((w) => !ignore.has(w)));
 	if (ta.size === 0 || tb.size === 0) return 0;
 	let shared = 0;
 	for (const w of ta) if (tb.has(w)) shared += 1;

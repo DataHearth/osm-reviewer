@@ -182,6 +182,44 @@ describe("runSource (registry)", () => {
 		expect(split?.warning).toContain("Capacity and sockets are left out");
 	});
 
+	it("writes no station's counts onto an object several records matched, and names the other", async () => {
+		csv = [
+			HEADER,
+			row("FRS1", "FR*S1*E1", 4.83, 45.76),
+			row("FRS3", "FR*S3*E1", 4.8302, 45.76),
+		].join("\n");
+		(osm.elements[0] as { tags: Record<string, string> }).tags["ref:EU:EVSE"] = "FR*S1*E1;FR*S3*E1";
+		await runSource(db, "irve");
+
+		const one = cands().find((c) => c.sourceRecordKey === "FRS1");
+		const keys = db
+			.select()
+			.from(t.tags)
+			.where(eq(t.tags.candidateId, one?.id as string))
+			.all()
+			.map((x) => x.k);
+		expect(keys).not.toContain("capacity");
+		expect(keys.filter((k) => k.startsWith("socket:") && !k.endsWith(":output"))).toEqual([]);
+		expect(one?.warning).toContain("several records were matched to this object");
+		expect(one?.warning).toContain("Also matched by “Station FRS3” (FRS3)");
+	});
+
+	it("checks a new station against charge points without ever matching one", async () => {
+		osm.elements.push({
+			type: "node",
+			id: 102,
+			lat: 45.77,
+			lon: 4.8401,
+			version: 1,
+			tags: { man_made: "charge_point", "ref:EU:EVSE": "FR*S2*E1" },
+		});
+		await runSource(db, "irve");
+
+		const created = cands().find((c) => c.sourceRecordKey === "FRS2");
+		expect(created).toMatchObject({ type: "new", osmId: null });
+		expect(created?.warning).toMatch(/Possible duplicate: man_made=charge_point .*node\/102/);
+	});
+
 	it("leaves unchanged records alone and sweeps a record that left the file", async () => {
 		await runSource(db, "irve");
 		const before = new Map(cands().map((c) => [c.sourceRecordKey, c.id]));

@@ -11,6 +11,7 @@ import {
 	findMatch,
 	indexRefs,
 	matchWarnings,
+	modWarnings,
 	nearbyLabels,
 	newOps,
 	REF_SELECTORS,
@@ -18,6 +19,7 @@ import {
 	sharedRefs,
 	splitParts,
 	type TagOp,
+	twinWarnings,
 	unchangedTags,
 	updateOps,
 } from "./match";
@@ -25,7 +27,14 @@ import { countPois, fetchElements } from "./overpass";
 import { mergeSites, OSM_MAX, str } from "./presets";
 import { hash, type Reader } from "./reader";
 import { existingCandidates, saveCandidate, sweepVanished, touchSeen } from "./store";
-import { allowedBy, mergeSelectors, parseMatching, selectorsFromTags } from "./tagfilter";
+import {
+	allowedBy,
+	lookalikeSelectors,
+	mergeSelectors,
+	parseMatching,
+	selectorsFromTags,
+	selects,
+} from "./tagfilter";
 import { type Extraction, type OsmElement, osmRef, PipelineError, type RawRecord } from "./types";
 
 export type SourceRow = typeof t.sources.$inferSelect;
@@ -52,8 +61,12 @@ const MODEL_FAILURES_BEFORE_ABORT = 3;
 const POI_RECOUNT_MS = 7 * 24 * 3_600_000;
 /** What a source counts for a whole site, which no single part of a split site carries. */
 const SITE_COUNTS = /^(capacity|socket:.+)$/;
+/** A connector's power is the same whichever record states it; how many there are is not. */
+const isCount = (o: TagOp) => SITE_COUNTS.test(o.k) && (o.op === "del" || !o.k.endsWith(":output"));
 const SPLIT_COUNTS_NOTE =
 	"Capacity and sockets are left out: the source counts the whole site, not this one object";
+const SHARED_COUNTS_NOTE =
+	"Capacity and sockets are left out: several records were matched to this object, and each counts only its own";
 
 async function extract(
 	source: SourceRow,
@@ -146,7 +159,13 @@ export async function processArea(
 		selectorsFromTags(extracted.flatMap((e) => e.x.tags)),
 		...refKeys.map((k) => REF_SELECTORS[k] ?? []),
 	);
-	const elements = input.elements ?? (await fetchElements(area, selectors));
+	const lookalikes = lookalikeSelectors(extracted.flatMap((e) => e.x.tags));
+	const fetched =
+		input.elements ?? (await fetchElements(area, mergeSelectors(selectors, lookalikes)));
+	// Lookalikes are only for the duplicate banner: never a match, nor part of a site.
+	const elements = input.elements
+		? fetched
+		: fetched.filter((e) => selectors.some((s) => selects(s, e.tags)));
 
 	const refIndex = indexRefs(elements, refKeys);
 	const shared = sharedRefs(extracted.map((e) => e.x));
@@ -157,12 +176,15 @@ export async function processArea(
 	const byElement = new Map<string, Extraction[]>();
 	for (const { x, el } of matched)
 		if (el) byElement.set(osmRef(el), [...(byElement.get(osmRef(el)) ?? []), x]);
+	const twins = twinWarnings(matched.filter((m) => !m.el && !m.x.closedBy).map((m) => m.x));
 
 	let cands = 0;
 	for (const { x, rec, el } of matched) {
 		let type: "new" | "update" | "closure";
 		let ops: TagOp[];
 		const notes: string[] = [];
+		const osmId = el ? osmRef(el) : null;
+		const others = osmId ? (byElement.get(osmId) ?? []).filter((o) => o.key !== x.key) : [];
 		if (x.closedBy) {
 			if (!el) continue;
 			type = "closure";
@@ -170,18 +192,20 @@ export async function processArea(
 		} else if (el) {
 			type = "update";
 			ops = updateOps(x.tags, el.tags);
-			if (splitParts(x, el, elements).length) {
-				const counts = ops.filter((o) => SITE_COUNTS.test(o.k));
+			const split = splitParts(x, el, fetched, refIndex, shared).length > 0;
+			const counts = split
+				? ops.filter((o) => SITE_COUNTS.test(o.k))
+				: others.length
+					? ops.filter(isCount)
+					: [];
+			if (counts.length) {
 				ops = ops.filter((o) => !counts.includes(o));
-				if (counts.length) notes.push(SPLIT_COUNTS_NOTE);
+				notes.push(split ? SPLIT_COUNTS_NOTE : SHARED_COUNTS_NOTE);
 			}
 			// Several establishments on one object (a cité scolaire) each propose their own phone,
 			// SIRET or UAI for it; whichever a reviewer accepted last would win.
 			const disputed = ops.filter((o) =>
-				(byElement.get(osmRef(el)) ?? []).some(
-					(other) =>
-						other.key !== x.key && other.tags.some((t) => t.k === o.k && !sameValue(o.k, t.v, o.v)),
-				),
+				others.some((other) => other.tags.some((t) => t.k === o.k && !sameValue(o.k, t.v, o.v))),
 			);
 			if (disputed.length) {
 				ops = ops.filter((o) => !disputed.includes(o));
@@ -189,11 +213,7 @@ export async function processArea(
 					`Left out, since another record on this object says otherwise: ${disputed.map((o) => o.k).join(", ")}`,
 				);
 			}
-			const fee = ops.find((o) => o.k === "fee" && o.op === "mod");
-			if (fee)
-				notes.push(
-					`OSM has fee=${fee.was} where the source says ${fee.v}; a mapper may have set it on purpose`,
-				);
+			notes.push(...modWarnings(ops, el.tags));
 		} else {
 			type = "new";
 			ops = newOps(x.tags);
@@ -217,8 +237,6 @@ export async function processArea(
 		const had = existing.get(x.key);
 		const moved = !!had && !!el && had.osmId === osmRef(el) && had.version !== el.version;
 		const same = had?.contentHash === h || (moved && had?.contentHash?.split(":")[0] === proposal);
-		const osmId = el ? osmRef(el) : null;
-		const others = osmId ? (byElement.get(osmId) ?? []).filter((o) => o.key !== x.key) : [];
 		const warning =
 			[
 				...(x.notes ?? []),
@@ -226,8 +244,11 @@ export async function processArea(
 				...(el ? (x.absent ?? []).filter((k) => el.tags[k] !== undefined) : []).map(
 					(k) => `OSM has ${k}=${el?.tags[k]}, which the source says this place does not have`,
 				),
-				...matchWarnings(x, el, elements),
-				...others.map((o) => `Also matched by “${o.name}”, another candidate on this object`),
+				...matchWarnings(x, el, fetched, refIndex, shared),
+				...(twins.get(x.key) ?? []),
+				...others.map(
+					(o) => `Also matched by “${o.name}” (${o.key}), another candidate on this object`,
+				),
 			].join("\n") || null;
 		if (
 			had &&

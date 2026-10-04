@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
 	allowedBy,
+	lookalike,
+	lookalikeSelectors,
 	mergeSelectors,
 	overpassFilter,
 	parseMatching,
+	sameKind,
 	selectorsFromTags,
+	selects,
 } from "./tagfilter";
 
 describe("allowedBy", () => {
@@ -52,11 +56,48 @@ describe("selectors", () => {
 		]);
 		expect(derived).toEqual([
 			{ k: "amenity", v: ["school", "college", "university", "kindergarten"] },
+			{ k: "building", v: ["school", "college", "university"] },
 		]);
 		expect(
 			mergeSelectors(derived, [
 				{ k: "amenity", v: ["kindergarten", "university", "college", "school"] },
 			]),
-		).toHaveLength(1);
+		).toHaveLength(2);
+		expect(selectorsFromTags([{ k: "amenity", v: "charging_station" }])).toEqual([
+			{ k: "amenity", v: ["charging_station"] },
+		]);
+	});
+
+	it("tells which fetched objects a selector picked", () => {
+		const evse = { k: "ref:EU:EVSE", v: null, not: { k: "man_made", v: ["charge_point"] } };
+		expect(selects(evse, { "ref:EU:EVSE": "FR*A*E1" })).toBe(true);
+		expect(selects(evse, { "ref:EU:EVSE": "FR*A*E1", man_made: "charge_point" })).toBe(false);
+		expect(selects({ k: "amenity", v: ["school"] }, { amenity: "college" })).toBe(false);
+	});
+});
+
+describe("kinds", () => {
+	it("takes an institute's kin only among facilities for whom it takes in", () => {
+		const kin = (tags: Record<string, string>) => sameKind("amenity", "social_facility", tags);
+		expect(kin({ amenity: "social_facility" })).toBe(true);
+		expect(kin({ amenity: "social_facility", "social_facility:for": "disabled;senior" })).toBe(
+			true,
+		);
+		expect(kin({ amenity: "school" })).toBe(true);
+		expect(kin({ amenity: "social_facility", "social_facility:for": "senior" })).toBe(false);
+		expect(kin({ amenity: "social_facility", "social_facility:for": "homeless" })).toBe(false);
+		expect(kin({ amenity: "social_facility", social_facility: "healthcare" })).toBe(false);
+	});
+
+	it("fetches what a place may be mapped as only for the kinds that need it", () => {
+		expect(lookalikeSelectors([{ k: "amenity", v: "charging_station" }])).toEqual([
+			{ k: "man_made", v: ["charge_point"] },
+		]);
+		expect(lookalikeSelectors([{ k: "amenity", v: "school" }])).toEqual([]);
+		expect(lookalike("amenity", "social_facility", { healthcare: "centre" })).toBe(true);
+		expect(lookalike("amenity", "social_facility", { amenity: "clinic" })).toBe(true);
+		expect(lookalike("amenity", "school", { building: "college" })).toBe(true);
+		expect(lookalike("amenity", "school", { building: "college", name: "Bâtiment A" })).toBe(false);
+		expect(lookalike("amenity", "school", { building: "school", amenity: "library" })).toBe(false);
 	});
 });

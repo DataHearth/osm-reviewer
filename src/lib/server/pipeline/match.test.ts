@@ -5,15 +5,17 @@ import {
 	findMatch,
 	indexRefs,
 	matchWarnings,
+	modWarnings,
 	nearbyLabels,
 	newOps,
 	sameValue,
 	sharedRefs,
 	splitParts,
+	twinWarnings,
 	unchangedTags,
 	updateOps,
 } from "./match";
-import type { OsmElement, ProposedTag } from "./types";
+import type { Extraction, OsmElement, ProposedTag } from "./types";
 
 const el = (
 	id: number,
@@ -222,6 +224,78 @@ describe("findMatch", () => {
 				indexRefs(perPoint, ["ref:EU:EVSE"]),
 			)?.id,
 		).toBe(19);
+	});
+
+	it("does not take an all-digit pool number for the same station under another operator", () => {
+		const indigo = [el(21, 45.7, 4.8, { "ref:EU:EVSE": "FR*PKG*P31555002" })];
+		const x = { lat: 45.7, lon: 4.8, name: "", refs: { "ref:EU:EVSE": "FRTLSP31555002" } };
+		expect(findMatch(x, indigo, indexRefs(indigo, ["ref:EU:EVSE"]))).toBeNull();
+	});
+
+	it("believes a pool id's tail alone only as far off as a misplaced point", () => {
+		const darty = [el(22, 45.703, 4.8, { "ref:EU:EVSE": "FR*E13*PDARTYLIMONEST69760*1" })];
+		const refs = { "ref:EU:EVSE": "FRSSDPDARTYLIMONEST697601" };
+		const idx = indexRefs(darty, ["ref:EU:EVSE"]);
+		expect(findMatch({ lat: 45.7, lon: 4.8, name: "", refs }, darty, idx)).toBeNull();
+		expect(findMatch({ lat: 45.702, lon: 4.8, name: "", refs }, darty, idx)?.id).toBe(22);
+	});
+
+	it("does not count the commune's name as a shared word", () => {
+		const inseec = [el(23, 45.7002, 4.8, { amenity: "college", name: "INSEEC MSc Toulouse" })];
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "École Technique Privée - INSEEC Toulouse",
+			addr: "1 rue X, 31000 Toulouse",
+			refs: {},
+		};
+		expect(findMatch({ ...x, addr: "" }, inseec, new Map())?.id).toBe(23);
+		expect(findMatch(x, inseec, new Map())).toBeNull();
+	});
+
+	it("matches a school mapped only as its building by name, never an unnamed one", () => {
+		const isc = el(24, 45.7004, 4.8, {
+			building: "university",
+			name: "Institut Supérieur de Commerce",
+		});
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "École technique privée Institut Supérieur de Commerce",
+			refs: {},
+		};
+		expect(findMatch(x, [isc], new Map())?.id).toBe(24);
+		const bare = el(25, 45.7, 4.8, { building: "college" });
+		expect(findMatch({ ...x, name: "ADONIS" }, [bare], new Map())).toBeNull();
+		const grounds = el(26, 45.7008, 4.8, {
+			amenity: "school",
+			name: "Institut Supérieur de Commerce",
+		});
+		expect(findMatch(x, [isc, grounds], new Map())?.id).toBe(26);
+		const uai = { ...x, refs: { "ref:UAI": "0312914Z" } };
+		const both = [
+			{ ...isc, tags: { ...isc.tags, "ref:UAI": "0312914Z" } },
+			{ ...grounds, tags: { ...grounds.tags, "ref:UAI": "0312914Z" } },
+		];
+		expect(findMatch(uai, both, indexRefs(both, ["ref:UAI"]))?.id).toBe(26);
+	});
+
+	it("reads a company's name without its legal or country suffix", () => {
+		const powerdot = [
+			el(27, 45.7002, 4.8, {
+				amenity: "charging_station",
+				name: "Powerdot",
+				operator: "Powerdot",
+			}),
+		];
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "B&M - Saint-Orens",
+			refs: {},
+			tags: [tag("operator", "Power Dot France")],
+		};
+		expect(findMatch(x, powerdot, new Map())?.id).toBe(27);
 	});
 
 	it("matches a school by its académie mailbox", () => {
@@ -558,5 +632,147 @@ describe("matchWarnings", () => {
 		const lisaa = el(5, 45.70005, 4.8, { amenity: "school", name: "LISAA Toulouse" });
 		const annex = el(6, 45.70005, 4.8, { amenity: "school" });
 		expect(splitParts(school, esarc, [esarc, lisaa, annex]).map((k) => k.e.id)).toEqual([6]);
+	});
+
+	it("says when the matched object is far from the source's point", () => {
+		const far = el(7, 45.702, 4.8, { amenity: "charging_station" });
+		expect(matchWarnings(x, far, [far])[0]).toMatch(/^Matched to node\/7, 222 m away/);
+		expect(matchWarnings(x, el(8, 45.7001, 4.8), [])).toEqual([]);
+	});
+
+	it("takes another object carrying the record's own id for a part of the site, however far", () => {
+		const louis = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "École maternelle Louis Armand",
+			tags: [tag("amenity", "school")],
+			refs: { "ref:UAI": "0693634A", "ref:FR:SIRET": "21690266800013" },
+		};
+		const a = el(1, 45.7, 4.8, { amenity: "school", "ref:UAI": "0693634A" });
+		const b = el(2, 45.7007, 4.8, {
+			building: "school",
+			name: "Bâtiment Maternelle",
+			"ref:UAI": "0693634A",
+		});
+		const c = el(3, 45.7007, 4.8, { "ref:FR:SIRET": "21690266800013" });
+		const idx = indexRefs([a, b, c], ["ref:UAI", "ref:FR:SIRET"]);
+		expect(splitParts(louis, a, [a, b, c], idx).map((k) => k.e.id)).toEqual([2]);
+		expect(matchWarnings(louis, a, [a, b, c], idx)[0]).toMatch(
+			/^Same site may be mapped as 2 objects \(also node\/2 “Bâtiment Maternelle”, 78 m away/,
+		);
+		const shared = sharedRefs([louis, { refs: { "ref:UAI": "0693634A" } }]);
+		expect(splitParts(louis, a, [a, b, c], idx, shared)).toEqual([]);
+	});
+
+	it("says a school mapped only as its building gets its amenity", () => {
+		const school = { ...x, name: "ISC", tags: [tag("amenity", "college")] };
+		const isc = el(9, 45.7, 4.8, { building: "university", name: "ISC" });
+		expect(matchWarnings(school, isc, [isc])).toEqual([
+			"OSM maps this school only as building=university: amenity=college is added to the building",
+		]);
+	});
+
+	it("sees an unnamed school building, a charge point or a health centre as a possible duplicate", () => {
+		const school = { ...x, name: "ADONIS", tags: [tag("amenity", "college")] };
+		const bare = el(10, 45.7001, 4.8, { building: "college" });
+		expect(matchWarnings(school, null, [bare])).toEqual([
+			"Possible duplicate: building=college already mapped at node/10, 11 m away",
+		]);
+		const point = el(11, 45.7001, 4.8, { man_made: "charge_point" });
+		expect(matchWarnings(x, null, [point])[0]).toMatch(
+			/^Possible duplicate: man_made=charge_point/,
+		);
+		const cra = {
+			...x,
+			name: "Centre ressources autisme",
+			tags: [
+				tag("amenity", "social_facility"),
+				tag("addr:housenumber", "95"),
+				tag("addr:street", "Boulevard Pinel"),
+			],
+		};
+		const centre = el(12, 45.7016, 4.8, {
+			healthcare: "centre",
+			"addr:housenumber": "95",
+			"addr:street": "Boulevard Pinel",
+		});
+		expect(matchWarnings(cra, null, [centre])[0]).toMatch(
+			/^Possible duplicate: healthcare=centre already mapped at node\/12, 178 m away/,
+		);
+		const elsewhere = { ...centre, tags: { healthcare: "centre" } };
+		expect(matchWarnings(cra, null, [elsewhere])).toEqual([]);
+		const home = el(13, 45.7005, 4.8, {
+			amenity: "social_facility",
+			"social_facility:for": "senior",
+		});
+		expect(matchWarnings(cra, null, [home])).toEqual([]);
+	});
+
+	it("looks further for a possible duplicate run by the same operator", () => {
+		const allego = { ...x, tags: [...x.tags, tag("operator", "Allego")] };
+		const far = el(14, 45.7018, 4.8, { amenity: "charging_station", operator: "Allego" });
+		expect(matchWarnings(allego, null, [far])[0]).toMatch(/node\/14, 200 m away/);
+		expect(matchWarnings(x, null, [far])).toEqual([]);
+	});
+});
+
+describe("twinWarnings", () => {
+	const rec = (key: string, lat: number, more: Partial<Extraction> = {}): Extraction => ({
+		key,
+		url: "",
+		name: key,
+		addr: "",
+		lat,
+		lon: 4.8,
+		refs: {},
+		tags: [],
+		...more,
+	});
+
+	it("pairs new records at one point, with one SIRET or at one address", () => {
+		const twins = twinWarnings([
+			rec("a", 45.7),
+			rec("b", 45.70001),
+			rec("c", 45.71, { refs: { "ref:FR:SIRET": "1" } }),
+			rec("d", 45.72, { refs: { "ref:FR:SIRET": "1" } }),
+			rec("e", 45.73, { tags: [tag("addr:housenumber", "3"), tag("addr:street", "Rue X")] }),
+			rec("f", 45.74, { tags: [tag("addr:housenumber", "3"), tag("addr:street", "rue x")] }),
+			rec("g", 45.75),
+		]);
+		expect(twins.get("a")).toEqual([
+			"Another new candidate, “b” (b), lies 1 m away: the two may be one place",
+		]);
+		expect(twins.get("d")?.[0]).toMatch(/“c” \(c\), has the same SIRET/);
+		expect(twins.get("e")?.[0]).toMatch(/“f” \(f\), has the same address/);
+		expect(twins.has("g")).toBe(false);
+	});
+});
+
+describe("modWarnings", () => {
+	const mod = (k: string, was: string, v: string) => ({
+		...tag(k, v),
+		op: "mod" as const,
+		was,
+	});
+	const now = Date.UTC(2026, 9, 4);
+
+	it("names every value of a mapper's a candidate overwrites, and a recent survey", () => {
+		const ops = [
+			mod("capacity", "4", "6"),
+			{ ...tag("phone", "1"), op: "add" as const, was: null },
+		];
+		expect(modWarnings(ops, { capacity: "4" }, now)).toEqual([
+			"OSM has capacity=4 where the source says 6; a mapper may have set it on purpose",
+		]);
+		expect(
+			modWarnings(
+				ops,
+				{ capacity: "4", check_date: "2026-08-30", "check_date:opening_hours": "2024-01-01" },
+				now,
+			),
+		).toEqual([
+			"OSM has capacity=4 where the source says 6, and a mapper checked this object on 30-08-2026",
+		]);
+		expect(modWarnings(ops, { "survey:date": "2025-06-01" }, now)[0]).toMatch(/on purpose$/);
 	});
 });
