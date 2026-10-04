@@ -150,9 +150,20 @@ const fill = (tag: ProposedTag | undefined) => {
 
 const OPENING_HOURS = /^(24\/7|(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)[A-Za-z0-9:,;\-+ /]*)$/;
 
-function openingHours(raw: string): string | null {
-	const v = raw.trim();
-	if (/^24\/7$/i.test(v) || /^Mo-Su 00:00-(24:00|23:5\d)$/.test(v)) return "24/7";
+const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+
+/**
+ * Registries write "all day" as the last minute they count to, and some spell every day
+ * out: `Mo 00:00-23:59, Tu 00:00-23:59, …`. Seven such days are `24/7`, a run of them is
+ * `Mo-Fr 00:00-24:00`; anything else is left as written.
+ */
+export function openingHours(raw: string): string | null {
+	const v = raw.trim().replace(/23:5\d\b/g, "24:00");
+	if (/^24\/7$/i.test(v) || v === "Mo-Su 00:00-24:00") return "24/7";
+	const each = v.split(/\s*,\s*/).map((d) => /^(Mo|Tu|We|Th|Fr|Sa|Su) 00:00-24:00$/.exec(d)?.[1]);
+	const idx = each.map((d) => (d ? DAYS.indexOf(d) : -1));
+	if (idx.length > 1 && idx.every((d, i) => d >= 0 && (i === 0 || d === idx[i - 1] + 1)))
+		return idx.length === 7 ? "24/7" : `${DAYS[idx[0]]}-${DAYS[idx[idx.length - 1]]} 00:00-24:00`;
 	return OPENING_HOURS.test(v) ? v : null;
 }
 
@@ -295,8 +306,10 @@ const irve: Preset = {
 			);
 		const stations = [...new Set(rows.map((r) => str(r, "id_station_itinerance")).filter(Boolean))];
 		const pools = [...new Set(stations.map(poolId).filter((v) => v !== null))].join(";");
+		// A mapper's pool id is often finer than the registry's (PLYON13011 under PLYON130), and
+		// matching already reads both, so a differing id is never overwritten.
 		if (pools.length <= OSM_MAX)
-			t.add("ref:EU:EVSE", pools, 0.95, "id_station_itinerance", stations.join(";"));
+			fill(t.add("ref:EU:EVSE", pools, 0.95, "id_station_itinerance", stations.join(";")));
 
 		// A type 2 point with its cable attached is `socket:type2_cable`, not a socket.
 		const cable = (r: Row) => truthy(str(r, "cable_t2_attache"));

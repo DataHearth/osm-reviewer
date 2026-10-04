@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	detectPreset,
 	mergeSites,
+	openingHours,
 	phoneFR,
 	poolId,
 	presetById,
@@ -342,6 +343,20 @@ describe("Annuaire de l'éducation preset", () => {
 
 	it("needs a position", () => {
 		expect(edu.extract([row({ latitude: "", longitude: "" })], "u")).toBeNull();
+	});
+});
+
+describe("openingHours", () => {
+	it("reads every way a registry spells all day", () => {
+		expect(openingHours("Mo-Su 00:00-23:57")).toBe("24/7");
+		const day = (d: string) => `${d} 00:00-23:59`;
+		expect(openingHours(["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(day).join(", "))).toBe(
+			"24/7",
+		);
+		expect(openingHours(["Mo", "Tu", "We", "Th", "Fr"].map(day).join(", "))).toBe(
+			"Mo-Fr 00:00-24:00",
+		);
+		expect(openingHours("Mo-Fr 08:00-18:00")).toBe("Mo-Fr 08:00-18:00");
 	});
 });
 

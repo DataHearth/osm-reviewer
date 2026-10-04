@@ -269,7 +269,9 @@ describe("matchWarnings", () => {
 	it("names the other objects a matched site is split over", () => {
 		const a = el(1, 45.7, 4.8, { amenity: "charging_station" });
 		const b = el(2, 45.70005, 4.8, { amenity: "charging_station" });
-		expect(matchWarnings(x, a, [a, b])[0]).toMatch(/^Same site mapped as 2 objects \(also node\/2/);
+		expect(matchWarnings(x, a, [a, b])[0]).toMatch(
+			/^Same site may be mapped as 2 objects \(also node\/2/,
+		);
 		expect(matchWarnings(x, a, [a])).toEqual([]);
 	});
 

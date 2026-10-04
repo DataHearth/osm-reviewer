@@ -220,7 +220,7 @@ export function matchWarnings(
 	const split = kin.filter((k) => k.d <= SPLIT_RADIUS_M);
 	return split.length
 		? [
-				`Same site mapped as ${split.length + 1} objects (also ${split.map((k) => label(k.e, k.d)).join("; ")}): counts written here would describe only part of it`,
+				`Same site may be mapped as ${split.length + 1} objects (also ${split.map((k) => label(k.e, k.d)).join("; ")}): what is written here would land on this one only`,
 			]
 		: [];
 }
