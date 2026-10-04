@@ -196,6 +196,11 @@ patterns and its confidence clears the floor, which is also capped.
 Matching asks Overpass once per area for the source's `matching` selector plus whatever main
 tag the records carry (a filter written for `amenity=school` still finds a post-bac `amenity=college`), then
 matches by shared ref (`ref:EU:EVSE`, `ref:UAI`, `ref:FR:SIRET`) before distance and name.
+Refs compare without `*`, spaces or case, and an object carrying another `ref:UAI` is never
+the match. What matching cannot settle is not guessed: a "new" POI with an object of its kind
+within 150 m, a match whose site is mapped as several objects, and an object several records
+matched each get a line in the candidate's `warning`, which the review screen shows as a
+"Check" banner.
 Candidates upsert on `(source_id, source_record_key)`; a record whose `content_hash` is
 unchanged is left as the reviewer saw it, and a queued candidate whose OSM object has a newer
 version than its base is flagged in conflict instead of being silently recomputed. A candidate

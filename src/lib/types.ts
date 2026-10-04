@@ -32,6 +32,8 @@ export type CandidateType = "new" | "update" | "closure";
 
 export interface Candidate {
 	id: string;
+	/** What the run saw that the reviewer must check before trusting the match: a likely duplicate, a site split over several objects. */
+	warnings?: string[];
 	/** Only on a candidate opened by its link: someone already decided it. */
 	decided?: { kind: "accepted" | "rejected"; by: string; at: string };
 	osmId: string | null;

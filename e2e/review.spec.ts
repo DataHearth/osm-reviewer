@@ -51,6 +51,14 @@ test("a link opens its candidate, decided or not, and follows the reviewer on", 
 	await expect(page.getByText("no longer in the queue")).toBeVisible();
 });
 
+test("a likely duplicate says what it may duplicate before anyone accepts it", async ({ page }) => {
+	await page.goto("/review?id=c2");
+	await expect(page.getByText("Check", { exact: true })).toBeVisible();
+	await expect(
+		page.getByText(/^Possible duplicate: amenity=cafe already mapped at node\/77/),
+	).toBeVisible();
+});
+
 test("accepting a candidate outlives a reload and takes it out of the queue", async ({ page }) => {
 	await onScreen(page.getByText(CANDIDATE.name, { exact: true })).click();
 	await page.getByRole("button", { name: /^Accept 2/ }).click();

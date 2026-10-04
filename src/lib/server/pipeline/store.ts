@@ -26,6 +26,7 @@ export interface CandidateWrite {
 	nearby: string[];
 	unchanged: { k: string; v: string }[];
 	record: SourceRecord;
+	warning: string | null;
 	seenAt: Date;
 }
 
@@ -38,6 +39,7 @@ export type Existing = {
 	contentHash: string | null;
 	decided: boolean;
 	hasRecord: boolean;
+	warning: string | null;
 };
 
 export function existingCandidates(db: Db, sourceId: string): Map<string, Existing> {
@@ -48,6 +50,7 @@ export function existingCandidates(db: Db, sourceId: string): Map<string, Existi
 			areaId: t.candidates.areaId,
 			osmId: t.candidates.osmId,
 			contentHash: t.candidates.contentHash,
+			warning: t.candidates.warning,
 			hasRecord: sql<number>`${t.candidates.record} is not null`,
 			decision: t.decisions.candidateId,
 		})
@@ -65,6 +68,7 @@ export function existingCandidates(db: Db, sourceId: string): Map<string, Existi
 				contentHash: r.contentHash,
 				decided: r.decision !== null,
 				hasRecord: !!r.hasRecord,
+				warning: r.warning,
 			},
 		]),
 	);
@@ -99,6 +103,7 @@ export function saveCandidate(db: Db, w: CandidateWrite, existing: Existing | un
 			conflictWho: null,
 			unchangedTags: w.unchanged,
 			record: w.record,
+			warning: w.warning,
 		};
 		let id: string;
 		if (existing) {

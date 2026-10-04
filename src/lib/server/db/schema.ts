@@ -252,6 +252,8 @@ export const candidates = sqliteTable(
 		unchangedTags: text({ mode: "json" }).$type<{ k: string; v: string }[]>().notNull().default([]),
 		/** What the source said, as read: the record's rows, or a crawled page's text. Null until a run stores it. */
 		record: text({ mode: "json" }).$type<SourceRecord>(),
+		/** What the run saw that the reviewer must check before trusting the match, one finding per line. */
+		warning: text(),
 	},
 	(t) => [
 		uniqueIndex("candidates_source_record_idx").on(t.sourceId, t.sourceRecordKey),

@@ -36,7 +36,7 @@ const values = (v: string) =>
 const ONE_PLACE = ["ref:UAI"];
 
 /** Whether `e` carries one of these identifiers with a value the record does not have. */
-function otherPlace(e: OsmElement, refs: Record<string, string>): boolean {
+export function otherPlace(e: OsmElement, refs: Record<string, string>): boolean {
 	return ONE_PLACE.some((k) => {
 		if (!refs[k]) return false;
 		const ours = new Set(ids(refs[k]));
@@ -182,6 +182,46 @@ export function closureOps(
 	for (const k of ["opening_hours", "phone"])
 		if (current[k]) ops.push({ ...ev, op: "del", k, v: current[k], was: null });
 	return ops;
+}
+
+/**
+ * An object of the same kind this close to a "new" POI is most likely it, mapped without the
+ * name or identifier that would have matched it. IRVE points and directory addresses sit
+ * up to ~125 m from where mappers put the object.
+ */
+const DUPLICATE_RADIUS_M = 150;
+/** Objects of one kind this close to a match are one site mapped as several objects. */
+const SPLIT_RADIUS_M = 25;
+
+const label = (e: OsmElement, d: number) =>
+	`${osmRef(e)}${e.tags.name ? ` “${e.tags.name}”` : ""}, ${Math.round(d)} m away`;
+
+/** What a reviewer must check before trusting this match, or this "new". */
+export function matchWarnings(
+	x: Pick<Extraction, "lat" | "lon" | "tags" | "refs">,
+	el: OsmElement | null,
+	els: OsmElement[],
+): string[] {
+	const main = x.tags.find((t) => MAIN.includes(t.k));
+	if (!main) return [];
+	const from = el ?? x;
+	const kin = els
+		.filter((e) => e.tags[main.k] === main.v && (!el || osmRef(e) !== osmRef(el)))
+		.filter((e) => !otherPlace(e, x.refs))
+		.map((e) => ({ e, d: distance(from.lat, from.lon, e.lat, e.lon) }))
+		.sort((a, b) => a.d - b.d);
+	if (!el) {
+		const near = kin[0];
+		return near && near.d <= DUPLICATE_RADIUS_M
+			? [`Possible duplicate: ${main.k}=${main.v} already mapped at ${label(near.e, near.d)}`]
+			: [];
+	}
+	const split = kin.filter((k) => k.d <= SPLIT_RADIUS_M);
+	return split.length
+		? [
+				`Same site mapped as ${split.length + 1} objects (also ${split.map((k) => label(k.e, k.d)).join("; ")}): counts written here would describe only part of it`,
+			]
+		: [];
 }
 
 export function nearbyLabels(

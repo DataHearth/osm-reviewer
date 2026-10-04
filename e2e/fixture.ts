@@ -16,6 +16,7 @@ interface FixtureCandidate {
 	ageDays: number;
 	tags: FixtureTag[];
 	conflict?: true;
+	warning?: string;
 }
 
 /**
@@ -41,6 +42,7 @@ export const CANDIDATES: FixtureCandidate[] = [
 		conf: 0.93,
 		ageDays: 5,
 		tags: [["amenity", "cafe", "activité: |débits de boissons|"]],
+		warning: "Possible duplicate: amenity=cafe already mapped at node/77 “Café 7”, 12 m away",
 	},
 	{
 		id: "c5",
@@ -239,6 +241,7 @@ export async function insertFixture(path: string) {
 					fetchedAt: new Date(now - c.ageDays * DAY),
 					baseVersion: c.conflict ? 3 : null,
 					headVersion: c.conflict ? 4 : null,
+					warning: c.warning ?? null,
 				})
 				.run();
 

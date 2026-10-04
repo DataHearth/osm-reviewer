@@ -81,6 +81,7 @@ function flag(c: Candidate): [string, string] | null {
 	if (c.conflict) return ["Conflict", FLAG_BAD];
 	if (c.hasInvalid) return ["Invalid", FLAG_BAD];
 	if (c.allQuarantined) return ["Quarantined", FLAG_BAD];
+	if (c.warnings?.length) return ["Check", FLAG_WARN];
 	if (c.hasNoEv) return ["1 unevidenced", FLAG_WARN];
 	if (c.stale) return [`Stale ${c.stale}d`, FLAG_WARN];
 	return null;

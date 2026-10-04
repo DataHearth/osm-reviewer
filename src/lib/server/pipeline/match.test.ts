@@ -3,6 +3,7 @@ import {
 	closureOps,
 	findMatch,
 	indexRefs,
+	matchWarnings,
 	nearbyLabels,
 	newOps,
 	sameValue,
@@ -244,5 +245,36 @@ describe("updateOps regressions", () => {
 		const added = updateOps([tag("website", "https://x.fr")], { "contact:email": "a@x.fr" });
 		expect(added.map((o) => [o.op, o.k])).toEqual([["add", "contact:website"]]);
 		expect(updateOps([tag("phone", "+33 5 61 00 00 00")], {}).map((o) => o.k)).toEqual(["phone"]);
+	});
+});
+
+describe("matchWarnings", () => {
+	const station = { k: "amenity", v: "charging_station" } as const;
+	const x = { lat: 45.7, lon: 4.8, tags: [tag(station.k, station.v)], refs: {} };
+
+	it("calls a new POI with one of its kind close by a possible duplicate", () => {
+		const near = el(1, 45.7005, 4.8, { amenity: "charging_station" });
+		expect(matchWarnings(x, null, [near])[0]).toMatch(/^Possible duplicate: .*node\/1, 56 m away/);
+		expect(matchWarnings(x, null, [el(2, 45.71, 4.8, { amenity: "charging_station" })])).toEqual(
+			[],
+		);
+	});
+
+	it("names the other objects a matched site is split over", () => {
+		const a = el(1, 45.7, 4.8, { amenity: "charging_station" });
+		const b = el(2, 45.70005, 4.8, { amenity: "charging_station" });
+		expect(matchWarnings(x, a, [a, b])[0]).toMatch(/^Same site mapped as 2 objects \(also node\/2/);
+		expect(matchWarnings(x, a, [a])).toEqual([]);
+	});
+
+	it("does not take a sibling school with its own UAI for a duplicate", () => {
+		const school = {
+			lat: 45.7,
+			lon: 4.8,
+			tags: [tag("amenity", "school")],
+			refs: { "ref:UAI": "0690001A" },
+		};
+		const sibling = el(3, 45.7002, 4.8, { amenity: "school", "ref:UAI": "0690002B" });
+		expect(matchWarnings(school, null, [sibling])).toEqual([]);
 	});
 });

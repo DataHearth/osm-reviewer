@@ -388,6 +388,7 @@ function toCandidate(c: CandidateRow): Candidate {
 		allQuarantined: tags.every((tag) => !tag.ev),
 		hasNoEv: tags.some((tag) => !tag.ev),
 		hasInvalid: tags.some((tag) => tag.invalid),
+		warnings: c.warning ? c.warning.split("\n") : [],
 	};
 }
 

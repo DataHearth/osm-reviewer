@@ -9,6 +9,7 @@ import {
 	closureOps,
 	findMatch,
 	indexRefs,
+	matchWarnings,
 	nearbyLabels,
 	newOps,
 	type TagOp,
@@ -138,10 +139,16 @@ export async function processArea(
 	const refIndex = indexRefs(elements, [
 		...new Set(extracted.flatMap((e) => Object.keys(e.x.refs))),
 	]);
-	let cands = 0;
-	for (const { x, rec } of extracted) {
-		const el = rec.element ?? findMatch(x, elements, refIndex);
+	const matched = extracted.map((e) => ({
+		...e,
+		el: e.rec.element ?? findMatch(e.x, elements, refIndex),
+	}));
+	const byElement = new Map<string, Extraction[]>();
+	for (const { x, el } of matched)
+		if (el) byElement.set(osmRef(el), [...(byElement.get(osmRef(el)) ?? []), x]);
 
+	let cands = 0;
+	for (const { x, rec, el } of matched) {
 		let type: "new" | "update" | "closure";
 		let ops: TagOp[];
 		if (x.closedBy) {
@@ -166,12 +173,19 @@ export async function processArea(
 		const h = hash(JSON.stringify([x.name, x.addr, x.lat, x.lon, x.tags, x.closedBy ?? null]));
 		const had = existing.get(x.key);
 		const osmId = el ? osmRef(el) : null;
+		const others = osmId ? (byElement.get(osmId) ?? []).filter((o) => o.key !== x.key) : [];
+		const warning =
+			[
+				...matchWarnings(x, el, elements),
+				...others.map((o) => `Also matched by “${o.name}”, another candidate on this object`),
+			].join("\n") || null;
 		if (
 			had &&
 			!had.decided &&
 			had.areaId === area.id &&
 			had.contentHash === h &&
-			had.osmId === osmId
+			had.osmId === osmId &&
+			had.warning === warning
 		) {
 			if (!had.hasRecord)
 				db.update(t.candidates)
@@ -203,6 +217,7 @@ export async function processArea(
 				nearby: nearbyLabels(x, elements, el),
 				unchanged: el ? unchangedTags(el.tags, new Set(ops.map((o) => o.k))) : [],
 				record: recordOf(rec),
+				warning,
 				seenAt: new Date(),
 			},
 			had,

@@ -21,7 +21,14 @@ test("the queue lists every candidate with the derived counts", async ({ page })
 });
 
 test("the flags column names why each troubled candidate is troubled", async ({ page }) => {
-	for (const flag of ["Conflict", "Invalid", "Quarantined", "1 unevidenced", "Stale 92d"]) {
+	for (const flag of [
+		"Conflict",
+		"Invalid",
+		"Quarantined",
+		"Check",
+		"1 unevidenced",
+		"Stale 92d",
+	]) {
 		await expect(onScreen(page.getByText(flag, { exact: true }))).toHaveCount(1);
 	}
 });
