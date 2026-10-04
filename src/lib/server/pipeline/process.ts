@@ -11,18 +11,17 @@ import {
 	closureOps,
 	findMatch,
 	indexRefs,
+	type MatchedBy,
 	matchWarnings,
-	modWarnings,
 	nearbyLabels,
 	newOps,
+	planUpdate,
 	REF_SELECTORS,
-	sameValue,
 	sharedRefs,
-	splitParts,
 	type TagOp,
 	twinWarnings,
 	unchangedTags,
-	updateOps,
+	yieldToIds,
 } from "./match";
 import { countPois, fetchElements } from "./overpass";
 import { mergeSites, OSM_MAX, str } from "./presets";
@@ -64,14 +63,6 @@ export interface AreaOutcome {
 /** After this many model calls in a row fail the model is down, not the pages odd. */
 const MODEL_FAILURES_BEFORE_ABORT = 3;
 const POI_RECOUNT_MS = 7 * 24 * 3_600_000;
-/** What a source counts for a whole site, which no single part of a split site carries. */
-const SITE_COUNTS = /^(capacity|socket:.+)$/;
-/** A connector's power is the same whichever record states it; how many there are is not. */
-const isCount = (o: TagOp) => SITE_COUNTS.test(o.k) && (o.op === "del" || !o.k.endsWith(":output"));
-const SPLIT_COUNTS_NOTE =
-	"Capacity and sockets are left out: the source counts the whole site, not this one object";
-const SHARED_COUNTS_NOTE =
-	"Capacity and sockets are left out: several records were matched to this object, and each counts only its own";
 
 async function extract(
 	source: SourceRow,
@@ -198,11 +189,15 @@ export async function processArea(
 		return [{ ...e, x }];
 	});
 	const shared = sharedRefs(extracted.map((e) => e.x));
-	const matched = extracted.map((e) => ({
-		...e,
-		el: e.rec.element ?? findMatch(e.x, elements, refIndex, shared),
-	}));
-	const byElement = new Map<string, Extraction[]>();
+	const matched = yieldToIds(
+		extracted.map((e) => ({
+			...e,
+			el: e.rec.element ?? findMatch(e.x, elements, refIndex, shared),
+		})),
+		refIndex,
+		shared,
+	);
+	const byElement: MatchedBy = new Map();
 	for (const { x, el } of matched)
 		if (el) byElement.set(osmRef(el), [...(byElement.get(osmRef(el)) ?? []), x]);
 	const twins = twinWarnings(matched.filter((m) => !m.el && !m.x.closedBy).map((m) => m.x));
@@ -220,29 +215,9 @@ export async function processArea(
 			ops = closureOps(x.closedBy, el.tags, 0.8);
 		} else if (el) {
 			type = "update";
-			ops = updateOps(x.tags, el.tags);
-			const split = splitParts(x, el, fetched, refIndex, shared).length > 0;
-			const counts = split
-				? ops.filter((o) => SITE_COUNTS.test(o.k))
-				: others.length
-					? ops.filter(isCount)
-					: [];
-			if (counts.length) {
-				ops = ops.filter((o) => !counts.includes(o));
-				notes.push(split ? SPLIT_COUNTS_NOTE : SHARED_COUNTS_NOTE);
-			}
-			// Several establishments on one object (a cité scolaire) each propose their own phone,
-			// SIRET or UAI for it; whichever a reviewer accepted last would win.
-			const disputed = ops.filter((o) =>
-				others.some((other) => other.tags.some((t) => t.k === o.k && !sameValue(o.k, t.v, o.v))),
-			);
-			if (disputed.length) {
-				ops = ops.filter((o) => !disputed.includes(o));
-				notes.push(
-					`Left out, since another record on this object says otherwise: ${disputed.map((o) => o.k).join(", ")}`,
-				);
-			}
-			notes.push(...modWarnings(ops, el.tags));
+			const plan = planUpdate(x, el, fetched, refIndex, shared, byElement);
+			ops = plan.ops;
+			notes.push(...plan.notes);
 		} else {
 			type = "new";
 			ops = newOps(x.tags);
@@ -273,7 +248,7 @@ export async function processArea(
 				...(el ? (x.absent ?? []).filter((k) => el.tags[k] !== undefined) : []).map(
 					(k) => `OSM has ${k}=${el?.tags[k]}, which the source says this place does not have`,
 				),
-				...matchWarnings(x, el, fetched, refIndex, shared),
+				...matchWarnings(x, el, fetched, refIndex, shared, byElement),
 				...(twins.get(x.key) ?? []),
 				...others.map(
 					(o) => `Also matched by “${o.name}” (${o.key}), another candidate on this object`,

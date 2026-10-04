@@ -54,12 +54,17 @@ export function inArea(a: AreaShape, lat: number, lon: number): boolean {
 }
 
 export function normaliseName(s: string): string {
-	return s
-		.normalize("NFD")
-		.replace(/[̀-ͯ]/g, "")
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, " ")
-		.trim();
+	return (
+		s
+			.normalize("NFD")
+			.replace(/[̀-ͯ]/g, "")
+			.toLowerCase()
+			// Ligatures do not decompose under NFD: "Sœur" would lose its letter instead.
+			.replace(/œ/g, "oe")
+			.replace(/æ/g, "ae")
+			.replace(/[^a-z0-9]+/g, " ")
+			.trim()
+	);
 }
 
 const STOP = new Set([

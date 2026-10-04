@@ -1,3 +1,4 @@
+import OpeningHours from "opening_hours";
 import { distance, houseNumber, nameSimilarity, normaliseName, tokens } from "./geo";
 import { lookalike, SCHOOLS, type Selector, sameKind, schoolBuilding } from "./tagfilter";
 import { type Extraction, type OsmElement, osmRef, type ProposedTag } from "./types";
@@ -66,8 +67,19 @@ function evseKeys(id: string): string[] {
 
 const looseKey = (at: string) => at.includes("\u0000~");
 
+/** Some files write a point as its station's id and a `P<connector>` (`FRALLEGO002084P1`). */
+const CONNECTOR = /(?<=\d)P\d{1,2}$/;
+
 const keysOf = (k: string, v: string) =>
-	k === "ref:EU:EVSE" ? [...new Set(ids(v).flatMap(evseKeys))] : [...new Set(ids(v))];
+	k === "ref:EU:EVSE"
+		? [
+				...new Set(
+					ids(v)
+						.flatMap((id) => [id, id.replace(CONNECTOR, "")])
+						.flatMap(evseKeys),
+				),
+			]
+		: [...new Set(ids(v))];
 
 /**
  * Whether `e` carries EVSE ids none of which is this station's. A mapper's pool id is often
@@ -124,16 +136,25 @@ export function indexRefs(els: OsmElement[], keys: string[]): Map<string, OsmEle
 	return idx;
 }
 
-/** Who runs a place, which an OSM object with no name often still says. */
-const WHO = ["operator", "network", "brand"];
+/**
+ * Who runs or owns a place, which an OSM object with no name often still says. A city's
+ * network is as often named by its owner as by its operator (Toulibeo, run by Bouygues).
+ */
+const WHO = ["operator", "network", "brand", "owner"];
 
 const whoOf = (x: Partial<Pick<Extraction, "tags">>) =>
 	(x.tags ?? []).filter((t) => WHO.includes(t.k)).map((t) => t.v);
+const whoOn = (tags: Record<string, string>) => WHO.map((k) => tags[k]).filter(Boolean);
 
 /** What a company tacks onto its name in one register and not another: "Power Dot France" is Powerdot. */
 const LEGAL_TAIL =
 	/( (france|fr|sas|sasu|sa|sarl|eurl|snc|cpo|gmbh|bv|ltd|group|groupe|partner network|network))+$/;
-const company = (s: string) => normaliseName(s).replace(LEGAL_TAIL, "").replace(/ /g, "");
+/** A company's trade name as mappers write it, under the name a registry gives it. */
+const TRADING_AS: Record<string, string> = { alize: "bouygues" };
+const company = (s: string) => {
+	const c = normaliseName(s).replace(LEGAL_TAIL, "").replace(/ /g, "");
+	return TRADING_AS[c] ?? c;
+};
 /** Shorter than this, one company name inside another is a coincidence. */
 const COMPANY_MIN = 4;
 
@@ -145,13 +166,14 @@ function companySimilarity(a: string, b: string): number {
 	return nameSimilarity(a, b);
 }
 
-/** How well the record's operator or network agrees with an unnamed object's; null when either side says nothing. */
-function whoSimilarity(x: Partial<Pick<Extraction, "tags">>, e: OsmElement): number | null {
-	const ours = whoOf(x);
-	const theirs = WHO.map((k) => e.tags[k]).filter(Boolean);
+/** How well two sides' operators, networks or owners agree; null when either side says nothing. */
+function companiesAgree(ours: string[], theirs: string[]): number | null {
 	if (!ours.length || !theirs.length) return null;
 	return Math.max(...ours.flatMap((a) => theirs.map((b) => companySimilarity(a, b))));
 }
+
+const whoSimilarity = (x: Partial<Pick<Extraction, "tags">>, e: OsmElement) =>
+	companiesAgree(whoOf(x), whoOn(e.tags));
 
 const whoAgrees = (x: Partial<Pick<Extraction, "tags">>, e: OsmElement) =>
 	(whoSimilarity(x, e) ?? 0) >= NAME_MATCH;
@@ -228,15 +250,115 @@ function refHits(
 	return [...found].map(([e, d]) => ({ e, d })).sort((a, b) => a.d - b.d);
 }
 
+type Findable = Pick<Extraction, "lat" | "lon" | "name" | "refs"> &
+	Partial<Pick<Extraction, "tags" | "addr" | "absent">>;
+
+type Main = { k: string; v: string };
+const mainOf = (x: Partial<Pick<Extraction, "tags">>): Main | undefined =>
+	x.tags?.find((t) => MAIN.includes(t.k));
+
+/** Lifecycle prefixes a mapper puts on a place's main tag once it is no longer that place. */
+const RETIRED = ["disused", "abandoned", "was"];
+
+/**
+ * Why an object is no longer the place the record describes, though it may carry its id: it
+ * closed (`disused:amenity`), lost its name (`was:name`), became something else
+ * (`office=company`), or is being built (`landuse=construction`, an `opening_date` to come).
+ * A stale id on it settles nothing.
+ */
+export function notThePlace(e: OsmElement, main?: Main, now = Date.now()): string | null {
+	const t = e.tags;
+	const live = MAIN.filter((k) => t[k]);
+	const retired = MAIN.flatMap((k) => RETIRED.map((p) => `${p}:${k}`)).find((k) => t[k]);
+	if (!live.length && retired) return `it is mapped as ${retired}=${t[retired]}`;
+	if (t["was:name"] && !t.name) return `its name was removed (was:name=${t["was:name"]})`;
+	const opening = Date.parse(t.opening_date ?? "");
+	if (
+		t.landuse === "construction" ||
+		t.building === "construction" ||
+		t.construction ||
+		opening > now
+	)
+		return `it is under construction${t.opening_date ? ` (opening_date=${t.opening_date})` : ""}`;
+	// Another value of the same key (a college for an institute) is a mapper's reading of the
+	// same place, as is a lookalike (an institute as its health centre); another key is not.
+	if (main && live.length && !t[main.k] && !lookalike(main.k, main.v, t))
+		return `it is now ${live[0]}=${t[live[0]]}`;
+	return null;
+}
+
+/** How many of the record's values the object already holds. */
+function held(x: Partial<Pick<Extraction, "tags">>, e: OsmElement): number {
+	return (x.tags ?? []).filter((p) => {
+		const had = e.tags[keyOn(p.k, e.tags)];
+		return had !== undefined && sameValue(p.k, p.v, had);
+	}).length;
+}
+
+/**
+ * The school among several objects carrying its UAI side by side, as a bare node beside the
+ * grounds often does: the one named for it, then the way or relation, or whichever holds more
+ * of what the record says.
+ */
+function bestHit(x: Findable, hits: { e: OsmElement; d: number }[]): OsmElement | null {
+	const pool = hits.some((h) => !schoolBuilding(h.e.tags))
+		? hits.filter((h) => !schoolBuilding(h.e.tags))
+		: hits;
+	if (!pool.length) return null;
+	if (!x.refs["ref:UAI"]) return pool[0].e;
+	const named = (e: OsmElement) => (e.tags.name && (nameScore(x, e) ?? 0) >= NAME_MATCH ? 1 : 0);
+	const rank = (e: OsmElement) => held(x, e) + (e.type === "node" ? 0 : 1);
+	const near = pool.filter((h) => h.d <= pool[0].d + MATCH_RADIUS_M);
+	return near.sort((a, b) => named(b.e) - named(a.e) || rank(b.e) - rank(a.e) || a.d - b.d)[0].e;
+}
+
+/**
+ * The object mapped as the school that a school building stands in or beside: one of its kind
+ * next to it, or one named like the record a little farther, since only centres are known and
+ * a building inside large grounds stands well off theirs.
+ */
+function groundsOf(x: Findable, building: OsmElement, els: OsmElement[]): OsmElement | null {
+	const main = mainOf(x);
+	if (!main || !schoolBuilding(building.tags)) return null;
+	return (
+		els
+			.filter((e) => e !== building && sameKind(main.k, main.v, e.tags))
+			.map((e) => ({ e, d: distance(building.lat, building.lon, e.lat, e.lon) }))
+			.filter(
+				({ e, d }) =>
+					d <= SPLIT_RADIUS_M || (d <= MATCH_RADIUS_M && (nameScore(x, e) ?? 0) >= NAME_MATCH),
+			)
+			.sort((a, b) => a.d - b.d)[0]?.e ?? null
+	);
+}
+
+/** Whether the grounds a matched school building stands in are this school's, not a neighbour's. */
+function ownGrounds(x: Findable, grounds: OsmElement): boolean {
+	const level = x.tags?.find((t) => t.k === "school:FR")?.v;
+	const theirs = grounds.tags["school:FR"];
+	return (
+		!otherPlace(grounds, x.refs) &&
+		(!grounds.tags.name || (nameScore(x, grounds) ?? 0) >= NAME_MATCH) &&
+		(!level || !theirs || sameLevel(level, theirs))
+	);
+}
+
 export function findMatch(
-	x: Pick<Extraction, "lat" | "lon" | "name" | "refs"> & Partial<Pick<Extraction, "tags" | "addr">>,
+	x: Findable,
 	els: OsmElement[],
 	refIndex: Map<string, OsmElement[]>,
 	shared: Set<string> = new Set(),
+	now = Date.now(),
 ): OsmElement | null {
-	const hits = refHits(x, refIndex, shared);
-	const byRef = hits.find((h) => !schoolBuilding(h.e.tags)) ?? hits[0];
-	if (byRef) return byRef.e;
+	const main = mainOf(x);
+	const hits = refHits(x, refIndex, shared).filter((h) => !notThePlace(h.e, main, now));
+	const byRef = bestHit(x, hits);
+	if (byRef) {
+		// A school building carrying the UAI within the grounds mapped as that same school: the
+		// grounds are the school, and the building only one of its blocks.
+		const grounds = groundsOf(x, byRef, els);
+		return grounds && ownGrounds(x, grounds) ? grounds : byRef;
+	}
 
 	let best: { el: OsmElement; score: number } | null = null;
 	for (const e of els) {
@@ -247,27 +369,74 @@ export function findMatch(
 		const d = distance(x.lat, x.lon, e.lat, e.lon);
 		const named = e.tags.name && x.name ? nameScore(x, e) : null;
 		// Most charging stations on OSM have no name, and the registry places them up to tens of
-		// metres off; the operator agreeing is what lets one match beyond a coincident point.
-		const who = named === null ? whoSimilarity(x, e) : null;
-		const sim = named ?? (who !== null && who >= NAME_MATCH ? who : null);
-		if (d > (sim !== null && sim >= STRONG_NAME ? DUPLICATE_RADIUS_M : MATCH_RADIUS_M)) continue;
+		// metres off; the operator agreeing is what lets one match beyond a coincident point,
+		// though never as far as a name does: one operator runs every station in a town.
+		const who = whoSimilarity(x, e);
+		// A name that is only a brand ("Toulibeo") says who runs the place as well as an operator tag.
+		const brand = named === null && e.tags.name ? companiesAgree(whoOf(x), [e.tags.name]) : null;
+		const agree = Math.max(who ?? 0, brand ?? 0);
+		const sim = named ?? (agree >= NAME_MATCH ? agree : null);
+		const strong = named !== null && named >= STRONG_NAME;
+		if (d > (strong ? DUPLICATE_RADIUS_M : MATCH_RADIUS_M)) continue;
 		const ok = sim === null ? d <= BARE_RADIUS_M : sim >= NAME_MATCH;
 		if (!ok) continue;
 		// A named block inside grounds mapped as the school is not the school: the building
-		// stands for it only when nothing mapped as one matches.
-		const score = (sim ?? 0.4) - d / 1000 - (building ? 1 : 0);
+		// stands for it only when nothing mapped as one matches. Another operator's sign, or a
+		// connector the source says the station lacks, speaks against an object as well.
+		const against =
+			(building ? 1 : 0) +
+			(who !== null && agree < NAME_MATCH ? 0.3 : 0) +
+			(x.absent ?? []).filter((k) => e.tags[k] !== undefined).length * 0.3;
+		const score = (sim ?? 0.4) - d / 1000 - against;
 		if (!best || score > best.score) best = { el: e, score };
 	}
 	return best?.el ?? null;
 }
 
+/**
+ * The run's matches, with a record matched only by name or distance to an object another
+ * record's own id is on made "new" instead: two stations side by side are two stations, and
+ * the duplicate banner still names the object.
+ */
+export function yieldToIds<M extends { x: Findable; el: OsmElement | null }>(
+	matched: M[],
+	refIndex: Map<string, OsmElement[]>,
+	shared: Set<string>,
+): M[] {
+	const byId = (m: M) => !!m.el && refHits(m.x, refIndex, shared).some((h) => h.e === m.el);
+	const named = new Set(matched.filter(byId).map((m) => m.el && osmRef(m.el)));
+	return matched.map((m) => (m.el && named.has(osmRef(m.el)) && !byId(m) ? { ...m, el: null } : m));
+}
+
 /** `+33 5 61…` and `05 61…` are the same line. */
 const digits = (s: string) => s.replace(/\D/g, "").replace(/^(0033|33)(?=\d{9}$)/, "0");
-const site = (s: string) =>
-	s
-		.toLowerCase()
-		.replace(/^https?:\/\/(www\.)?/, "")
-		.replace(/\/$/, "");
+
+function url(s: string): { https: boolean; host: string; path: string } | null {
+	try {
+		const u = new URL(/^https?:\/\//i.test(s.trim()) ? s.trim() : `http://${s.trim()}`);
+		const path = u.pathname.replace(/\/+$/, "").toLowerCase();
+		return { https: u.protocol === "https:", host: u.hostname.replace(/^www\./, ""), path };
+	} catch {
+		return null;
+	}
+}
+
+const withoutTld = (host: string) => host.replace(/\.[^.]+$/, "");
+
+/**
+ * Whether the directory's site `a` adds nothing to the mapper's `b`: the same site at a page
+ * of it or its root, or the same name under another TLD, which a directory alone does not
+ * settle. Nor does an ENT, a school's pupil-and-parent login portal, replace its public site,
+ * and a mapper's https is never taken back to http.
+ */
+function sameSite(a: string, b: string): boolean {
+	const [pa, pb] = [url(a), url(b)];
+	if (!pa || !pb) return a.trim().toLowerCase() === b.trim().toLowerCase();
+	if (/(^|\.)ent\./.test(pa.host)) return true;
+	if (pa.host !== pb.host) return withoutTld(pa.host) === withoutTld(pb.host);
+	if (pb.https && !pa.https) return true;
+	return pa.path.startsWith(pb.path) || pb.path.startsWith(pa.path);
+}
 
 /** Accents, case, punctuation and `&` for "et" are how a registry and a mapper differ, not what they say. */
 const NAMES = ["name", "operator", "network", "brand", "owner", "addr:street", "addr:city"];
@@ -277,18 +446,74 @@ const fold = (s: string) => normaliseName(s.replace(/&/g, " et "));
 const allDay = (s: string) =>
 	/^(Mo-Su )?00:00-(24:00|23:5\d|00:00)$/.test(s.trim()) ? "24/7" : s.trim();
 
+/** A week of opening hours compared hour by hour, so `Mo 00:00-23:59, Tu …` is `Mo-Fr 00:00-24:00`. */
+function sameHours(a: string, b: string): boolean {
+	if (allDay(a) === allDay(b)) return true;
+	const read = (s: string) => new OpeningHours(s.trim().replace(/23:5\d\b/g, "24:00"), null, 0);
+	try {
+		// Typed as a boolean, but answers `[equal, differences?]`.
+		const [equal] = read(a).isEqualTo(read(b), new Date(Date.UTC(2024, 0, 1))) as unknown as [
+			boolean,
+		];
+		return equal;
+	} catch {
+		return false;
+	}
+}
+
+/** The coarser value an `operator:type` refines: a non-profit school is a private one. */
+const OPERATOR_TYPE: Record<string, string> = {
+	private_non_profit: "private",
+	private_for_profit: "private",
+	religious: "private",
+	community: "private",
+	government: "public",
+	municipal: "public",
+};
+
+/**
+ * The level a `school:FR` value sits in: a lycée professionnel is a lycée, a lycée secondary.
+ * Not a maternelle a primaire: whether a school has its maternelle classes, the directory knows.
+ */
+const parentLevel = (v: string): string | null =>
+	/^lycée\s/.test(v) ? "lycée" : v === "lycée" || v === "collège" ? "secondaire" : null;
+
+function levels(v: string): string[] {
+	const out: string[] = [];
+	for (let at: string | null = v; at; at = parentLevel(at)) out.push(at);
+	return out;
+}
+
+const schoolLevels = (v: string) =>
+	v
+		.split(";")
+		.map((x) => x.trim().toLowerCase().replace(/\s+/g, " "))
+		.filter(Boolean);
+
+/**
+ * A mapper's level that is finer than the directory's, or that takes it in, already says it:
+ * "lycée professionnel" is a lycée, "secondaire" covers a collège.
+ */
+const sameLevel = (a: string, b: string) =>
+	schoolLevels(a).every((x) =>
+		schoolLevels(b).some((y) => levels(x).includes(y) || levels(y).includes(x)),
+	);
+
 /**
  * Whether the proposed value `a` says what the object's `b` already does, so a re-spaced
- * phone number is not an edit.
+ * phone number is not an edit, nor a coarser word for what a mapper wrote finely.
  */
-export function sameValue(k: string, a: string, b: string): boolean {
+export function sameValue(key: string, a: string, b: string): boolean {
 	if (a === b) return true;
+	const k = key.replace(/^contact:/, "");
 	if (NAMES.includes(k)) return fold(a) === fold(b);
-	if (k === "opening_hours") return allDay(a) === allDay(b);
+	if (k === "opening_hours") return sameHours(a, b);
 	if (k.endsWith(":output")) return Number.parseFloat(a) === Number.parseFloat(b);
-	if (k === "phone" || k === "fax") return digits(a) === digits(b);
-	if (k === "addr:housenumber") return houseNumber(a) === houseNumber(b);
-	if (k === "website") return site(a) === site(b);
+	if (k === "phone" || k === "fax" || k === "mobile") return digits(a) === digits(b);
+	if (k === "website") return sameSite(a, b);
+	if (k === "addr:housenumber" || k === "housenumber") return houseNumber(a) === houseNumber(b);
+	if (k === "operator:type") return OPERATOR_TYPE[b] === a;
+	if (k === "school:FR") return sameLevel(a, b);
 	// One object often carries several establishments' ids (a collège and its SEGPA):
 	// the record's own id among them agrees, and replacing the list would delete the others.
 	if (k.startsWith("ref:")) {
@@ -376,6 +601,9 @@ function addressOps(parts: ProposedTag[], current: Record<string, string>): TagO
 /** A count of connectors of no stated type, which typed counts replace rather than add to. */
 const UNTYPED = ["socket:unknown", "socket:unknown:output"];
 
+/** A registry's bare `24/7` is what it writes when nobody filled the hours in, not a survey. */
+const addOnly = (p: ProposedTag) => p.addOnly || (p.k === "opening_hours" && p.v.trim() === "24/7");
+
 /** Tag operations that turn the element's tags into what the source says; nothing for what already agrees. */
 export function updateOps(proposed: ProposedTag[], current: Record<string, string>): TagOp[] {
 	const ops: TagOp[] = addressOps(
@@ -384,19 +612,22 @@ export function updateOps(proposed: ProposedTag[], current: Record<string, strin
 	);
 	for (const p of proposed) {
 		if (p.group === "addr" || RULED_OUT[p.k]?.(current)) continue;
+		// A main tag beside its own `disused:` twin would reopen the place on the source's word.
+		if (MAIN.includes(p.k) && RETIRED.some((r) => current[`${r}:${p.k}`] !== undefined)) continue;
 		const k = keyOn(p.k, current);
 		const elsewhere = SAME_AS[p.k]?.filter((o) => o !== k);
 		if (elsewhere?.some((o) => current[o] && digits(current[o]) === digits(p.v))) continue;
 		const had = current[k];
 		if (had === undefined) ops.push({ ...p, k, op: "add", was: null });
-		else if (!p.addOnly && ![p.v, ...(p.also ?? [])].some((v) => sameValue(p.k, v, had)))
+		else if (!addOnly(p) && ![p.v, ...(p.also ?? [])].some((v) => sameValue(p.k, v, had)))
 			ops.push({ ...p, k, op: "mod", was: had });
 	}
 	const typed = ops.find((o) => /^socket:(?!unknown)[^:]+$/.test(o.k));
 	if (typed)
 		for (const k of UNTYPED)
 			if (current[k] !== undefined) ops.push({ ...typed, k, v: current[k], op: "del", was: null });
-	return ops;
+	const amenity = ops.find((o) => o.k === "amenity")?.v ?? current.amenity;
+	return amenity === "social_facility" ? ops : ops.filter((o) => o.k !== "social_facility:for");
 }
 
 export function newOps(proposed: ProposedTag[]): TagOp[] {
@@ -446,11 +677,19 @@ function addressOf(tags: Record<string, string>): string | null {
 	return n && street ? `${fold(n)} ${fold(street)}` : null;
 }
 
-type Placed = Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "from">;
+type Placed = Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "name" | "from"> &
+	Partial<Pick<Extraction, "key">>;
+
+/** Each matched object's records in this run, by the object's OSM ref. */
+export type MatchedBy = Map<string, Pick<Extraction, "key" | "name" | "tags" | "refs">[]>;
+
+/** The run's other records matched to `e`. */
+const matchedElsewhere = (e: OsmElement, x: Placed, matchedBy: MatchedBy) =>
+	(matchedBy.get(osmRef(e)) ?? []).filter((o) => o.key !== x.key);
 
 /** Objects of the record's kind other than `el`, nearest to it (or to the record) first. */
 function kinOf(x: Placed, el: OsmElement | null, els: OsmElement[]) {
-	const main = x.tags.find((t) => MAIN.includes(t.k));
+	const main = mainOf(x);
 	if (!main) return null;
 	const from = el ?? x;
 	const near = els
@@ -467,23 +706,28 @@ const SITE_REFS = ["ref:UAI", "ref:EU:EVSE"];
 /**
  * The other objects the matched site is mapped as: same-kind neighbours, and whatever else
  * carries the record's own UAI or EVSE id however far off it is. A neighbour named for
- * something else (another school in the same building) is not one of them.
+ * something else (another school in the same building), or one another record of the run
+ * matched, is not one of them. A neighbour's operator may agree with the matched object's
+ * rather than the record's: the registry names the network's operator where mappers wrote
+ * the borne maker's brand.
  */
 export function splitParts(
-	x: Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "name">,
+	x: Placed,
 	el: OsmElement,
 	els: OsmElement[],
 	refIndex: Map<string, OsmElement[]> = new Map(),
 	shared: Set<string> = new Set(),
+	matchedBy: MatchedBy = new Map(),
 ): { e: OsmElement; d: number }[] {
 	const names = [x.name, el.tags.name].filter(Boolean);
 	const open = x.tags.find((t) => t.k === "access")?.v === "yes";
 	const samePlace = (e: OsmElement) => {
 		if (e.tags.name && !names.some((n) => nameSimilarity(n, e.tags.name) >= NAME_MATCH))
 			return false;
-		if (otherStation(e, x.refs)) return false;
+		if (otherStation(e, x.refs) || matchedElsewhere(e, x, matchedBy).length) return false;
 		const who = whoSimilarity(x, e);
-		if (who !== null && who < NAME_MATCH) return false;
+		const asMapped = companiesAgree(whoOn(el.tags), whoOn(e.tags));
+		if (who !== null && who < NAME_MATCH && (asMapped ?? 0) < NAME_MATCH) return false;
 		return !(open && /^(private|no|customers)$/.test(e.tags.access ?? ""));
 	};
 	const near = (kinOf(x, el, els)?.kin ?? []).filter(
@@ -491,33 +735,53 @@ export function splitParts(
 	);
 	const byRef = refHits(x, refIndex, shared, SITE_REFS)
 		.filter(({ e }) => osmRef(e) !== osmRef(el) && !near.some((k) => k.e === e))
+		.filter(({ e }) => !matchedElsewhere(e, x, matchedBy).length && !notThePlace(e, mainOf(x)))
 		.map(({ e }) => ({ e, d: distance(el.lat, el.lon, e.lat, e.lon) }));
 	return [...near, ...byRef].sort((a, b) => a.d - b.d);
 }
 
+/** A maternelle is often mapped as the kindergarten it looks like, under its own name. */
+const maternelleAs = (x: Placed, e: OsmElement) =>
+	e.tags.amenity !== "kindergarten" ||
+	(/maternelle/.test(tagsOf(x)["school:FR"] ?? "") && (nameScore(x, e) ?? 0) >= NAME_MATCH);
+
 /**
  * What a "new" record may already be mapped as: the nearest object of its kind, and the
- * nearest one mapped as something it may have been taken for (a charge point, a bare school
- * building), each within 150 m, or 300 m when run by the same operator or at the same address.
+ * nearest one mapped as something it may have been taken for (a charge point, a car park
+ * with chargers, a bare school building), each within 150 m, or 300 m when run by the same
+ * operator or at the same address.
  */
-function duplicates(x: Placed, els: OsmElement[]): string[] {
-	const main = x.tags.find((t) => MAIN.includes(t.k));
+function duplicates(
+	x: Placed,
+	els: OsmElement[],
+	refIndex: Map<string, OsmElement[]>,
+	shared: Set<string>,
+	matchedBy: MatchedBy,
+): string[] {
+	const main = mainOf(x);
 	if (!main) return [];
+	const stale = refHits(x, refIndex, shared).flatMap(({ e, d }) => {
+		const why = notThePlace(e, main);
+		return why
+			? [`${label(e, d)} carries this record's id, but ${why}: check where the place is now`]
+			: [];
+	});
 	const at = addressOf(tagsOf(x));
 	const reach = (e: OsmElement, d: number) =>
 		d <= DUPLICATE_RADIUS_M ||
 		(d <= SAME_OPERATOR_RADIUS_M && (whoAgrees(x, e) || (!!at && addressOf(e.tags) === at)));
 	// A record moved to its address may be mapped where the source placed it.
 	const points = [x, ...(x.from ? [x.from] : [])];
-	const nearest = (kind: (tags: Record<string, string>) => boolean) =>
+	const nearest = (kind: (e: OsmElement) => boolean) =>
 		els
-			.filter((e) => kind(e.tags) && !otherPlace(e, x.refs))
+			.filter((e) => kind(e) && !otherPlace(e, x.refs))
 			.map((e) => ({ e, d: Math.min(...points.map((p) => distance(p.lat, p.lon, e.lat, e.lon))) }))
 			.filter(({ e, d }) => reach(e, d))
 			.sort((a, b) => a.d - b.d)[0];
-	const kin = nearest((tags) => sameKind(main.k, main.v, tags));
+	const kin = nearest((e) => sameKind(main.k, main.v, e.tags));
 	const alike = nearest(
-		(tags) => lookalike(main.k, main.v, tags) && !sameKind(main.k, main.v, tags),
+		(e) =>
+			lookalike(main.k, main.v, e.tags) && !sameKind(main.k, main.v, e.tags) && maternelleAs(x, e),
 	);
 	const out = [kin, alike]
 		.filter((n) => n !== undefined)
@@ -525,9 +789,9 @@ function duplicates(x: Placed, els: OsmElement[]): string[] {
 			const k = [...MAIN, "man_made", "building"].find((key) => e.tags[key]) ?? main.k;
 			return `Possible duplicate: ${k}=${e.tags[k]} already mapped at ${label(e, d)}`;
 		});
-	const sibling = siblingOf(x, els);
+	const sibling = siblingOf(x, els, matchedBy);
 	if (sibling) out.push(sibling);
-	return out;
+	return [...out, ...stale];
 }
 
 const contactOf = (tags: Record<string, string>) =>
@@ -536,23 +800,33 @@ const contactOf = (tags: Record<string, string>) =>
 		...["email", "contact:email"].map((k) => tags[k]?.toLowerCase()),
 	].filter((v): v is string => !!v);
 
+const siretOf = (tags: Record<string, string>) =>
+	(tags["ref:FR:SIRET"] ?? tags.siret ?? "").replace(/\s/g, "") || null;
+
 /**
  * An object carrying another establishment's id is never the match, but one at the record's
- * address or reached by its phone or email may be this place under a stale id, or its sister
- * school on one site: the reviewer has to see it.
+ * address, reached by its phone or email, or run under its SIRET may be this place under a
+ * stale id, or its sister school on one site: the reviewer has to see it. What the run's
+ * records matched to that object say counts as the object's own.
  */
-function siblingOf(x: Placed, els: OsmElement[]): string | null {
-	const at = addressOf(tagsOf(x));
-	const contact = new Set(contactOf(tagsOf(x)));
+function siblingOf(x: Placed, els: OsmElement[], matchedBy: MatchedBy): string | null {
+	const ours = tagsOf(x);
+	const at = addressOf(ours);
+	const contact = new Set(contactOf(ours));
+	const siret = siretOf(ours);
+	const reason = (tags: Record<string, string>) =>
+		at && addressOf(tags) === at
+			? "the same address"
+			: contactOf(tags).some((c) => contact.has(c))
+				? "the same phone or email"
+				: siret && siretOf(tags) === siret
+					? "the same SIRET"
+					: null;
 	const hit = els
 		.filter((e) => otherPlace(e, x.refs))
 		.map((e) => {
-			const why =
-				at && addressOf(e.tags) === at
-					? "the same address"
-					: contactOf(e.tags).some((c) => contact.has(c))
-						? "the same phone or email"
-						: null;
+			const views = [e.tags, ...matchedElsewhere(e, x, matchedBy).map(tagsOf)];
+			const why = views.map(reason).find(Boolean) ?? null;
 			return { e, d: distance(x.lat, x.lon, e.lat, e.lon), why };
 		})
 		.filter((h) => h.why && h.d <= SAME_OPERATOR_RADIUS_M)
@@ -562,25 +836,60 @@ function siblingOf(x: Placed, els: OsmElement[]): string | null {
 	return `Another establishment${id} with ${hit.why} is mapped at ${label(hit.e, hit.d)}: check this is not it`;
 }
 
+/**
+ * Farther than this from the record's address, an object carrying its id is the place before
+ * it moved, or carries a stale id: what it is may still be right, where it is reached is not.
+ */
+const FAR_FROM_ADDRESS_M = 500;
+
+/** How far `el` lies from the record's address, when that is too far to give it the address. */
+export function farFromAddress(
+	x: Pick<Extraction, "lat" | "lon" | "atAddress">,
+	el: OsmElement,
+): number | null {
+	const at = x.atAddress ?? x;
+	const d = distance(at.lat, at.lon, el.lat, el.lon);
+	return d > FAR_FROM_ADDRESS_M ? d : null;
+}
+
+const metres = (d: number) => (d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`);
+
 /** What a reviewer must check before trusting this match, or this "new". */
 export function matchWarnings(
-	x: Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "name" | "from">,
+	x: Placed & Partial<Pick<Extraction, "atAddress">>,
 	el: OsmElement | null,
 	els: OsmElement[],
 	refIndex: Map<string, OsmElement[]> = new Map(),
 	shared: Set<string> = new Set(),
+	matchedBy: MatchedBy = new Map(),
 ): string[] {
-	if (!el) return duplicates(x, els);
+	if (!el) return duplicates(x, els, refIndex, shared, matchedBy);
 	const out: string[] = [];
+	const main = mainOf(x);
+	const far = farFromAddress(x, el);
 	const d = distance(x.lat, x.lon, el.lat, el.lon);
-	if (d > DUPLICATE_RADIUS_M)
+	if (far)
+		out.push(
+			`Matched to ${osmRef(el)}${el.tags.name ? ` “${el.tags.name}”` : ""}, ${metres(far)} from the source's address: the place may have moved, or the id on this object may be stale, so its address and contacts are left out`,
+		);
+	else if (d > DUPLICATE_RADIUS_M)
 		out.push(`Matched to ${label(el, d)} from the source's point: check it is this place`);
+	const gone = notThePlace(el, main);
+	if (gone)
+		out.push(
+			`This object may no longer be the place: ${gone}${main && !el.tags[main.k] ? `, so ${main.k}=${main.v} is not added` : ""}. Check it before writing to it`,
+		);
 	const amenity = x.tags.find((t) => t.k === "amenity" && SCHOOLS.includes(t.v));
-	if (amenity && schoolBuilding(el.tags))
+	const grounds = amenity ? groundsOf(x, el, els) : null;
+	if (grounds)
+		out.push(
+			`OSM maps this school as building=${el.tags.building} beside ${label(grounds, distance(el.lat, el.lon, grounds.lat, grounds.lon))}, mapped as amenity=${grounds.tags.amenity}: amenity and name are left out, so the school is not mapped twice`,
+		);
+	else if (amenity && schoolBuilding(el.tags))
 		out.push(
 			`OSM maps this school only as building=${el.tags.building}: amenity=${amenity.v} is added to the building`,
 		);
-	const split = splitParts(x, el, els, refIndex, shared);
+	const split = splitParts(x, el, els, refIndex, shared, matchedBy);
 	if (split.length)
 		out.push(
 			`Same site may be mapped as ${split.length + 1} objects (also ${split.map((k) => label(k.e, k.d)).join("; ")}): what is written here would land on this one only`,
@@ -590,11 +899,21 @@ export function matchWarnings(
 
 /** Two "new" records this close are likely one place the source lists twice. */
 const TWIN_RADIUS_M = 10;
+/**
+ * As far apart as one car park's stations, or two files' points for one site, when the
+ * operator or the name agrees. Two establishments' UAIs are two places however close.
+ */
+const LIKE_TWIN_RADIUS_M = 60;
 
 function twinReason(a: Extraction, b: Extraction): string | null {
 	if (Math.abs(a.lat - b.lat) < LAT_PREFILTER) {
 		const d = distance(a.lat, a.lon, b.lat, b.lon);
-		if (d <= TWIN_RADIUS_M) return `lies ${Math.round(d)} m away`;
+		const alike =
+			!(a.refs["ref:UAI"] && b.refs["ref:UAI"]) &&
+			((companiesAgree(whoOf(a), whoOf(b)) ?? 0) >= NAME_MATCH ||
+				nameSimilarity(a.name, b.name) >= NAME_MATCH);
+		if (d <= TWIN_RADIUS_M || (alike && d <= LIKE_TWIN_RADIUS_M))
+			return `lies ${Math.round(d)} m away`;
 	}
 	const siret = a.refs["ref:FR:SIRET"];
 	if (siret && siret === b.refs["ref:FR:SIRET"]) return "has the same SIRET";
@@ -647,9 +966,121 @@ export function modWarnings(
 	const why = surveyed
 		? `, and a mapper checked this object on ${surveyed}`
 		: "; a mapper may have set it on purpose";
-	return ops
+	const lines = ops
 		.filter((o) => o.op === "mod")
 		.map((o) => `OSM has ${o.k}=${o.was} where the source says ${o.v}${why}`);
+	const lycee = /lycée/i.test(current["school:FR"] ?? "")
+		? `school:FR=${current["school:FR"]}`
+		: /^lycée/i.test(current.name ?? "")
+			? `name=${current.name}`
+			: null;
+	if (lycee && ops.some((o) => o.op === "mod" && o.k === "amenity" && o.v === "college"))
+		lines.push(
+			`The object reads as a lycée (${lycee}), which amenity=college would no longer say: check whether the post-bac school is mapped apart from it`,
+		);
+	return lines;
+}
+
+/** What a source counts for a whole site, which no single part of a split site carries. */
+const SITE_COUNTS = /^(capacity|socket:.+)$/;
+/** A connector's power is the same whichever record states it; how many there are is not. */
+const isCount = (o: TagOp) => SITE_COUNTS.test(o.k) && (o.op === "del" || !o.k.endsWith(":output"));
+const SPLIT_COUNTS_NOTE =
+	"Capacity and sockets are left out: the source counts the whole site, not this one object";
+const SHARED_COUNTS_NOTE =
+	"Capacity and sockets are left out: several records were matched to this object, and each counts only its own";
+
+const reachedAt = (o: TagOp) =>
+	o.group === "addr" || /^(addr|contact):/.test(o.k) || CONTACT.includes(o.k);
+
+/** Whether `e` carries, besides the record's own UAI, another establishment's. */
+function sharedByOthers(e: OsmElement, refs: Record<string, string>): boolean {
+	const ours = new Set(ids(refs["ref:UAI"] ?? ""));
+	return (
+		ours.size > 0 &&
+		ALIASES["ref:UAI"].some((k) => ids(e.tags[k] ?? "").some((id) => !ours.has(id)))
+	);
+}
+
+/**
+ * The operations among `ops` another record matched to the same object contradicts, compared
+ * under the key the object would get each value under. A move or an address goes whole.
+ */
+export function disputedOps(
+	ops: TagOp[],
+	others: Pick<Extraction, "tags">[],
+	current: Record<string, string>,
+): TagOp[] {
+	const direct = ops.filter(
+		(o) =>
+			o.op !== "del" &&
+			others.some((other) =>
+				other.tags.some((t) => keyOn(t.k, current) === o.k && !sameValue(t.k, t.v, o.v)),
+			),
+	);
+	const groups = new Set(direct.map((o) => o.group).filter(Boolean));
+	const keys = new Set(direct.map((o) => o.k));
+	return ops.filter(
+		(o) =>
+			direct.includes(o) ||
+			(o.group !== undefined && groups.has(o.group)) ||
+			(o.pair !== undefined && keys.has(o.pair)),
+	);
+}
+
+export interface Plan {
+	ops: TagOp[];
+	notes: string[];
+}
+
+/**
+ * What a matched record writes to its object, and what the reviewer is told was left out:
+ * the site's counts on one part of it, values another record on the object disputes, and
+ * where it is reached when the object lies far from the record's address.
+ */
+export function planUpdate(
+	x: Placed & Partial<Pick<Extraction, "atAddress">>,
+	el: OsmElement,
+	els: OsmElement[],
+	refIndex: Map<string, OsmElement[]> = new Map(),
+	shared: Set<string> = new Set(),
+	matchedBy: MatchedBy = new Map(),
+): Plan {
+	let ops = updateOps(x.tags, el.tags);
+	const notes: string[] = [];
+	const others = matchedElsewhere(el, x, matchedBy);
+	const leave = (out: (o: TagOp) => boolean) => {
+		ops = ops.filter((o) => !out(o));
+	};
+	const split = splitParts(x, el, els, refIndex, shared, matchedBy).length > 0;
+	const counts = split
+		? ops.filter((o) => SITE_COUNTS.test(o.k))
+		: others.length
+			? ops.filter(isCount)
+			: [];
+	if (counts.length) {
+		leave((o) => counts.includes(o));
+		notes.push(split ? SPLIT_COUNTS_NOTE : SHARED_COUNTS_NOTE);
+	}
+	if (farFromAddress(x, el)) leave(reachedAt);
+	const main = mainOf(x);
+	if (groundsOf(x, el, els)) leave((o) => o.k === "amenity" || o.k === "name");
+	// A place closed, being built or turned into something else is not reopened on the
+	// source's word, nor dated by it.
+	if (notThePlace(el, main)) leave((o) => o.k === main?.k || o.k === "start_date");
+	// A group's object (a primaire and its collège) opened once for each of them.
+	if (others.length || sharedByOthers(el, x.refs)) leave((o) => o.k === "start_date");
+	// Several establishments on one object (a cité scolaire) each propose their own phone,
+	// SIRET or UAI for it; whichever a reviewer accepted last would win.
+	const disputed = disputedOps(ops, others, el.tags);
+	if (disputed.length) {
+		leave((o) => disputed.includes(o));
+		notes.push(
+			`Left out, since another record on this object says otherwise: ${[...new Set(disputed.map((o) => o.k))].join(", ")}`,
+		);
+	}
+	notes.push(...modWarnings(ops, el.tags));
+	return { ops, notes };
 }
 
 export function nearbyLabels(

@@ -59,7 +59,7 @@ const KIN: Record<string, Record<string, string[]>> = {
 export const kinValues = (k: string, v: string) => KIN[k]?.[v] ?? [v];
 
 /** Whom an institute takes in. A care home, a shelter or a health service is another place. */
-const INSTITUTE_FOR = ["disabled", "child", "juvenile"];
+const INSTITUTE_FOR = ["disabled", "child", "juvenile", "blind", "deaf", "intellectual_disability"];
 
 /** Whether an object tagged `tags` is a `k=v` place as some mapper would have mapped it. */
 export function sameKind(k: string, v: string, tags: Record<string, string>): boolean {
@@ -78,11 +78,16 @@ export const schoolBuilding = (tags: Record<string, string>) =>
 
 /**
  * What a place may be mapped as without being one to match against: a station drawn only as
- * its charge points, an institute mapped as the health centre it shares an address with.
- * They are fetched so a "new" one is checked against them, and for nothing else.
+ * its charge points or as the car park it equips, an institute mapped as the health centre it
+ * shares an address with, a maternelle mapped as a kindergarten. They are fetched so a "new"
+ * one is checked against them, and for nothing else.
  */
 const LOOKALIKES: Record<string, Selector[]> = {
-	"amenity=charging_station": [{ k: "man_made", v: ["charge_point"] }],
+	"amenity=charging_station": [
+		{ k: "man_made", v: ["charge_point"] },
+		{ k: "capacity:charging", v: null },
+	],
+	"amenity=school": [{ k: "amenity", v: ["kindergarten"] }],
 	"amenity=social_facility": [
 		{ k: "healthcare", v: ["centre"] },
 		{ k: "amenity", v: ["clinic"] },

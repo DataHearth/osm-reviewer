@@ -86,14 +86,23 @@ describe("kinds", () => {
 		expect(kin({ amenity: "school" })).toBe(true);
 		expect(kin({ amenity: "social_facility", "social_facility:for": "senior" })).toBe(false);
 		expect(kin({ amenity: "social_facility", "social_facility:for": "homeless" })).toBe(false);
+		expect(kin({ amenity: "social_facility", "social_facility:for": "blind" })).toBe(true);
+		expect(kin({ amenity: "social_facility", "social_facility:for": "deaf" })).toBe(true);
 		expect(kin({ amenity: "social_facility", social_facility: "healthcare" })).toBe(false);
 	});
 
 	it("fetches what a place may be mapped as only for the kinds that need it", () => {
 		expect(lookalikeSelectors([{ k: "amenity", v: "charging_station" }])).toEqual([
 			{ k: "man_made", v: ["charge_point"] },
+			{ k: "capacity:charging", v: null },
 		]);
-		expect(lookalikeSelectors([{ k: "amenity", v: "school" }])).toEqual([]);
+		expect(lookalikeSelectors([{ k: "amenity", v: "school" }])).toEqual([
+			{ k: "amenity", v: ["kindergarten"] },
+		]);
+		expect(lookalikeSelectors([{ k: "shop", v: "bakery" }])).toEqual([]);
+		expect(
+			lookalike("amenity", "charging_station", { amenity: "parking", "capacity:charging": "4" }),
+		).toBe(true);
 		expect(lookalike("amenity", "social_facility", { healthcare: "centre" })).toBe(true);
 		expect(lookalike("amenity", "social_facility", { amenity: "clinic" })).toBe(true);
 		expect(lookalike("amenity", "school", { building: "college" })).toBe(true);

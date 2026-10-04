@@ -2,18 +2,21 @@ import { describe, expect, it } from "vitest";
 import {
 	closureOps,
 	contextTags,
+	disputedOps,
 	findMatch,
 	indexRefs,
 	matchWarnings,
 	modWarnings,
 	nearbyLabels,
 	newOps,
+	planUpdate,
 	sameValue,
 	sharedRefs,
 	splitParts,
 	twinWarnings,
 	unchangedTags,
 	updateOps,
+	yieldToIds,
 } from "./match";
 import type { Extraction, OsmElement, ProposedTag } from "./types";
 
@@ -822,5 +825,325 @@ describe("modWarnings", () => {
 			"OSM has capacity=4 where the source says 6, and a mapper checked this object on 30-08-2026",
 		]);
 		expect(modWarnings(ops, { "survey:date": "2025-06-01" }, now)[0]).toMatch(/on purpose$/);
+	});
+
+	it("says when a lycée would become a college", () => {
+		const ops = [mod("amenity", "school", "college")];
+		expect(modWarnings(ops, { amenity: "school", "school:FR": "lycée" }, now)[1]).toMatch(
+			/^The object reads as a lycée \(school:FR=lycée\)/,
+		);
+	});
+});
+
+describe("what the object is now", () => {
+	const school = {
+		lat: 45.7,
+		lon: 4.8,
+		name: "Cours Diderot",
+		tags: [tag("amenity", "college"), tag("name", "Cours Diderot")],
+		refs: { "ref:UAI": "0694118B" },
+	};
+	const live = el(1, 45.70005, 4.8, { amenity: "college", name: "Cours Diderot" });
+
+	it("lets no id on a closed, renamed, rebuilt or repurposed object settle the match", () => {
+		const retired: Record<string, string>[] = [
+			{ "disused:amenity": "college" },
+			{ amenity: "college", "was:name": "Cours Diderot" },
+			{ office: "company", name: "Acme" },
+			{ landuse: "construction", opening_date: "2099-09-01" },
+		];
+		for (const tags of retired) {
+			const stale = el(2, 45.73, 4.8, { ...tags, "ref:UAI": "0694118B" });
+			const els = [live, stale];
+			expect(findMatch(school, els, indexRefs(els, ["ref:UAI"]))?.id).toBe(1);
+		}
+	});
+
+	it("names an object carrying the id it no longer answers to, and never reopens it", () => {
+		const closed = el(2, 45.7001, 4.8, { "disused:amenity": "college", "ref:UAI": "0694118B" });
+		const idx = indexRefs([closed], ["ref:UAI"]);
+		expect(matchWarnings(school, null, [closed], idx)).toContainEqual(
+			expect.stringMatching(
+				/^node\/2, 11 m away carries this record's id, but it is mapped as disused:amenity=college/,
+			),
+		);
+		expect(updateOps(school.tags, closed.tags).map((o) => o.k)).toEqual(["name"]);
+		const site = el(3, 45.7, 4.8, { landuse: "construction", name: "Cours Diderot" });
+		expect(planUpdate(school, site, [site]).ops).toEqual([]);
+		expect(matchWarnings(school, site, [site])[0]).toMatch(
+			/under construction, so amenity=college is not added/,
+		);
+	});
+});
+
+describe("far from the record's address", () => {
+	const x = {
+		lat: 45.7,
+		lon: 4.8,
+		atAddress: { lat: 45.7, lon: 4.8, label: "1 Rue X 69001 Lyon" },
+		name: "Ombrosa",
+		tags: [
+			tag("amenity", "school"),
+			tag("phone", "+33 4 78 23 22 63"),
+			tag("ref:FR:SIRET", "77984535300027"),
+			{ ...tag("addr:street", "Quai Clemenceau"), group: "addr" },
+		],
+		refs: {},
+	};
+
+	it("leaves out the address and contacts, and says why", () => {
+		const far = el(1, 45.735, 4.8, { amenity: "school", "contact:website": "https://a.fr" });
+		expect(planUpdate(x, far, [far]).ops.map((o) => o.k)).toEqual(["ref:FR:SIRET"]);
+		expect(matchWarnings(x, far, [far])[0]).toMatch(
+			/^Matched to node\/1, 3.9 km from the source's address: .* so its address and contacts are left out$/,
+		);
+		const near = el(2, 45.703, 4.8, { amenity: "school" });
+		expect(planUpdate(x, near, [near]).ops).toHaveLength(3);
+	});
+});
+
+describe("split sites", () => {
+	const toulibeo = {
+		key: "FRTLSP31555021",
+		lat: 45.7,
+		lon: 4.8,
+		name: "TOULOUSE - 10 Boulevard Escande",
+		tags: [tag("amenity", "charging_station"), tag("operator", "Bouygues Energies & Services")],
+		refs: { "ref:EU:EVSE": "FRALLEGO002084P1" },
+	};
+
+	it("takes a neighbour agreeing with the matched object's operator, and a point id without its connector", () => {
+		const a = el(1, 45.7, 4.8, { amenity: "charging_station", brand: "EVBox", operator: "Izivia" });
+		const b = el(2, 45.7001, 4.8, { amenity: "charging_station", operator: "Izivia" });
+		const c = el(3, 45.71, 4.8, { amenity: "charging_station", "ref:EU:EVSE": "FRALLEGO002084" });
+		const idx = indexRefs([a, b, c], ["ref:EU:EVSE"]);
+		expect(splitParts(toulibeo, a, [a, b, c], idx).map((k) => k.e.id)).toEqual([2, 3]);
+	});
+
+	it("leaves out an object another record of the run matched", () => {
+		const a = el(1, 45.7, 4.8, { amenity: "charging_station" });
+		const b = el(2, 45.7001, 4.8, { amenity: "charging_station" });
+		const taken = new Map([["node/2", [{ ...toulibeo, key: "other" }]]]);
+		expect(splitParts(toulibeo, a, [a, b], new Map(), new Set(), taken)).toEqual([]);
+	});
+});
+
+describe("which object", () => {
+	const station = (who: [string, string][]) => ({
+		lat: 45.7,
+		lon: 4.8,
+		name: "TOULOUSE - Avenue de Collignon",
+		tags: [tag("amenity", "charging_station"), ...who.map(([k, v]) => tag(k, v))],
+		refs: {},
+	});
+
+	it("counts another operator's sign against an object, and reads Alizé as Bouygues", () => {
+		const chargepoint = el(1, 45.7, 4.80001, {
+			amenity: "charging_station",
+			name: "ChargePoint",
+			operator: "ChargePoint",
+		});
+		const alize = el(2, 45.7001, 4.8, { amenity: "charging_station", brand: "Alizé" });
+		const x = station([["operator", "Bouygues Energies & Services"]]);
+		expect(findMatch(x, [chargepoint, alize], new Map())?.id).toBe(2);
+	});
+
+	it("reads the owner as who runs the network, but never past 50 m on that alone", () => {
+		const x = station([["owner", "TOULIBEO"]]);
+		const named = el(1, 45.7004, 4.8, { amenity: "charging_station", name: "Toulibeo" });
+		expect(findMatch(x, [named], new Map())?.id).toBe(1);
+		const unnamed = el(2, 45.7008, 4.8, { amenity: "charging_station", owner: "Toulibeo" });
+		expect(findMatch(x, [unnamed], new Map())).toBeNull();
+	});
+
+	it("prefers the way holding the school's UAI over a bare node beside it", () => {
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "Collège Stendhal",
+			tags: [tag("amenity", "school")],
+			refs: { "ref:UAI": "0311630D" },
+		};
+		const tags = { amenity: "school", name: "Collège Stendhal", "ref:UAI": "0311630D" };
+		const node = el(1, 45.7, 4.8, tags);
+		const way = { ...el(2, 45.7003, 4.8, tags), type: "way" as const };
+		expect(findMatch(x, [node, way], indexRefs([node, way], ["ref:UAI"]))?.id).toBe(2);
+	});
+
+	it("matches the grounds a school building carrying the UAI stands in, or leaves its amenity and name out", () => {
+		const name = "Collège Notre-Dame du Bon Conseil";
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name,
+			tags: [tag("amenity", "school"), tag("name", name), tag("school:FR", "collège")],
+			refs: { "ref:UAI": "0690541N" },
+		};
+		const building = el(1, 45.7, 4.8, { building: "school", "ref:UAI": "0690541N" });
+		const grounds = el(2, 45.70004, 4.8, { amenity: "school", name });
+		const idx = indexRefs([building], ["ref:UAI"]);
+		expect(findMatch(x, [building, grounds], idx)?.id).toBe(2);
+		const other = { ...grounds, tags: { ...grounds.tags, "school:FR": "élémentaire" } };
+		expect(findMatch(x, [building, other], idx)?.id).toBe(1);
+		expect(planUpdate(x, building, [building, other]).ops.map((o) => o.k)).toEqual(["school:FR"]);
+		expect(matchWarnings(x, building, [building, other])[0]).toMatch(
+			/beside node\/2 .* amenity and name are left out/,
+		);
+	});
+
+	it("makes way for the record whose id the object carries", () => {
+		const obj = el(1, 45.7, 4.8, { amenity: "charging_station", "ref:EU:EVSE": "FR*TLS*P1" });
+		const idx = indexRefs([obj], ["ref:EU:EVSE"]);
+		const own = {
+			x: { lat: 45.7, lon: 4.8, name: "", refs: { "ref:EU:EVSE": "FRTLSP1" } },
+			el: obj,
+		};
+		const near = { x: { lat: 45.7, lon: 4.8, name: "", refs: {} }, el: obj };
+		expect(yieldToIds([own, near], idx, new Set()).map((m) => m.el?.id ?? null)).toEqual([1, null]);
+	});
+});
+
+describe("duplicates of a new record", () => {
+	const x = {
+		lat: 45.7,
+		lon: 4.8,
+		name: "École maternelle privée Les Petites Familles 2",
+		tags: [tag("amenity", "school"), tag("school:FR", "maternelle"), tag("ref:FR:SIRET", "1")],
+		refs: { "ref:UAI": "0694649D" },
+	};
+
+	it("sees a maternelle mapped as a kindergarten of its name", () => {
+		const kg = el(1, 45.7001, 4.8, { amenity: "kindergarten", name: "Les petites familles" });
+		const creche = el(2, 45.7001, 4.8, { amenity: "kindergarten", name: "Les Lutins" });
+		expect(matchWarnings(x, null, [kg])).toEqual([
+			"Possible duplicate: amenity=kindergarten already mapped at node/1 “Les petites familles”, 11 m away",
+		]);
+		expect(matchWarnings(x, null, [creche])).toEqual([]);
+	});
+
+	it("reads what another record says of the object it matched as the object's own", () => {
+		const ime = el(3, 45.7005, 4.8, {
+			amenity: "social_facility",
+			"contact:email": "ce.0310001A@ac-toulouse.fr",
+		});
+		const by = new Map([
+			["node/3", [{ key: "0310001A", name: "IME", tags: [tag("ref:FR:SIRET", "1")], refs: {} }]],
+		]);
+		expect(matchWarnings(x, null, [ime], new Map(), new Set(), by)).toContainEqual(
+			expect.stringMatching(/^Another establishment with the same SIRET is mapped at node\/3/),
+		);
+	});
+});
+
+describe("twins of one operator", () => {
+	const rec = (key: string, lat: number, operator: string): Extraction => ({
+		key,
+		url: "",
+		name: key,
+		addr: "",
+		lat,
+		lon: 4.8,
+		refs: {},
+		tags: [tag("operator", operator)],
+	});
+
+	it("pairs one operator's new stations farther apart than unrelated ones", () => {
+		const twins = twinWarnings([
+			rec("a", 45.7, "Allego"),
+			rec("b", 45.7004, "Allego"),
+			rec("c", 45.7008, "Izivia"),
+		]);
+		expect(twins.get("a")).toEqual([
+			"Another new candidate, “b” (b), lies 44 m away: the two may be one place",
+		]);
+		expect(twins.has("c")).toBe(false);
+	});
+});
+
+describe("records sharing an object", () => {
+	it("compares each value under the key the object keeps it, and leaves out a move or an address whole", () => {
+		const current = { "contact:phone": "+33478765676", "contact:housenumber": "62" };
+		const ops = updateOps(
+			[
+				tag("phone", "+33 4 78 76 00 00"),
+				{ ...tag("addr:housenumber", "62"), group: "addr" },
+				{ ...tag("addr:street", "Rue X"), group: "addr" },
+			],
+			current,
+		);
+		const other = {
+			tags: [tag("phone", "04 78 76 56 76"), { ...tag("addr:street", "Rue Y"), group: "addr" }],
+		};
+		expect(
+			disputedOps(ops, [other], current)
+				.map((o) => `${o.op} ${o.k}`)
+				.sort(),
+		).toEqual([
+			"add addr:housenumber",
+			"add addr:street",
+			"del contact:housenumber",
+			"mod contact:phone",
+		]);
+	});
+
+	it("dates no object another establishment's UAI is on", () => {
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "SEGPA",
+			tags: [tag("start_date", "1991-08-25")],
+			refs: { "ref:UAI": "0693486P" },
+		};
+		const group = el(1, 45.7, 4.8, { amenity: "school", "ref:UAI": "0690626F;0693486P" });
+		expect(planUpdate(x, group, [group]).ops).toEqual([]);
+		const own = el(2, 45.7, 4.8, { amenity: "school", "ref:UAI": "0693486P" });
+		expect(planUpdate(x, own, [own]).ops).toHaveLength(1);
+	});
+});
+
+describe("values that already agree", () => {
+	it("keeps a mapper's finer operator:type and school level", () => {
+		expect(sameValue("operator:type", "private", "private_non_profit")).toBe(true);
+		expect(sameValue("operator:type", "public", "government")).toBe(true);
+		expect(sameValue("operator:type", "private_non_profit", "private")).toBe(false);
+		expect(sameValue("school:FR", "lycée", "lycée professionnel")).toBe(true);
+		expect(sameValue("school:FR", "collège", "secondaire")).toBe(true);
+		expect(sameValue("school:FR", "lycée", "primaire;secondaire")).toBe(true);
+		expect(sameValue("school:FR", "élémentaire", "primaire")).toBe(false);
+	});
+
+	it("keeps a mapper's site at its root, its https, its TLD, and over an ENT", () => {
+		const root = "https://college-moliere.etab.ac-lyon.fr/";
+		expect(sameValue("website", `${root}spip/`, root)).toBe(true);
+		expect(sameValue("website", "http://a.fr/x", "https://a.fr/y")).toBe(true);
+		expect(
+			sameValue("website", "http://www.lyceedecoiffure.com", "https://www.lyceedecoiffure.fr/"),
+		).toBe(true);
+		expect(sameValue("website", "https://x.ent.auvergnerhonealpes.fr", "https://x.org")).toBe(true);
+		expect(sameValue("website", "https://institutmyriam.fr", "https://www.myriam31.com/")).toBe(
+			false,
+		);
+	});
+
+	it("reads hours, housenumbers and ligatures for what they say", () => {
+		const everyDay =
+			"Mo 00:00-23:59, Tu 00:00-23:59, We 00:00-23:59, Th 00:00-23:59, Fr 00:00-23:59";
+		expect(sameValue("opening_hours", "Mo-Fr 00:00-24:00", everyDay)).toBe(true);
+		expect(sameValue("opening_hours", "Mo-Fr 08:00-18:00", "Mo-Sa 08:00-18:00")).toBe(false);
+		expect(sameValue("addr:housenumber", "62bis", "62 Bis")).toBe(true);
+		expect(sameValue("addr:street", "Rue Soeur Bouvier", "Rue Sœur Bouvier")).toBe(true);
+	});
+});
+
+describe("operations that make no sense", () => {
+	it("writes whom an institute takes in only on a social facility, and no default 24/7 over real hours", () => {
+		const forDisabled = { ...tag("social_facility:for", "disabled"), addOnly: true };
+		const amenity = { ...tag("amenity", "social_facility"), addOnly: true };
+		expect(updateOps([amenity, forDisabled], { amenity: "school" })).toEqual([]);
+		expect(updateOps([amenity, forDisabled], {}).map((o) => o.k)).toEqual([
+			"amenity",
+			"social_facility:for",
+		]);
+		expect(updateOps([tag("opening_hours", "24/7")], { opening_hours: "10:00-20:00" })).toEqual([]);
 	});
 });
