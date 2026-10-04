@@ -53,7 +53,8 @@ database, and nothing outside `src/lib/server/` can.
   the pending and staged counts everywhere.
 - `src/lib/server/mutations.ts`, `review.ts` — the action half: drafts, link
   syncing, accept/reject/undo, upload. The accept gate is enforced against the rows, not
-  against anything the client sent.
+  against anything the client sent: an address, and a `contact:*` key moved to `addr:*`, are
+  accepted whole or not at all.
 - `src/lib/post.ts` — the one helper for writes behind controls that are already plain
   buttons (checkboxes, sliders, toggles). They hit the same named actions and the same Zod
   schemas; they simply have no meaningful no-JS path, unlike the forms, which do.
@@ -134,10 +135,14 @@ server calls is configuration rather than code:
   logged — and the `queue` event fires once per crossing of the ceiling (the latch is in
   memory). Webhook bodies carry `X-Signature: sha256=<HMAC-SHA256 of the raw body>`.
 - **The pipeline's hosts are configuration, not code**: `OVERPASS_URL`, `NOMINATIM_URL`,
-  `BAN_URL` (the national address base, asked once per school or station address: a
-  proposed address takes its spelling or is dropped whole, and a source point more than 1 km
-  (school) or 100 m (station) from its housenumber moves there before matching, a record
-  moved out of the area being dropped and counted in the run's message),
+  `BAN_URL` (the national address base, asked once per school or station address, and once more
+  without the postcode when that misses: a proposed address takes its spelling when the base
+  names the same street, or is dropped whole, with a bis or ter housenumber written spaced as
+  local mappers do; a school's point more than 1 km from its housenumber moves there unless
+  something matches it where it stands or the base found another street, and a record moved out
+  of the area is dropped and counted in the run's message. A station's point moves (100 m) only
+  when the registry gives it to four decimals or fewer: a precise one stays, is matched at its
+  address only when nothing matches where it stands, and a new one says how far its address is),
   `OSM_URL` (default the dev sandbox, so an unconfigured instance cannot write to the live
   map), the model at `LLM_URL`, and each source's own endpoint. All are read in
   `src/lib/server/config.ts`, and `PIPELINE_ENABLED=false` switches off the scheduler and
@@ -197,12 +202,23 @@ own name, no school `start_date` from the register's bulk entries or a merged pr
 directory's medico-social institutes become `amenity=social_facility` (the main tag of one
 already mapped is left alone), its sections housed in a parent establishment are skipped, and
 "hors contrat" is dropped from school names, since OSM has no key for it and mappers drop it.
+A school's address is the directory's line as the national address base reads it: street,
+postcode and city in its spelling, the housenumber (a range "20-28" included) the directory's,
+or no address at all when the base is not sure or names another street. A person's mailbox
+(first.last, or a single word that is neither a role nor the school's name, place or domain)
+and a 06/07 mobile are left out, and counted in the run's message. A charging site is read from
+each station's newest declaration, with notes, fee and accessibility read over every
+declaration of its points. Declarations sharing a charge point id within 400 m, or its seven-digit
+number within 100 m under another operator's prefix, are one site, since operators re-declare a
+site under a new station id, position or code. When every single-row station of a site repeats
+one count n and there are n of them, n is the site's total.
 An address an object already holds as `contact:housenumber|street|postcode|city` (how the
 2016–2018 Éducation nationale imports wrote it) is moved to `addr:*` in the mapper's spelling,
 as a `del`/`add` pair the reviewer sees, rather than duplicated beside it; a part that differs
 from the source leaves the whole address alone. `fee` follows the registry's `gratuit` ("free
 with no condition of use", so false is `fee=yes` per the FR wiki) and may overwrite a mapper's
-value, with a banner line when it reverses one. The **model** extractor sends one record or page per call
+value. Every `mod` of a mapper's value gets a banner line, which also says when a mapper checked
+the object in the last twelve months. The **model** extractor sends one record or page per call
 (`llm.ts`; OpenAI-compatible `/chat/completions` with a JSON schema, or the Anthropic Messages
 API with structured output, both by plain `fetch`) and treats the answer as a witness: a tag
 survives only if its quote is really on the page, its key matches the source's allowed
@@ -211,14 +227,32 @@ patterns and its confidence clears the floor, which is also capped.
 Matching asks Overpass once per area for the source's `matching` selector plus whatever main
 tag the records carry (a filter written for `amenity=school` still finds a post-bac `amenity=college`), then
 matches by shared ref (`ref:EU:EVSE`, `ref:UAI`, `ref:FR:SIRET`) before distance and name.
-Refs compare without `*`, spaces or case; a ref several records carry (one organisation's
+Refs compare without `*`, spaces or case. An EVSE id's part after the operator code stands
+alone (a pool id surviving a change of operator) only when it holds a letter, and then only
+within 150 m: Toulouse's networks all number stations `P<INSEE code><n>`, so a digits-only part
+names a different operator's station across town. A ref several records carry (one organisation's
 SIRET) decides nothing; an object carrying another `ref:UAI` (or another school's `ce.<UAI>@`
 mailbox) is never the match, nor by name or distance is a station carrying only another
-operator's EVSE ids. An unnamed object matches within 15 m, or within 50 m when its
-operator, network or brand agrees. The fetch adds anything carrying a `ref:UAI`, a school's
-kin (`college`, `university`), and a ~220 m margin round the box. What matching cannot settle is not guessed: a "new" POI with an object of its kind
-within 150 m, a match whose site is mapped as several objects, and an object several records
-matched each get a line in the candidate's `warning`, which the review screen shows as a
+operator's EVSE ids. An id on an object that is no longer the place (a `disused:`/`was:` main
+tag, a construction site, another main key) settles nothing. An unnamed object matches within
+15 m, or within 50 m when its operator, network or brand agrees, and another operator's sign
+counts against an object, as does a poor fit of capacity, connectors and power class; an object
+two records match without ids goes to the one that fits it. The network's own station within
+25 m whose connectors fit is matched under a renumbered pool id, with a banner. A match more than
+500 m from both the source's point and the address base's gets no address, contacts or SIRET (and
+nothing at all on an object mapped as no place); one left with nothing to write is counted in the
+run's message and listed in the diagnostics bundle. The fetch adds anything carrying a `ref:UAI`, a school's
+kin (`college`, `university`), a school mapped only as `building=school|college|university`
+(matched by name, the update adding the amenity; never matched unnamed), and a ~220 m margin
+round the box. Lookalikes that must never be matched are fetched for the banner only:
+`man_made=charge_point` beside stations, `healthcare=centre` and `amenity=clinic` beside
+institutes. The commune's words count for nothing in a name match. What matching cannot settle
+is not guessed: a "new" POI with an object of its kind within 150 m (300 m when its operator or
+address agrees), a match more than 150 m away, a match whose site is mapped as several objects
+or whose id another object also carries, an object several records matched (whose counts are
+then left out), two "new" records of a run on one spot, SIRET or address, a school carrying another UAI at the
+record's address, phone or email, and a point moved to
+its address each get a line in the candidate's `warning`, which the review screen shows as a
 "Check" banner.
 Candidates upsert on `(source_id, source_record_key)`; a record whose `content_hash` is
 unchanged is left as the reviewer saw it, and a queued candidate whose OSM object has a newer
