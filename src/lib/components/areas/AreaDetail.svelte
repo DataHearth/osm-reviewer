@@ -4,12 +4,14 @@
 import AreaMap from "$lib/components/AreaMap.svelte";
 import Bar from "$lib/components/Bar.svelte";
 import MetricTiles from "$lib/components/MetricTiles.svelte";
+import RunButton from "$lib/components/RunButton.svelte";
 import { ghost, healthTone, statusPill } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
 
 const a = $derived(review.area(review.areaId));
 const paused = $derived(!!review.paused[a.id]);
+const running = $derived(review.running(a.sources));
 const status = $derived(paused ? "disabled" : a.status);
 const radius = $derived(review.radiusOf(a));
 const sqkm = $derived(review.sqkmOf(a));
@@ -68,7 +70,9 @@ const defRows = $derived(
 				onclick={() => review.editArea(a)}>edit</button
 			>
 			<button class={ghost(paused)} onclick={() => review.togglePaused(a)}>{paused ? "enable" : "disable"}</button>
-			<button class={ghost(false)} onclick={() => review.runPipeline(a)}>run pipeline</button>
+			{#key a.id}
+				<RunButton label="run pipeline" name={a.name} {running} onrun={() => review.runPipeline(a)} />
+			{/key}
 		</div>
 	</div>
 

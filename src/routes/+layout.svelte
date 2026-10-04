@@ -3,6 +3,7 @@ import "../app.css";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import BottomNav from "$lib/components/BottomNav.svelte";
+import Toaster from "$lib/components/Toaster.svelte";
 import TopBar from "$lib/components/TopBar.svelte";
 import { auth } from "$lib/stores/auth.svelte";
 import { keys } from "$lib/stores/keys.svelte";
@@ -96,5 +97,6 @@ function onkeydown(e: KeyboardEvent) {
 		<TopBar />
 		{@render children?.()}
 		<BottomNav />
+		<Toaster />
 	{/if}
 </div>

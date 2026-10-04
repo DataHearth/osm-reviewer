@@ -35,7 +35,7 @@ interface Exec {
 }
 
 const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
-const claimFresh = (s: { runningSince: Date | null }) =>
+export const claimFresh = (s: { runningSince: Date | null }) =>
 	s.runningSince !== null && Date.now() - s.runningSince.getTime() < STALE_CLAIM_MS;
 
 export function pendingCount(db: Db): number {

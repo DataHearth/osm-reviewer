@@ -19,6 +19,7 @@ import type { QueueQuery, SortKey } from "$lib/schemas/queue";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import { claimFresh } from "$lib/server/pipeline/runner";
 import { configRows, KIND_LABEL, metricRows, runRow } from "$lib/server/source-display";
 import type {
 	Area,
@@ -127,6 +128,7 @@ export async function loadSources(db: Db): Promise<Source[]> {
 			kindLabel: KIND_LABEL[s.kind],
 			health: s.health,
 			failing: s.failing,
+			running: !!s.runRequestedAt || claimFresh(s),
 			enabled: s.enabled,
 			floor: s.floor,
 			endpoint: s.endpoint,

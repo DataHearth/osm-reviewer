@@ -85,6 +85,8 @@ export interface Source {
 	kindLabel: string;
 	health: "ok" | "warn" | "error";
 	failing?: boolean;
+	/** Asked for, or claimed by the runner right now. */
+	running: boolean;
 	enabled: boolean;
 	floor: number;
 	endpoint: string;
