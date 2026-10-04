@@ -72,6 +72,7 @@ export function website(raw: string): string | null {
 	try {
 		const u = new URL(withScheme);
 		if (!u.hostname.includes(".")) return null;
+		u.hash = "";
 		return u.toString().replace(/\/$/, u.pathname === "/" && !u.search ? "" : "/");
 	} catch {
 		return null;
@@ -264,7 +265,16 @@ function serviceDate(rows: Row[]): string | null {
 		.flatMap((m) => (m ? [`${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`] : []))
 		.filter((d) => !d.endsWith("-01-01"))
 		.sort();
-	return dates[0] ?? null;
+	const since = dates[0];
+	if (!since) return null;
+	// A date after a declaration of the station was made (e-Totem's 2026-07-28 on a station in
+	// its own file since 2025-06-17) is a plan, or a re-commissioning, not when it opened.
+	// `created_at` is not a declaration's date: every row of one file carries the file's.
+	const declared = rows
+		.map((r) => str(r, "date_maj"))
+		.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+		.sort()[0];
+	return declared && since > declared ? null : since;
 }
 
 /** Filler numbers some operators declare when they have none to give: `+33 1 23 45 67 89`, `+33 1 00 00 00 00`. */
@@ -483,6 +493,9 @@ function currentStations(rows: Row[]): Station[] {
 	return current.filter((s) => s.rows.length > 0);
 }
 
+/** A slug is a web address's, not anybody's name ("hotel-crequi-lyon"). */
+const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
+
 /** "Réseau de recharge Virta Public": what the network is, not its name. */
 const DESCRIBED_NETWORK = /^r[ée]seau de (re)?charge\b/i;
 
@@ -608,6 +621,30 @@ const kinds = (r: Row) =>
 	new Set(SOCKETS.filter(([, f, only]) => has(r, f) && only(r)).map(([, f]) => f)).size +
 	(has(r, "prise_type_autre") ? 1 : 0);
 
+const CONNECTORS = [
+	"prise_type_2",
+	"prise_type_combo_ccs",
+	"prise_type_chademo",
+	"prise_type_ef",
+	"prise_type_autre",
+];
+
+/** A connector the schema has a column for, rather than "autre". */
+const named = (r: Row) => SOCKETS.some(([, f]) => has(r, f));
+
+/**
+ * A point's newest row, with the connectors of an older declaration of it when the newest
+ * names none: e-Totem's consolidated rows tick only "autre" on DC points its own file lists as
+ * CCS, and some rows tick nothing at all.
+ */
+function withNamedConnectors(r: Row, history: Row[]): Row {
+	if (named(r)) return r;
+	const older = history.find(named);
+	return older
+		? { ...r, ...Object.fromEntries([...CONNECTORS, "cable_t2_attache"].map((f) => [f, older[f]])) }
+		: r;
+}
+
 /** Legal forms and trade words an operator's files add to its name or not ("ZEENCO e-mobility"). */
 const COMPANY_NOISE =
 	/\b(sas|sasu|sarl|sa|eurl|france|e mobility|emobility|marketing|charging|services|partner network)\b/g;
@@ -678,7 +715,12 @@ const irve: Preset = {
 	},
 	extract(declared, url) {
 		const current = currentStations(declared);
-		const rows = onePerPoint(current.flatMap((s) => s.rows));
+		// A newer declaration often leaves out what an older one of the same points said (an
+		// aggregator's copy of an operator's file drops its notes and tariff).
+		const own = declarationsOf(onePerPoint(current.flatMap((s) => s.rows)), declared);
+		const history = new Map([...own].map(([r, h]) => [withNamedConnectors(r, h), h]));
+		const rows = [...history.keys()];
+		const recovered = [...own.keys()].filter((r) => !history.has(r)).length;
 		const first = rows[0];
 		const pos = irve.position(first);
 		// The key `mergeSites` gave the record, whichever station is newest.
@@ -726,7 +768,9 @@ const irve: Preset = {
 			notes.push(
 				current.length === 1
 					? `The registry declares ${declaredCount} charge points as a single row, so their sockets are left out`
-					: `${oneRows.length} of the site's stations are each declared as a single row, so sockets are left out`,
+					: oneRows.length === 1
+						? "1 of the site's stations is declared as a single row, so sockets are left out"
+						: `${oneRows.length} of the site's stations are each declared as a single row, so sockets are left out`,
 			);
 		if (unsure)
 			notes.push(
@@ -739,10 +783,18 @@ const irve: Preset = {
 		const operator = str(first, "nom_operateur") || str(first, "nom_amenageur");
 		const network = str(first, "nom_enseigne");
 		fill(t.add("operator", operator, 0.85, "nom_operateur"));
+		// An older declaration's station or owner can be what the newest calls its network
+		// (Howdens on ZEENCO's 366F-Toulouse, whose owner was "Howdens Toulouse"), but an owner that
+		// was its own operator ("ENGIE Vianeo" twice) is the network's company, not a host.
+		const host = (r: Row) => {
+			const owner = str(r, "nom_amenageur");
+			return company(owner) === operatorOf(r) ? "" : owner;
+		};
 		if (
 			normaliseName(network) !== normaliseName(operator) &&
 			!DESCRIBED_NETWORK.test(network) &&
-			!siteName(network, str(first, "nom_station"), str(first, "nom_amenageur"))
+			!siteName(network, str(first, "nom_station"), str(first, "nom_amenageur")) &&
+			!declared.some((r) => siteName(network, str(r, "nom_station"), host(r)))
 		)
 			fill(t.add("network", network, 0.8, "nom_enseigne"));
 		// `nbre_pdc` is what the operator declared for one of the stations merged here, and the
@@ -775,34 +827,36 @@ const irve: Preset = {
 		// Absence is read over every declaration: two of one point can disagree on its
 		// connectors, and only what none of them lists is known to be missing.
 		// A declaration ticking every connector type on every point says nothing about any.
-		const everything = rows.every((r) =>
-			[
-				"prise_type_2",
-				"prise_type_combo_ccs",
-				"prise_type_chademo",
-				"prise_type_ef",
-				"prise_type_autre",
-			].every((f) => has(r, f)),
-		);
+		const everything = rows.every((r) => CONNECTORS.every((f) => has(r, f)));
 		if (everything)
 			notes.push("The registry ticks every connector type on every point, so sockets are left out");
-		// Points left unlisted may carry any connector, but a listed DC point's power is its own.
-		for (const [k, field, only] of oneRow || everything ? [] : SOCKETS) {
-			if (unsure && !DC.includes(field)) continue;
+		// A point naming no connector may carry any, so no type's count is known to be whole,
+		// nor any type known to be missing.
+		const blank = oneRow || unsure ? 0 : rows.filter((r) => kinds(r) === 0).length;
+		if (blank)
+			notes.push(
+				blank === rows.length
+					? "None of its charge points names a connector, so sockets are left out"
+					: `${blank} of its ${rows.length} charge points name no connector, so sockets are left out`,
+			);
+		if (recovered)
+			notes.push(
+				`The registry's newest declaration names no connector on ${recovered} of its charge points; their connectors are an older declaration's`,
+			);
+		for (const [k, field, only] of oneRow || everything || unsure || blank ? [] : SOCKETS) {
 			const carrying = rows.filter((r) => has(r, field) && only(r));
 			if (carrying.length === 0) {
-				if (!unsure && !declared.some((r) => has(r, field) && only(r))) absent.push(k);
+				if (!declared.some((r) => has(r, field) && only(r))) absent.push(k);
 				continue;
 			}
-			if (!unsure)
-				t.add(
-					k,
-					String(carrying.length),
-					0.9,
-					field,
-					`true on ${carrying.length} of ${rows.length} points`,
-					"derived",
-				);
+			t.add(
+				k,
+				String(carrying.length),
+				0.9,
+				field,
+				`true on ${carrying.length} of ${rows.length} points`,
+				"derived",
+			);
 			const shared = carrying.some((r) => kinds(r) > 1);
 			if (shared && k !== "socket:type2_combo") continue;
 			const power = Math.max(0, ...carrying.map((r) => Number(str(r, "puissance_nominale")) || 0));
@@ -816,15 +870,13 @@ const irve: Preset = {
 				"derived",
 			);
 		}
-		if (!unsure && !declared.some((r) => has(r, "prise_type_autre"))) absent.push(...OTHER_SOCKETS);
+		if (!unsure && !blank && !declared.some((r) => has(r, "prise_type_autre")))
+			absent.push(...OTHER_SOCKETS);
 		if (!everything && rows.some((r) => has(r, "prise_type_autre")))
 			notes.push(
 				"The registry lists connectors of another type on this station, which it does not name",
 			);
 
-		// A newer declaration often leaves out what an older one of the same points said (an
-		// aggregator's copy of an operator's file drops its notes and tariff).
-		const history = declarationsOf(rows, declared);
 		const said = (field: string) =>
 			rows.map((r) => str(history.get(r)?.find((h) => str(h, field)) ?? r, field)).filter(Boolean);
 		const ever = (field: string) =>
@@ -925,7 +977,7 @@ const irve: Preset = {
 		);
 		if (since) fill(t.add("start_date", since, 0.7, "date_mise_en_service", since));
 		const owner = str(first, "nom_amenageur");
-		if (normaliseName(owner) !== normaliseName(operator))
+		if (normaliseName(owner) !== normaliseName(operator) && !SLUG.test(owner))
 			fill(t.add("owner", owner, 0.7, "nom_amenageur"));
 		const phone = operatorPhone(str(first, "telephone_operateur"));
 		if (phone)
@@ -942,7 +994,7 @@ const irve: Preset = {
 			fill(t.add("maxheight", String(Number(height)), 0.7, "restriction_gabarit"));
 
 		const raw = rawCoords(first);
-		const precision = raw ? Math.min(...raw.map(decimals)) : 3;
+		const precision = raw ? Math.min(...raw.map(decimals)) : 0;
 		if (raw && precision <= 2)
 			notes.push(
 				`The registry places it to ${precision} decimal${precision === 1 ? "" : "s"} only (${raw.join(", ")}), which can be a few hundred metres off`,
@@ -978,7 +1030,10 @@ const irve: Preset = {
 			absent,
 			notes,
 			geocode: str(first, "adresse_station")
-				? { q: addressQuery(addr, "", ""), farM: STATION_FAR_M }
+				? {
+						q: addressQuery(addr, "", ""),
+						farM: precision <= COARSE_DECIMALS ? STATION_FAR_M : Number.POSITIVE_INFINITY,
+					}
 				: undefined,
 		};
 	},
@@ -1061,12 +1116,9 @@ const ACCENTED = [
 	"Éducatifs",
 	"Éducatives",
 	"Évaluation",
-	"Élise",
-	"Émile",
 	"Étude",
 	"Études",
 	"Élémentaire",
-	"Étienne",
 	"Épée",
 	"Médico",
 	"Pédagogique",
@@ -1080,14 +1132,20 @@ const ACCENTED = [
 	"Visée",
 	"Collège",
 	"Lycée",
+	"Métiers",
+	"Éclat",
 ];
+/** Names, which keep their capital even where the directory dropped it ("La boetie"). */
+const ACCENTED_NAMES = ["Élise", "Émile", "Étienne", "Édouard", "Boétie"];
 const bare = (w: string) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
-const UNACCENTED = new Map(
-	ACCENTED.flatMap((w) => [
-		[bare(w), w],
-		[bare(w).toLowerCase(), w.toLowerCase()],
-	]),
-);
+const spellings = (w: string, lower: string): [string, string][] => [
+	[bare(w), w],
+	[bare(w).toLowerCase(), lower],
+];
+const UNACCENTED = new Map([
+	...ACCENTED.flatMap((w) => spellings(w, w.toLowerCase())),
+	...ACCENTED_NAMES.flatMap((w) => spellings(w, w)),
+]);
 const UNACCENTED_WORD = new RegExp(
 	`(?<![\\p{L}\\d])(${[...UNACCENTED.keys()].join("|")})(?![\\p{L}\\d])`,
 	"gu",
@@ -1129,10 +1187,22 @@ export function schoolName(raw: string): string {
 			// surname ("Rosa PARKS", "Pierre de FERMAT"); anywhere else an initialism ("ESTM").
 			return SURNAME_AFTER.test(before) ? quiet(w) : w;
 		})
-		.replace(UNACCENTED_WORD, (w) => UNACCENTED.get(w) ?? w);
+		.replace(UNACCENTED_WORD, (w) => UNACCENTED.get(w) ?? w)
+		.replace(STUTTER, (w, first: string, second: string) =>
+			first.toLowerCase() === second && !"aelo".includes(second) ? first : w,
+		)
+		// French writes the particle small inside a name ("Geneviève de Gaulle"), only the
+		// directory capitalises it there ("Institut De Fourvière").
+		.replace(/(?<=\S )(De|Du|Des)(?= \p{Lu})/gu, (w) => w.toLowerCase());
 	if (shouting) out = out.replace(/ A (?=\p{L})/gu, " à ");
 	return out[0].toUpperCase() + out.slice(1);
 }
+
+/**
+ * A capital typed twice ("Iinstitut"). No French word starts that way, but names can
+ * ("Aaron", "Eeckhout", "Lloyd", "Oosterhof"), so a doubled A, E, L or O stays.
+ */
+const STUTTER = /(?<![\p{L}\d])(\p{Lu})(\p{Ll})(?=\p{Ll})/gu;
 
 const SURNAME_AFTER = /^(\p{Lu}\p{Ll}+([-'’]\p{Lu}\p{Ll}+)*|de|du|des|d'|la|le)$/u;
 
@@ -1201,11 +1271,14 @@ export function expandStreet(line: string): string {
 
 /**
  * How far a source's point may sit from its own housenumber before the address is taken
- * over the point. A school's grounds can stretch a few hundred metres from its gate; a
- * charging station stands at its address.
+ * over the point. A school's grounds can stretch a few hundred metres from its gate. A
+ * charging station's point is where its operator placed it, often in a car park well away
+ * from the address's door, so only a coarse one (`COARSE_DECIMALS`) is moved.
  */
 const SCHOOL_FAR_M = 1000;
 const STATION_FAR_M = 100;
+/** Four decimals is 11 m: a registry writing so few rounded a geocoded point, or typed it. */
+const COARSE_DECIMALS = 4;
 
 /**
  * What to ask the address base for a line: with its postcode and commune, unless the line
@@ -1420,7 +1493,13 @@ const education: Preset = {
 		if (phone && isMobile(phone)) withheld += 1;
 		else if (phone)
 			alsoAt(t.add("phone", phone, 0.85, "telephone", undefined, "normalised"), rows, phoneOf);
-		const siteOf = (row: Row) => website(str(row, "web", "site_web"));
+		const sites = rows.map((row) => website(str(row, "web", "site_web")));
+		// One site's row may write http where another's writes https for the same page.
+		const siteOf = (row: Row) => {
+			const v = sites[rows.indexOf(row)];
+			const secure = v?.replace(/^http:/, "https:");
+			return secure && sites.includes(secure) ? secure : v;
+		};
 		const site = siteOf(r);
 		if (site) alsoAt(t.add("website", site, 0.8, "web"), rows, siteOf);
 		const mail = str(r, "mail");

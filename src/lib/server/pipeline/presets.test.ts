@@ -286,6 +286,9 @@ describe("IRVE preset", () => {
 		expect(site?.notes).toContainEqual(
 			"3 of the site's stations are each declared as a single row, so sockets are left out",
 		);
+		expect(irve.extract([...carPark.slice(0, 3), rows[0]], "u")?.notes).toContainEqual(
+			"1 of the site's stations is declared as a single row, so sockets are left out",
+		);
 	});
 
 	it("counts one point per one-row station when each repeats the site's total", () => {
@@ -419,7 +422,7 @@ describe("IRVE preset", () => {
 		expect(x?.notes?.[0]).toMatch(/declares 2 and 4 charge points and lists 2/);
 	});
 
-	it("keeps only a DC output when the declared count and the listed points disagree", () => {
+	it("proposes no socket output when the declared count and the listed points disagree", () => {
 		const x = irve.extract(
 			[
 				irveRow({ id_pdc_itinerance: "FRS63E1", nbre_pdc: "4", puissance_nominale: "22" }),
@@ -433,11 +436,59 @@ describe("IRVE preset", () => {
 			],
 			"u",
 		);
-		expect(x?.tags.filter((t) => t.k.startsWith("socket:")).map((t) => [t.k, t.v])).toEqual([
-			["socket:type2_combo:output", "50 kW"],
-		]);
+		expect(x?.tags.filter((t) => t.k.startsWith("socket:"))).toEqual([]);
 		expect(x?.absent).toEqual([]);
 		expect(x?.notes?.[0]).toMatch(/so capacity and sockets are left out/);
+	});
+
+	it("proposes no socket count while some points name no connector", () => {
+		const none = { prise_type_2: "false", nbre_pdc: "3" };
+		const x = irve.extract(
+			[
+				irveRow({ id_pdc_itinerance: "FRS63E1", ...none }),
+				irveRow({ id_pdc_itinerance: "FRS63E2", ...none }),
+				irveRow({ id_pdc_itinerance: "FRS63E3", ...none, prise_type_combo_ccs: "true" }),
+			],
+			"u",
+		);
+		expect(x?.tags.find((t) => t.k === "capacity")?.v).toBe("3");
+		expect(x?.tags.filter((t) => t.k.startsWith("socket:"))).toEqual([]);
+		expect(x?.absent).toEqual([]);
+		expect(x?.notes).toEqual([
+			"2 of its 3 charge points name no connector, so sockets are left out",
+		]);
+	});
+
+	it("reads a point's connectors from an older declaration where the newest says only 'autre'", () => {
+		const point = { id_pdc_itinerance: "FRETIE69259A11", nbre_pdc: "1", prise_type_2: "false" };
+		const x = irve.extract(
+			[
+				irveRow({ ...point, date_maj: "2025-06-17", prise_type_combo_ccs: "true" }),
+				irveRow({ ...point, date_maj: "2026-09-26", prise_type_autre: "true" }),
+			],
+			"u",
+		);
+		const tags = Object.fromEntries((x?.tags ?? []).map((t) => [t.k, t.v]));
+		expect(tags["socket:type2_combo"]).toBe("1");
+		expect(x?.notes).toEqual([
+			"The registry's newest declaration names no connector on 1 of its charge points; their connectors are an older declaration's",
+		]);
+	});
+
+	it("proposes no commissioning date later than a declaration of the station", () => {
+		const since = (rows: Row[]) =>
+			irve.extract(rows, "u")?.tags.find((t) => t.k === "start_date")?.v;
+		const point = { nbre_pdc: "1", created_at: "2025-05-05T13:28:02" };
+		const newest = irveRow({
+			...point,
+			date_maj: "2026-09-26",
+			date_mise_en_service: "2026-07-28",
+		});
+		expect(since([newest])).toBe("2026-07-28");
+		expect(since([irveRow({ ...point, date_maj: "2025-06-17" }), newest])).toBeUndefined();
+		expect(
+			since([irveRow({ ...point, date_maj: "2026-05-15", date_mise_en_service: "2026-07-03" })]),
+		).toBeUndefined();
 	});
 
 	it("counts no bay for a DC cabinet's type 2 outlet declared at the cabinet's power", () => {
@@ -659,6 +710,32 @@ describe("IRVE preset", () => {
 			irve.extract([irveRow({ nom_enseigne })], "u")?.tags.find((t) => t.k === "network")?.v;
 		expect(network("Réseau de recharge Virta Public")).toBeUndefined();
 		expect(network("Réseau e-Totem")).toBe("Réseau e-Totem");
+	});
+
+	it("proposes no network an older declaration names the site or its host by", () => {
+		const point = { id_pdc_itinerance: "FRZEEE10001017391", nom_enseigne: "Howdens" };
+		const network = (older: Row) =>
+			irve
+				.extract(
+					[
+						irveRow({ ...point, nom_station: "366F-Toulouse", date_maj: "2026-10-02" }),
+						irveRow({ ...point, ...older, date_maj: "2024-01-26" }),
+					],
+					"u",
+				)
+				?.tags.find((t) => t.k === "network")?.v;
+		expect(network({ nom_station: "Howdens" })).toBeUndefined();
+		expect(network({ nom_amenageur: "Howdens Toulouse" })).toBeUndefined();
+		expect(
+			network({ nom_amenageur: "Howdens", nom_operateur: "Howdens", nom_station: "Dépôt Sud" }),
+		).toBe("Howdens");
+	});
+
+	it("proposes no owner written as a web slug", () => {
+		const owner = (nom_amenageur: string) =>
+			irve.extract([irveRow({ nom_amenageur })], "u")?.tags.find((t) => t.k === "owner")?.v;
+		expect(owner("hotel-crequi-lyon")).toBeUndefined();
+		expect(owner("Hôtel Créqui")).toBe("Hôtel Créqui");
 	});
 
 	it("reads two same-day declarations of a point by their last change, and absence across both", () => {
@@ -901,6 +978,14 @@ describe("Annuaire de l'éducation preset", () => {
 		const main = row({ nom_etablissement: "Ecole", telephone: "05 61 62 46 59" });
 		const phone = edu.extract([annex, main], "u")?.tags.find((t) => t.k === "phone");
 		expect(phone).toMatchObject({ v: "+33 5 61 62 46 59", also: ["+33 5 61 21 99 71"] });
+	});
+
+	it("keeps https where another site of the same UAI gives the page over it", () => {
+		const annex = row({ adresse_1: "17 rue Larrey", web: "https://www.lamartinierediderot.fr/" });
+		const main = row({ nom_etablissement: "Ecole", web: "http://www.lamartinierediderot.fr/" });
+		const site = edu.extract([annex, main], "u")?.tags.find((t) => t.k === "website");
+		expect(site?.v).toBe("https://www.lamartinierediderot.fr");
+		expect(site?.also).toBeUndefined();
 	});
 
 	it("quotes the level flags a school's level comes from, and skips a webmail address", () => {
@@ -1159,6 +1244,25 @@ describe("schoolName", () => {
 		expect(schoolName("Ecole technique prive Lumière")).toBe("École technique privé Lumière");
 		expect(schoolName("SESSAD A VISEE PROFESSIONNELLE")).toBe("SESSAD à Visée Professionnelle");
 		expect(schoolName("Lycée A Rimbaud")).toBe("Lycée A Rimbaud");
+		expect(schoolName("Ecole maternelle Edouard Herriot")).toBe("École maternelle Édouard Herriot");
+		expect(schoolName("Collège privé hors contrat La boetie")).toBe("Collège privé La Boétie");
+		expect(schoolName("Insitut médico-éducatif Eclat de rire")).toBe(
+			"Insitut médico-éducatif Éclat de rire",
+		);
+		expect(schoolName("Ecole Supérieure Privée des Metiers")).toBe(
+			"École Supérieure Privée des Métiers",
+		);
+	});
+
+	it("drops a capital typed twice and lowers a particle in mid-name", () => {
+		expect(schoolName("Iinstitut médico éducatif CHU La Grave")).toBe(
+			"Institut médico éducatif CHU La Grave",
+		);
+		expect(schoolName("Lycée Lloyd Aaron")).toBe("Lycée Lloyd Aaron");
+		expect(schoolName("Institut Médico-Educatif De Fourvière")).toBe(
+			"Institut Médico-Éducatif de Fourvière",
+		);
+		expect(schoolName("De Gaulle Primaire")).toBe("De Gaulle Primaire");
 	});
 
 	it("quiets a run of shouted words but keeps initialisms and a lone word in capitals", () => {
@@ -1208,11 +1312,17 @@ describe("addressQuery", () => {
 		);
 	});
 
-	it("is what a station asks with, 100 m off before its point moves", () => {
-		expect(presetById("irve")?.extract([irveRow()], "u")?.geocode).toEqual({
+	it("is what a station asks with, and only a coarse point moves, 100 m off", () => {
+		const geocode = (lat: string, lon: string) =>
+			presetById("irve")?.extract(
+				[irveRow({ consolidated_latitude: lat, consolidated_longitude: lon })],
+				"u",
+			)?.geocode;
+		expect(geocode("45.7641", "4.835123")).toEqual({
 			q: "1 place de la Mairie, 69001 Lyon",
 			farM: 100,
 		});
+		expect(geocode("45.76412", "4.835123")?.farM).toBe(Number.POSITIVE_INFINITY);
 	});
 });
 
@@ -1260,9 +1370,12 @@ describe("phoneFR", () => {
 });
 
 describe("website", () => {
-	it("adds a scheme and drops a bare slash", () => {
+	it("adds a scheme and drops a bare slash and a fragment", () => {
 		expect(website("example.org")).toBe("https://example.org");
 		expect(website("http://example.org/a/")).toBe("http://example.org/a/");
+		expect(website("https://www.saint-thom.fr/oullins/le-site#content")).toBe(
+			"https://www.saint-thom.fr/oullins/le-site",
+		);
 		expect(website("not a url")).toBeNull();
 	});
 });
