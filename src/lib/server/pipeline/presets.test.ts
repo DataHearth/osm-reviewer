@@ -94,7 +94,9 @@ describe("IRVE preset", () => {
 	it("makes one record of the stations an operator declared per charge point on one site", () => {
 		const rec = (key: string, over: Row = {}) => ({
 			key,
-			rows: [irveRow({ id_station_itinerance: key, id_pdc_itinerance: key, ...over })],
+			rows: [
+				irveRow({ id_station_itinerance: key, id_pdc_itinerance: key, nbre_pdc: "1", ...over }),
+			],
 		});
 		const merged = mergeSites(
 			[rec("S3"), rec("S1"), rec("S2"), rec("S4", { nom_operateur: "Autre SA" })],
@@ -109,6 +111,31 @@ describe("IRVE preset", () => {
 		);
 		expect(tags).toMatchObject({ capacity: "3", "socket:type2": "3" });
 		expect(tags["ref:EU:EVSE"]).toBeUndefined();
+	});
+
+	it("makes one record of a site declared again at another position, under the smallest key", () => {
+		const rec = (key: string, point: string, lat: string) => ({
+			key,
+			rows: [
+				irveRow({
+					id_station_itinerance: key,
+					id_pdc_itinerance: point,
+					consolidated_latitude: lat,
+				}),
+			],
+		});
+		const merged = mergeSites(
+			[
+				rec("FRSITE00000103", "FRALLEGO0020841", "45.7660"),
+				rec("FRALLPTIS016", "FRALLEGO002084P1", "45.7640"),
+				rec("FRALLPTIS099", "FRALLEGO002084P1", "45.7700"),
+			],
+			irve,
+		);
+		expect(merged.map((r) => [r.key, r.rows.length])).toEqual([
+			["FRALLPTIS016", 2],
+			["FRALLPTIS099", 1],
+		]);
 	});
 
 	it("reads a fee from what fired, never from an unknown tariff", () => {
@@ -131,29 +158,190 @@ describe("IRVE preset", () => {
 		const one = irve.extract([irveRow({ id_pdc_itinerance: "FRS63P0001", nbre_pdc: "6" })], "u");
 		expect(one?.tags.find((t) => t.k === "capacity")?.v).toBe("6");
 		expect(one?.tags.some((t) => t.k.startsWith("socket:"))).toBe(false);
+		const evmap = irve.extract(
+			[
+				irveRow({
+					id_station_itinerance: "FREVMP7648",
+					id_pdc_itinerance: "FREVME7648",
+					nbre_pdc: "3",
+				}),
+			],
+			"u",
+		);
+		expect(evmap?.tags.find((t) => t.k === "capacity")?.v).toBe("3");
+		expect(evmap?.tags.some((t) => t.k.startsWith("socket:"))).toBe(false);
 		const off = irve.extract([irveRow({ nbre_pdc: "6" })], "u");
 		expect(off?.tags.find((t) => t.k === "capacity")).toBeUndefined();
 		expect(off?.notes?.[0]).toMatch(/declares 6 charge points and lists 1/);
 	});
 
-	it("reads a site from its newest declaration whole", () => {
-		const old = (n: number) =>
+	it("counts a site of several stations by its listed points, and each one-row station by its count", () => {
+		const carPark = ["FRG10P01", "FRG10P02"].flatMap((s) =>
+			["1", "2", "3"].map((n) =>
+				irveRow({ id_station_itinerance: s, id_pdc_itinerance: `${s}${n}`, nbre_pdc: "1" }),
+			),
+		);
+		const listed = irve.extract(carPark, "u");
+		expect(listed?.tags.find((t) => t.k === "capacity")?.v).toBe("6");
+		expect(listed?.notes ?? []).not.toContainEqual(expect.stringMatching(/left out/));
+
+		const rows = ["FRLIBP01", "FRLIBP02", "FRLIBP03"].map((s) =>
+			irveRow({ id_station_itinerance: s, id_pdc_itinerance: s.replace("P", "E"), nbre_pdc: "2" }),
+		);
+		const site = irve.extract(rows, "u");
+		expect(site?.tags.find((t) => t.k === "capacity")?.v).toBe("6");
+		expect(site?.tags.some((t) => t.k.startsWith("socket:"))).toBe(false);
+		expect(site?.notes).toContainEqual(
+			"3 of the site's stations are each declared as a single row, so sockets are left out",
+		);
+	});
+
+	const declared = (station: string, file: string, date: string, points: string[]) =>
+		points.map((p) =>
 			irveRow({
-				id_station_itinerance: "FRPD1PITMRSA01",
-				id_pdc_itinerance: `FR*PD1*E01*${n}`,
-				datagouv_resource_id: "own",
-				date_maj: "2025-09-14",
-			});
-		const cur = (n: number) =>
+				id_station_itinerance: station,
+				id_pdc_itinerance: p,
+				datagouv_resource_id: file,
+				date_maj: date,
+				nbre_pdc: String(points.length),
+			}),
+		);
+	const capacity = (rows: Row[]) => irve.extract(rows, "u")?.tags.find((t) => t.k === "capacity");
+
+	it("reads each station from its newest declaration whole, and a site from all its stations", () => {
+		const rows = [
+			...declared("FRPD1PITMRSA02", "own", "2025-09-14", ["FRPD1E1", "FRPD1E2", "FRPD1E3"]),
+			...declared("FRPD1PITMRSA02", "aggregated", "2025-10-20", ["FRPD1E1", "FRPD1E2"]),
+			...declared("FRPD1PITMRSA01", "own", "2025-09-14", ["FRPD1E9"]),
+		];
+		const x = irve.extract(rows, "u");
+		expect(capacity(rows)?.v).toBe("3");
+		expect(x?.key).toBe("FRPD1PITMRSA01");
+		expect(x?.refs["ref:EU:EVSE"]).toContain("FRPD1PITMRSA01");
+	});
+
+	it("drops a station a newer one lists whole or declares again under its name", () => {
+		const again = [
+			...declared("FRALLPTIS016", "y2023", "2023-07-12", ["FRALLEGO002084P1", "FRALLEGO002085P1"]),
+			...declared("FRSITE00000103", "y2024", "2024-07-15", ["FRALLEGO0020841", "FRALLEGO8000461"]),
+		];
+		expect(capacity(again)?.v).toBe("2");
+		const named = (rows: Row[], nom_station: string) => rows.map((r) => ({ ...r, nom_station }));
+		const pool = named(
+			declared("FRSWSP90234529", "agg", "2026-04-27", ["FRSWSE1", "FRSWSE2", "FRSWSE3"]),
+			"ALFEN 2x22 MG VENISSIEUX",
+		);
+		const part = named(
+			declared("FRSWSE1234651154", "own", "2026-09-29", ["FRSWSE3", "FRSWSE4"]),
+			"EVBOX 120 MG VENISSIEUX",
+		);
+		expect(capacity([...pool, ...part])?.v).toBe("4");
+		const whole = declared("FRSWSP1321486", "agg", "2026-10-03", ["FRSWSE3", "FRSWSE4", "FRSWSE5"]);
+		expect(capacity([...pool, ...part, ...whole])?.v).toBe("5");
+	});
+
+	it("trusts no count its rows disagree on, and then proposes no socket count", () => {
+		const rows = [
+			irveRow({ id_pdc_itinerance: "FRS63E1", nbre_pdc: "2" }),
+			irveRow({ id_pdc_itinerance: "FRS63E2", nbre_pdc: "4" }),
+		];
+		const x = irve.extract(rows, "u");
+		expect(x?.tags.some((t) => t.k === "capacity" || t.k.startsWith("socket:"))).toBe(false);
+		expect(x?.notes?.[0]).toMatch(/declares 2 and 4 charge points and lists 2/);
+	});
+
+	it("keeps only a DC output when the declared count and the listed points disagree", () => {
+		const x = irve.extract(
+			[
+				irveRow({ id_pdc_itinerance: "FRS63E1", nbre_pdc: "4", puissance_nominale: "22" }),
+				irveRow({
+					id_pdc_itinerance: "FRS63E2",
+					nbre_pdc: "4",
+					prise_type_2: "false",
+					prise_type_combo_ccs: "true",
+					puissance_nominale: "50",
+				}),
+			],
+			"u",
+		);
+		expect(x?.tags.filter((t) => t.k.startsWith("socket:")).map((t) => [t.k, t.v])).toEqual([
+			["socket:type2_combo:output", "50 kW"],
+		]);
+		expect(x?.absent).toEqual([]);
+		expect(x?.notes?.[0]).toMatch(/so capacity and sockets are left out/);
+	});
+
+	it("counts no bay for a DC cabinet's type 2 outlet declared at the cabinet's power", () => {
+		const cabinet = (n: number, ccs: boolean) =>
 			irveRow({
-				id_station_itinerance: "FRPD1PITMRSA02",
-				id_pdc_itinerance: `FR*PD1*E02*${n}`,
-				datagouv_resource_id: "aggregated",
-				date_maj: "2025-10-20",
-				nbre_pdc: "2",
+				id_pdc_itinerance: `FRIZFEFAST522${n}`,
+				nbre_pdc: "3",
+				puissance_nominale: "180",
+				prise_type_2: String(!ccs),
+				prise_type_combo_ccs: String(ccs),
 			});
-		const x = irve.extract([old(1), old(2), old(3), cur(1), cur(2)], "u");
-		expect(x?.tags.find((t) => t.k === "capacity")?.v).toBe("2");
+		const tag = capacity([cabinet(1, false), cabinet(2, true), cabinet(3, true)]);
+		expect(tag?.v).toBe("2");
+		expect(tag?.parts[1].text).toMatch(/3 distinct, 1 of them type 2 alone/);
+	});
+
+	it("says when the registry gives a position to two decimals", () => {
+		const at = (lat: string, lon: string) =>
+			irve.extract(
+				[irveRow({ consolidated_latitude: lat, consolidated_longitude: lon, nbre_pdc: "1" })],
+				"u",
+			)?.notes ?? [];
+		expect(at("45.79", "4.84")[0]).toMatch(/to 2 decimals only \(45\.79, 4\.84\)/);
+		expect(at("45.791", "4.84")).toHaveLength(1);
+		expect(at("45.791", "4.842")).toEqual([]);
+	});
+
+	it("proposes no opening_hours when the notes give hours of their own", () => {
+		const hours = (observations: string) =>
+			irve
+				.extract([irveRow({ observations, nbre_pdc: "1" })], "u")
+				?.tags.find((t) => t.k === "opening_hours")?.v;
+		expect(hours("Situé en centre ville/ accessible de 9h à 18h uniquement")).toBeUndefined();
+		expect(hours("Recharge rapide 24/7 - 1h maximum de stationnement autorisé")).toBe("24/7");
+	});
+
+	it("writes the address's postcode and commune once", () => {
+		const addr = (adresse_station: string, cp: string, commune: string) =>
+			irve.extract(
+				[
+					irveRow({
+						adresse_station,
+						consolidated_code_postal: cp,
+						consolidated_commune: commune,
+						nbre_pdc: "1",
+					}),
+				],
+				"u",
+			)?.addr;
+		expect(addr("131 Rue Nicolas Louis Vauquelin, 31000 Toulouse", "31100", "Toulouse")).toBe(
+			"131 Rue Nicolas Louis Vauquelin, 31100 Toulouse",
+		);
+		expect(addr("8 Rue Bayard, 31200, Toulouse, France, Toulouse", "31200", "Toulouse")).toBe(
+			"8 Rue Bayard, 31200 Toulouse",
+		);
+		expect(addr("Rue Saint Jean31130 BALMA GRAMONT", "31130", "Balma")).toBe(
+			"Rue Saint Jean, 31130 Balma",
+		);
+		expect(addr("37 rue de bonnel - lyon", "69003", "Lyon")).toBe("37 rue de bonnel, 69003 Lyon");
+		expect(addr("2 rue de Lyon", "69003", "Lyon")).toBe("2 rue de Lyon, 69003 Lyon");
+		expect(addr("145 Rue Anatole France", "69100", "Villeurbanne")).toBe(
+			"145 Rue Anatole France, 69100 Villeurbanne",
+		);
+		expect(addr("23535 Av. du Chater 69340 Francheville", "69340", "Francheville")).toBe(
+			"23535 Av. du Chater, 69340 Francheville",
+		);
+		expect(addr("31700 Blagnac", "", "Blagnac")).toBe("31700 Blagnac");
+		expect(addr("100 Allée de Barcelone, 31000 TOULOUSE, Toulouse", "", "Toulouse")).toBe(
+			"100 Allée de Barcelone, 31000 Toulouse",
+		);
+		expect(addr("15 Av. Yves Brunaud, 31770 Colomiers, Toulouse", "", "Toulouse")).toBe(
+			"15 Av. Yves Brunaud, 31770 Colomiers",
+		);
 	});
 
 	it("reads a station's accessibility and booking from all its points", () => {
@@ -251,7 +439,7 @@ describe("IRVE preset", () => {
 	});
 
 	it("says a socket is not there when every type 2 point has its cable attached", () => {
-		const x = irve.extract([irveRow({ cable_t2_attache: "true" })], "u");
+		const x = irve.extract([irveRow({ cable_t2_attache: "true", nbre_pdc: "1" })], "u");
 		expect(x?.absent).toContain("socket:type2");
 		expect(x?.absent).not.toContain("socket:type2_cable");
 	});
@@ -273,7 +461,12 @@ describe("IRVE preset", () => {
 					.map((t) => [t.k, [t.v, t.conf]]),
 			);
 		const point = (n: number, over: Row) =>
-			irveRow({ id_pdc_itinerance: `FR*S63*E0001*${n}`, prise_type_2: "false", ...over });
+			irveRow({
+				id_pdc_itinerance: `FR*S63*E0001*${n}`,
+				prise_type_2: "false",
+				nbre_pdc: "",
+				...over,
+			});
 
 		it("pins a DC unit's power on its CCS, never on its type 2 or the CHAdeMO beside it", () => {
 			// RELAIS GARIBALDI's shape: 2 triple units (CCS, CHAdeMO, type 2) and 5 CCS-only.
@@ -558,6 +751,17 @@ describe("openingHours", () => {
 		expect(openingHours("Mo-Fr 08:00-18:00")).toBe("Mo-Fr 08:00-18:00");
 	});
 
+	it("folds days spelled out one by one into ranges", () => {
+		const week = (span: string, days = ["Mo", "Tu", "We", "Th", "Fr", "Sa"]) =>
+			days.map((d) => `${d} ${span}`).join(", ");
+		expect(openingHours(week("09:30-19:45"))).toBe("Mo-Sa 09:30-19:45");
+		expect(
+			openingHours(
+				`${week("07:30-12:30", ["Mo", "Tu"])}, ${week("13:30-19:00", ["Mo", "Tu"])}, Sa 09:00-12:00`,
+			),
+		).toBe("Mo-Tu 07:30-12:30,13:30-19:00; Sa 09:00-12:00");
+	});
+
 	it("repairs what OSM's parser can read and refuses the rest", () => {
 		expect(openingHours("Mo-Fri: 07:30-19:00")).toBe("Mo-Fr 07:30-19:00");
 		expect(openingHours("Mo-Fr 09:00-19:00,Sat 09:00-18:00")).toBe(
@@ -634,6 +838,13 @@ describe("siteName", () => {
 		expect(siteName("CENTRAKOR", "CENTRAKOR - PARKING EXTERIEUR", "CENTRAKOR")).toBe(true);
 		expect(siteName("LPA Fosse aux Ours", "Parking FAO", "LPA")).toBe(true);
 		expect(siteName("Reveo", "Reveo Route d'Espagne", "Toulouse Métropole")).toBe(false);
+	});
+
+	it("tells a site's words run together, and the owner's short name, from a brand", () => {
+		expect(siteName("HCrequipublic", "INOUID-HOTEL-CREQUI", "hotel-crequi-lyon")).toBe(true);
+		expect(siteName("ALDI", "SAINT-FONS", "ALDI MARCHE SARL (LYO)")).toBe(true);
+		expect(siteName("TotalEnergies", "Total Energies Relais Lyon")).toBe(false);
+		expect(siteName("GreenToWheel", "Tisséo Borderouge", "Green To Wheel SAS")).toBe(false);
 	});
 });
 
@@ -713,7 +924,7 @@ describe("addressQuery", () => {
 
 	it("is what a station asks with, 100 m off before its point moves", () => {
 		expect(presetById("irve")?.extract([irveRow()], "u")?.geocode).toEqual({
-			q: "1 place de la Mairie 69001 Lyon",
+			q: "1 place de la Mairie, 69001 Lyon",
 			farM: 100,
 		});
 	});

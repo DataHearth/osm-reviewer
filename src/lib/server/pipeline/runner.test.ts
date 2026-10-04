@@ -340,7 +340,7 @@ describe("runSource (registry)", () => {
 		const all = cands();
 		expect(all.map((c) => c.sourceRecordKey)).toEqual(["FRNEAR"]);
 		expect(all[0]).toMatchObject({ lat: 45.762, lon: 4.8355 });
-		expect(all[0].warning).toMatch(/^Moved \d+ m to its address, 2 rue Proche/);
+		expect(all[0].warning).toMatch(/^Moved \d+ m to its address, 2 rue Proche/m);
 		expect(db.select().from(t.runs).get()?.message).toBe(
 			"1 record placed outside the area by its own address",
 		);

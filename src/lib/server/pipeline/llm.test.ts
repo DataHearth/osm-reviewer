@@ -164,6 +164,15 @@ describe("openingHours", () => {
 		expect(openingHours("Mo-Su 08:00-18:00; PH off")).toBe("Mo-Su 08:00-18:00; PH off");
 		expect(openingHours("nonsense")).toBeNull();
 	});
+
+	it("folds days with the same spans, but not a day a later rule replaces", () => {
+		expect(openingHours("Mo 08:00-18:00, Tu 08:00-18:00, Th 08:00-18:00")).toBe(
+			"Mo-Tu 08:00-18:00; Th 08:00-18:00",
+		);
+		expect(openingHours("Mo-Fr 08:00-18:00; Fr 08:00-12:00")).toBe(
+			"Mo-Fr 08:00-18:00; Fr 08:00-12:00",
+		);
+	});
 });
 
 describe("quoteParts", () => {

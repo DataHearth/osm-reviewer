@@ -196,11 +196,50 @@ function valueInQuote(k: string, v: string, quote: string): boolean {
 	return true;
 }
 
+const WEEK = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const DAY_RULE =
+	/^(Mo|Tu|We|Th|Fr|Sa|Su)(?:-(Mo|Tu|We|Th|Fr|Sa|Su))? (\d\d:\d\d-\d\d:\d\d(?:,\d\d:\d\d-\d\d:\d\d)*)$/;
+
+/**
+ * Days spelled out one by one (`Mo 09:30-19:45, Tu 09:30-19:45, …`, a split day as two rules)
+ * folded into ranges of days with the same spans, which OSM's prettifier does not do. Anything
+ * but plain day rules comes back as it was, and so do rules naming a day twice across `;`,
+ * where the later one replaces the earlier.
+ */
+export function foldDays(v: string): string {
+	const spans = new Map<number, Set<string>>();
+	let repeated = false;
+	for (const rule of v.trim().split(/\s*[;,]\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su)\b)/)) {
+		const m = DAY_RULE.exec(rule);
+		if (!m) return v;
+		const from = WEEK.indexOf(m[1]);
+		const to = m[2] ? WEEK.indexOf(m[2]) : from;
+		if (to < from) return v;
+		for (let d = from; d <= to; d++) {
+			repeated ||= spans.has(d);
+			spans.set(d, new Set([...(spans.get(d) ?? []), ...m[3].split(",")]));
+		}
+	}
+	if (repeated && v.includes(";")) return v;
+	const day = (d: number) => [...(spans.get(d) ?? [])].sort().join(",");
+	if (WEEK.every((_, d) => day(d) === "00:00-24:00")) return "24/7";
+	const out: string[] = [];
+	for (let d = 0; d < 7; d++) {
+		if (!spans.has(d)) continue;
+		let end = d;
+		while (end < 6 && spans.has(end + 1) && day(end + 1) === day(d)) end++;
+		out.push(`${WEEK[d]}${end > d ? `-${WEEK[end]}` : ""} ${day(d)}`);
+		d = end;
+	}
+	return out.join("; ");
+}
+
 /** OSM's own parser decides; a value it can only read with warnings is replaced by its normalised form. */
 export function openingHours(v: string): string | null {
+	const folded = foldDays(v);
 	try {
-		const oh = new OpeningHours(v, null, 0);
-		return oh.getWarnings().length ? oh.prettifyValue() : v;
+		const oh = new OpeningHours(folded, null, 0);
+		return oh.getWarnings().length ? oh.prettifyValue() : folded;
 	} catch {
 		return null;
 	}

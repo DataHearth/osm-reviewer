@@ -1,5 +1,5 @@
 import { fmtDate } from "$lib/format";
-import { normaliseName, tokens } from "./geo";
+import { distance, normaliseName, tokens } from "./geo";
 import { openingHours as parsedHours } from "./llm";
 import type { Extraction, ProposedTag, Row } from "./types";
 
@@ -90,20 +90,32 @@ export interface Preset {
 	extract(rows: Row[], url: string): Extraction | null;
 	/** Records whose rows give the same site are one place, whatever their keys say. */
 	site?(row: Row): string | null;
+	/**
+	 * What names one thing in every declaration of it (a charge point's id), so records sharing
+	 * one within `LINK_M` are one site even where their declarations place it apart.
+	 */
+	link?(row: Row): string | null;
 }
 
 /**
+ * How far apart two declarations of one site can be placed. A re-declared site's position is
+ * sometimes retyped (Tisséo Balma-Gramont moved 200 m in 2024 on two transposed digits).
+ */
+const LINK_M = 400;
+
+/**
  * Some operators declare every charge point of a car park as a station of its own, which
- * would make one candidate per point, all on the same spot. Records on one site become
- * one, under the smallest key, so an existing candidate keeps its id and the others are
- * swept as gone.
+ * would make one candidate per point, all on the same spot, and a site re-declared under new
+ * station ids keeps some of its point ids, often at a slightly different position. Records on
+ * one site become one, under the smallest key, so an existing candidate keeps its id and the
+ * others are swept as gone.
  */
 export function mergeSites<R extends { key: string; rows: Row[] }>(
 	records: R[],
 	preset: Preset | null | undefined,
 ): R[] {
 	const site = preset?.site;
-	if (!site) return records;
+	if (!preset || !site) return records;
 	const bySite = new Map<string, R>();
 	const out: R[] = [];
 	for (const rec of [...records].sort((a, b) => a.key.localeCompare(b.key))) {
@@ -117,7 +129,42 @@ export function mergeSites<R extends { key: string; rows: Row[] }>(
 		if (s) bySite.set(s, own);
 		out.push(own);
 	}
-	return out;
+	const link = preset.link;
+	if (!link) return out;
+
+	// `out` is in key order, so the root a record joins is always the one with the smaller key.
+	const root = new Map<R, R>();
+	const find = (r: R): R => {
+		const up = root.get(r);
+		return up ? find(up) : r;
+	};
+	const at = new Map(out.map((r) => [r, r.rows[0] ? preset.position(r.rows[0]) : null]));
+	const near = (a: R, b: R) => {
+		const p = at.get(a);
+		const q = at.get(b);
+		return !!p && !!q && distance(p[0], p[1], q[0], q[1]) <= LINK_M;
+	};
+	const holder = new Map<string, R>();
+	for (const rec of out)
+		for (const row of rec.rows) {
+			const id = link(row);
+			if (!id) continue;
+			const other = holder.get(id);
+			if (!other) {
+				holder.set(id, rec);
+				continue;
+			}
+			const a = find(other);
+			const b = find(rec);
+			if (a === b || !near(other, rec)) continue;
+			if (out.indexOf(a) < out.indexOf(b)) root.set(b, a);
+			else root.set(a, b);
+		}
+	for (const rec of out) {
+		const r = find(rec);
+		if (r !== rec) r.rows.push(...rec.rows);
+	}
+	return out.filter((r) => find(r) === r);
 }
 
 class Tags {
@@ -152,24 +199,17 @@ const fill = (tag: ProposedTag | undefined) => {
 /** Already written in OSM's day tokens: the parser reads plain English too, "Monday to Friday" as open all day. */
 const OPENING_HOURS = /^(24\/7|(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)(?![a-z])[A-Za-z0-9:,;\-+ /]*)$/;
 
-const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-
 /**
  * Registries write "all day" as the last minute they count to, and some spell every day
- * out: `Mo 00:00-23:59, Tu 00:00-23:59, …`. Seven such days are `24/7`, a run of them is
- * `Mo-Fr 00:00-24:00`; anything else goes through OSM's own parser, which repairs `Mo-Fri:` and
- * `Sat` and refuses what it cannot read.
+ * out: `Mo 00:00-23:59, Tu 00:00-23:59, …`. The days are folded into ranges and checked by
+ * OSM's own parser, which repairs `Mo-Fri:` and `Sat` and refuses what it cannot read.
  */
 export function openingHours(raw: string): string | null {
 	const v = raw
 		.trim()
 		.replace(/23:5\d\b/g, "24:00")
 		.replace(/00:00-00:00/g, "00:00-24:00");
-	if (/^24\/7$/i.test(v) || v === "Mo-Su 00:00-24:00") return "24/7";
-	const each = v.split(/\s*,\s*/).map((d) => /^(Mo|Tu|We|Th|Fr|Sa|Su) 00:00-24:00$/.exec(d)?.[1]);
-	const idx = each.map((d) => (d ? DAYS.indexOf(d) : -1));
-	if (idx.length > 1 && idx.every((d, i) => d >= 0 && (i === 0 || d === idx[i - 1] + 1)))
-		return idx.length === 7 ? "24/7" : `${DAYS[idx[0]]}-${DAYS[idx[idx.length - 1]]} 00:00-24:00`;
+	if (/^24\/7$/i.test(v)) return "24/7";
 	return OPENING_HOURS.test(v) ? parsedHours(v) : null;
 }
 
@@ -270,27 +310,76 @@ export const OSM_MAX = 255;
 const newest = (r: Row) => `${str(r, "date_maj")}|${str(r, "last_modified")}`;
 
 /**
- * The consolidated file keeps every declaration a site has had: an operator's own file beside
- * its aggregator's, and older ones listing points or whole stations since removed. A site is
- * read from its newest declaration whole, by `date_maj` and then `last_modified` (an
- * operator's file and its aggregator's often share the day), rather than from a union that
- * counts what no longer exists. Within it, each point's newest row comes first, so the
- * station's single values are read from it.
+ * An EVSE id the way two declarations of one point or station are compared: without `*`, the
+ * `E`/`P` type letter, or the `P` some files put before a connector's number
+ * (`FRALLEGO002084P1` in 2023 is `FRALLEGO0020841` in 2024).
  */
-function newestDeclaration(rows: Row[]): Row[] {
-	const file = (r: Row) => str(r, "datagouv_resource_id");
-	const latest = rows.reduce((a, r) => (newest(r) > newest(a) ? r : a), rows[0]);
+export const evseId = (id: string) =>
+	id
+		.toUpperCase()
+		.replace(/[\s*]/g, "")
+		.replace(/^([A-Z]{2}[A-Z0-9]{3})[EP]/, "$1")
+		.replace(/P(\d+)$/, "$1");
+
+const pointOf = (r: Row) => {
+	const id = str(r, "id_pdc_itinerance");
+	return id && !NOT_A_POINT.test(id) ? evseId(id) : null;
+};
+
+/** Each point's newest row, newest first, so a station's single values are read from it. */
+function onePerPoint(rows: Row[]): Row[] {
 	const seen = new Set<string>();
-	return rows
-		.filter((r) => file(r) === file(latest))
+	return [...rows]
 		.sort((a, b) => newest(b).localeCompare(newest(a)))
 		.filter((r) => {
-			const id = str(r, "id_pdc_itinerance");
-			if (!id || NOT_A_POINT.test(id)) return true;
+			const id = pointOf(r);
+			if (!id) return true;
 			if (seen.has(id)) return false;
 			seen.add(id);
 			return true;
 		});
+}
+
+interface Station {
+	id: string;
+	rows: Row[];
+	points: Set<string>;
+	latest: string;
+	name: string;
+}
+
+/**
+ * The consolidated file keeps every declaration a station has had: an operator's own file
+ * beside its aggregator's, and older ones listing points since removed. Each station is read
+ * from its newest declaration whole, by `date_maj` and then `last_modified` (an operator's file
+ * and its aggregator's often share the day), rather than from a union that counts what no
+ * longer exists.
+ *
+ * A station is gone when a newer one lists all its points (a pool taking in the stations an
+ * operator declared one per point), or lists some under the same name: the site was declared
+ * again under new ids, renumbering some points (Tisséo Balma-Gramont in 2023, 2024 and 2026).
+ * Two stations sharing only some points otherwise both stay, and their points count once.
+ */
+function currentStations(rows: Row[]): Station[] {
+	const file = (r: Row) => str(r, "datagouv_resource_id");
+	const byId = new Map<string, Row[]>();
+	for (const r of rows) {
+		const id = str(r, "id_station_itinerance");
+		byId.set(id, [...(byId.get(id) ?? []), r]);
+	}
+	const all = [...byId].map(([id, own]): Station => {
+		const latest = own.reduce((a, r) => (newest(r) > newest(a) ? r : a), own[0]);
+		const decl = onePerPoint(own.filter((r) => file(r) === file(latest)));
+		const points = new Set(decl.map(pointOf).filter((p) => p !== null));
+		const name = normaliseName(str(latest, "nom_station"));
+		return { id, rows: decl, points, latest: newest(latest), name };
+	});
+	const shared = (a: Station, b: Station) => [...a.points].filter((p) => b.points.has(p)).length;
+	const replaces = (t: Station, s: Station) =>
+		t.latest > s.latest &&
+		shared(t, s) > 0 &&
+		(shared(t, s) === s.points.size || (!!t.name && t.name === s.name));
+	return all.filter((s) => !all.some((t) => replaces(t, s)));
 }
 
 /**
@@ -303,15 +392,101 @@ export function siteName(network: string, station: string, owner = ""): boolean 
 	if (/ - |^\s*\d+\s*$/.test(network)) return true;
 	const n = normaliseName(network);
 	if (n === normaliseName(station)) return true;
-	// The owner's own name is the host's ("CENTRAKOR"), and the owner's name and a place is
-	// one of its sites ("LPA Perrache").
+	// The owner's own name is the host's ("CENTRAKOR"), its short form too ("ALDI" for "ALDI
+	// MARCHE SARL"), and the owner's name and a place is one of its sites ("LPA Perrache").
 	const o = normaliseName(owner);
-	if (o && (n === o || n.startsWith(`${o} `))) return true;
+	if (o && (n === o || n.startsWith(`${o} `) || o.startsWith(`${n} `))) return true;
+	if (gluedSiteName(n, `${station} ${owner}`)) return true;
 	const ours = tokens(network);
 	const theirs = tokens(station);
 	const shared = [...ours].filter((w) => theirs.has(w)).length;
 	return shared > 0 && shared < ours.size;
 }
+
+/**
+ * A site's words run together into one ("HCrequipublic" for the Hôtel Créqui): a word of the
+ * station or owner, four letters or more, inside a word of the network with something else
+ * beside it. A brand written in one word ("TotalEnergies" beside "Total Energies") is made of
+ * those words alone.
+ */
+function gluedSiteName(network: string, theirs: string): boolean {
+	const words = normaliseName(theirs).split(" ").filter(Boolean);
+	return network.split(" ").some((w) => {
+		if (!words.some((t) => t.length >= 4 && t !== w && w.includes(t))) return false;
+		let rest = w;
+		for (const t of words) if (t !== w) rest = rest.replace(t, "");
+		return rest !== "";
+	});
+}
+
+const decimals = (v: string) => /\.(\d+)$/.exec(v)?.[1].length ?? 0;
+
+/**
+ * `adresse_station` carries the postcode and commune or not, a country, sometimes another
+ * postcode than the consolidated one ("…, 31000 Toulouse" at 31100): the street part is kept
+ * and the consolidated postcode and commune are written once after it. Where the consolidation
+ * has no postcode, the address's own postcode and commune stand.
+ */
+export function stationAddress(raw: string, postcode: string, commune: string): string {
+	const place = normaliseName(commune);
+	let street = raw
+		.replace(/,\s*france\s*$/i, "")
+		.trim()
+		.replace(/[\s,–-]+$/, "");
+	const cityAfter = (at: number) =>
+		street
+			.slice(at + 5)
+			.split(",")
+			.map((s) => s.trim())
+			.find(Boolean) ?? "";
+	// A number in front is the house's ("23535 Av. du Chater"), unless the commune follows it.
+	const code = [...street.matchAll(/(?<!\d)\d{5}(?!\d)/g)].find(
+		(m) => m.index > 0 || normaliseName(cityAfter(0)) === place,
+	);
+	const ownCity = code ? cityAfter(code.index) : "";
+	if (code) street = street.slice(0, code.index).replace(/[\s,–-]+$/, "");
+	// Only after a comma or a dash: "Rue de Lyon" in Lyon is a street.
+	for (let i = street.length - 1; place && i > 0; i--)
+		if (/[,–-]\s*$/.test(street.slice(0, i)) && normaliseName(street.slice(i)) === place) {
+			street = street.slice(0, i).replace(/[\s,–-]+$/, "");
+			break;
+		}
+	const city = postcode || !ownCity || normaliseName(ownCity) === place ? commune : ownCity;
+	return [street, [postcode || code?.[0], city].filter(Boolean).join(" ")]
+		.filter(Boolean)
+		.join(", ");
+}
+
+/** The coordinates `position` reads, as the registry wrote them. */
+function rawCoords(r: Row): [string, string] | null {
+	if (coord(r.consolidated_latitude, r.consolidated_longitude))
+		return [str(r, "consolidated_latitude"), str(r, "consolidated_longitude")];
+	const xy = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec(str(r, "coordonneesXY"));
+	return xy && coord(xy[2], xy[1]) ? [xy[2], xy[1]] : null;
+}
+
+/** "Accessible de 9h à 18h": a stay limit ("1h maximum") or "24h/24" is not a span. */
+const STATED_HOURS = /\b\d{1,2} ?(?:h|:)(?:\d{2})?\s*(?:à|a|-|–)\s*\d{1,2} ?(?:h|:)/i;
+
+const has = (r: Row, field: string) => truthy(str(r, field));
+
+/** A type 2 point with its cable attached is `socket:type2_cable`, not a socket. */
+const cable = (r: Row) => has(r, "cable_t2_attache");
+
+const SOCKETS: [string, string, (r: Row) => boolean][] = [
+	["socket:type2", "prise_type_2", (r) => !cable(r)],
+	["socket:type2_cable", "prise_type_2", cable],
+	["socket:type2_combo", "prise_type_combo_ccs", () => true],
+	["socket:chademo", "prise_type_chademo", () => true],
+	["socket:typee", "prise_type_ef", () => true],
+];
+
+const DC = ["prise_type_combo_ccs", "prise_type_chademo"];
+
+/** How many connector types a point carries. */
+const kinds = (r: Row) =>
+	new Set(SOCKETS.filter(([, f, only]) => has(r, f) && only(r)).map(([, f]) => f)).size +
+	(has(r, "prise_type_autre") ? 1 : 0);
 
 /** IRVE "statique" v2.3, consolidated: one row per charge point, grouped into one station. */
 const irve: Preset = {
@@ -328,45 +503,74 @@ const irve: Preset = {
 	position(r) {
 		const flag = str(r, "consolidated_is_lon_lat_correct");
 		if (flag && !truthy(flag)) return null;
-		const c = coord(r.consolidated_latitude, r.consolidated_longitude);
-		if (c) return c;
-		const xy = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec(str(r, "coordonneesXY"));
-		return xy ? coord(xy[2], xy[1]) : null;
+		const c = rawCoords(r);
+		return c ? coord(c[0], c[1]) : null;
 	},
+	link: pointOf,
 	extract(declared, url) {
-		const rows = newestDeclaration(declared);
+		const current = currentStations(declared);
+		const rows = onePerPoint(current.flatMap((s) => s.rows));
 		const first = rows[0];
 		const pos = irve.position(first);
-		const key = irve.key(first);
+		// The key `mergeSites` gave the record, whichever station is newest.
+		const key = declared
+			.map(irve.key)
+			.filter((k) => k !== null)
+			.sort((a, b) => a.localeCompare(b))[0];
 		if (!pos || !key) return null;
 		const t = new Tags(first);
 
-		const points = [
-			...new Set(
-				rows.map((r) => str(r, "id_pdc_itinerance")).filter((v) => v && !NOT_A_POINT.test(v)),
-			),
-		];
-		const stations = [...new Set(rows.map((r) => str(r, "id_station_itinerance")).filter(Boolean))];
-		const declaredCount = Number.parseInt(str(first, "nbre_pdc"), 10) || 0;
+		const points = [...new Set(rows.map(pointOf).filter((p) => p !== null))];
+		const stations = current.map((s) => s.id).filter(Boolean);
+		const counts = current.map(
+			(s) =>
+				new Set(s.rows.map((r) => Number.parseInt(str(r, "nbre_pdc"), 10)).filter((n) => n > 0)),
+		);
+		const declaredCount = counts.length === 1 && counts[0].size === 1 ? [...counts[0]][0] : 0;
 		// Some operators declare a whole station as one row with the station's own id, and only
 		// `nbre_pdc` says how many points it has; which connectors they carry is then unknown.
-		const oneRow =
-			stations.length === 1 &&
-			points.length === 1 &&
-			points[0] === stations[0] &&
-			declaredCount > 1;
-		// A single station whose declared count and listed points disagree has no count to trust.
+		const oneRowCounts = current.map((s, i) =>
+			s.points.size === 1 &&
+			[...s.points][0] === evseId(s.id) &&
+			counts[i].size === 1 &&
+			[...counts[i]][0] > 1
+				? [...counts[i]][0]
+				: 0,
+		);
+		const oneRows = oneRowCounts.filter((n) => n > 0);
+		// A lone station whose rows disagree on its count, or whose count is not the points it
+		// lists, may list only some of them. On a site of several stations the listed points
+		// stand: operators fill `nbre_pdc` with 1 on every station of a car park.
 		const unsure =
-			!oneRow && stations.length === 1 && declaredCount > 0 && declaredCount !== points.length;
-		const capacity = oneRow ? declaredCount : unsure ? 0 : points.length || declaredCount;
+			current.length === 1 &&
+			!oneRows.length &&
+			(counts[0].size > 1 || (counts[0].size === 1 && !counts[0].has(current[0].points.size)));
+		// A DC cabinet's type 2 outlet is declared as a point of its own at the cabinet's power
+		// (180 kW), and is not a bay of its own.
+		const acOnDc = rows.some((r) => DC.some((f) => has(r, f)))
+			? rows.filter(
+					(r) =>
+						pointOf(r) &&
+						has(r, "prise_type_2") &&
+						kinds(r) === 1 &&
+						Number(str(r, "puissance_nominale")) > MAX_KW["socket:type2"],
+				).length
+			: 0;
+		const capacity = unsure
+			? 0
+			: points.length - oneRows.length + oneRows.reduce((a, n) => a + n, 0) - acOnDc ||
+				declaredCount;
+		const oneRow = oneRows.length > 0;
 		const notes: string[] = [];
 		if (oneRow)
 			notes.push(
-				`The registry declares ${declaredCount} charge points as a single row, so their sockets are left out`,
+				current.length === 1
+					? `The registry declares ${declaredCount} charge points as a single row, so their sockets are left out`
+					: `${oneRows.length} of the site's stations are each declared as a single row, so sockets are left out`,
 			);
 		if (unsure)
 			notes.push(
-				`The registry declares ${declaredCount} charge points and lists ${points.length}, so capacity is left out`,
+				`The registry declares ${[...counts[0]].sort((a, b) => a - b).join(" and ")} charge points and lists ${current[0].points.size}, so capacity and sockets are left out`,
 			);
 
 		t.add("amenity", "charging_station", 0.95, "id_station_itinerance");
@@ -390,7 +594,9 @@ const irve: Preset = {
 				String(capacity),
 				0.8,
 				"id_pdc_itinerance",
-				`${capacity} distinct`,
+				acOnDc
+					? `${points.length} distinct, ${acOnDc} of them type 2 alone above 43.5 kW`
+					: `${capacity} distinct`,
 				"derived",
 			);
 		const pools = [...new Set(stations.map(poolId).filter((v) => v !== null))].join(";");
@@ -399,19 +605,6 @@ const irve: Preset = {
 		if (pools.length <= OSM_MAX)
 			fill(t.add("ref:EU:EVSE", pools, 0.95, "id_station_itinerance", stations.join(";")));
 
-		// A type 2 point with its cable attached is `socket:type2_cable`, not a socket.
-		const cable = (r: Row) => truthy(str(r, "cable_t2_attache"));
-		const sockets: [string, string, (r: Row) => boolean][] = [
-			["socket:type2", "prise_type_2", (r) => !cable(r)],
-			["socket:type2_cable", "prise_type_2", cable],
-			["socket:type2_combo", "prise_type_combo_ccs", () => true],
-			["socket:chademo", "prise_type_chademo", () => true],
-			["socket:typee", "prise_type_ef", () => true],
-		];
-		const has = (r: Row, field: string) => truthy(str(r, field));
-		const kinds = (r: Row) =>
-			new Set(sockets.filter(([, f, only]) => has(r, f) && only(r)).map(([, f]) => f)).size +
-			(has(r, "prise_type_autre") ? 1 : 0);
 		const absent: string[] = [];
 		// The schema gives one power per charge point and none per connector. That power is a
 		// connector's only when the point has that connector alone, or when it is the CCS of a
@@ -432,20 +625,23 @@ const irve: Preset = {
 		);
 		if (everything)
 			notes.push("The registry ticks every connector type on every point, so sockets are left out");
-		for (const [k, field, only] of oneRow || everything ? [] : sockets) {
+		// Points left unlisted may carry any connector, but a listed DC point's power is its own.
+		for (const [k, field, only] of oneRow || everything ? [] : SOCKETS) {
+			if (unsure && !DC.includes(field)) continue;
 			const carrying = rows.filter((r) => has(r, field) && only(r));
 			if (carrying.length === 0) {
-				if (!declared.some((r) => has(r, field) && only(r))) absent.push(k);
+				if (!unsure && !declared.some((r) => has(r, field) && only(r))) absent.push(k);
 				continue;
 			}
-			t.add(
-				k,
-				String(carrying.length),
-				0.9,
-				field,
-				`true on ${carrying.length} of ${rows.length} points`,
-				"derived",
-			);
+			if (!unsure)
+				t.add(
+					k,
+					String(carrying.length),
+					0.9,
+					field,
+					`true on ${carrying.length} of ${rows.length} points`,
+					"derived",
+				);
 			const shared = carrying.some((r) => kinds(r) > 1);
 			if (shared && k !== "socket:type2_combo") continue;
 			const power = Math.max(0, ...carrying.map((r) => Number(str(r, "puissance_nominale")) || 0));
@@ -459,7 +655,7 @@ const irve: Preset = {
 				"derived",
 			);
 		}
-		if (!declared.some((r) => has(r, "prise_type_autre"))) absent.push(...OTHER_SOCKETS);
+		if (!unsure && !declared.some((r) => has(r, "prise_type_autre"))) absent.push(...OTHER_SOCKETS);
 		if (!everything && rows.some((r) => has(r, "prise_type_autre")))
 			notes.push(
 				"The registry lists connectors of another type on this station, which it does not name",
@@ -494,8 +690,10 @@ const irve: Preset = {
 		if (/libre/i.test(access))
 			fill(t.add("access", "yes", 0.8, "condition_acces", access, "derived"));
 
+		// Operators fill `horaires` with 24/7 by default and write the real hours in their notes.
 		const hours = openingHours(str(first, "horaires"));
-		if (hours) t.add("opening_hours", hours, 0.7, "horaires");
+		if (hours && !rows.some((r) => STATED_HOURS.test(str(r, "observations"))))
+			t.add("opening_hours", hours, 0.7, "horaires");
 
 		const anyRow = (f: string) => rows.some((r) => truthy(str(r, f)));
 		const twoWheel = anyRow("station_deux_roues");
@@ -552,25 +750,44 @@ const irve: Preset = {
 		if (/^\d(\.\d+)?$/.test(height) && Number(height) >= 1.5)
 			fill(t.add("maxheight", String(Number(height)), 0.7, "restriction_gabarit"));
 
-		const known = [...stations, ...points].join(";");
+		const raw = rawCoords(first);
+		const precision = raw ? Math.min(...raw.map(decimals)) : 3;
+		if (raw && precision <= 2)
+			notes.push(
+				`The registry places it to ${precision} decimal${precision === 1 ? "" : "s"} only (${raw.join(", ")}), which can be a few hundred metres off`,
+			);
+
+		// Every id ever declared here, a station since declared again included: a mapper may
+		// have copied any of them.
+		const known = [
+			...new Set(
+				declared.flatMap((r) =>
+					[str(r, "id_station_itinerance"), str(r, "id_pdc_itinerance")].filter(
+						(id) => id && !NOT_A_POINT.test(id),
+					),
+				),
+			),
+		].join(";");
 		const refs: Record<string, string> = known ? { "ref:EU:EVSE": known } : {};
-		const commune = str(first, "consolidated_commune");
-		const cp = str(first, "consolidated_code_postal");
-		const street = str(first, "adresse_station");
+		const addr = stationAddress(
+			str(first, "adresse_station"),
+			str(first, "consolidated_code_postal"),
+			str(first, "consolidated_commune"),
+		);
 		return {
 			key,
 			url,
 			name: str(first, "nom_station", "nom_enseigne") || "Charging station",
-			addr: [street, cp && street.includes(cp) ? "" : [cp, commune].filter(Boolean).join(" ")]
-				.filter(Boolean)
-				.join(", "),
+			addr,
 			lat: pos[0],
 			lon: pos[1],
 			refs,
 			tags: t.list,
 			absent,
 			notes,
-			geocode: street ? { q: addressQuery(street, cp, commune), farM: STATION_FAR_M } : undefined,
+			geocode: str(first, "adresse_station")
+				? { q: addressQuery(addr, "", ""), farM: STATION_FAR_M }
+				: undefined,
 		};
 	},
 };
