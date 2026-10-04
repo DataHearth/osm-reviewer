@@ -40,6 +40,10 @@ export interface Extraction {
 	/** Identifiers OSM may already carry, matched before any distance is looked at. */
 	refs: Record<string, string>;
 	tags: ProposedTag[];
+	/** Keys the source rules out: an OSM object still carrying one is shown to the reviewer, not edited. */
+	absent?: string[];
+	/** What the source says that no tag can carry, for the reviewer to weigh. */
+	notes?: string[];
 }
 
 export interface OsmElement {

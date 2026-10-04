@@ -176,6 +176,10 @@ export async function processArea(
 		const others = osmId ? (byElement.get(osmId) ?? []).filter((o) => o.key !== x.key) : [];
 		const warning =
 			[
+				...(x.notes ?? []),
+				...(el ? (x.absent ?? []).filter((k) => el.tags[k] !== undefined) : []).map(
+					(k) => `OSM has ${k}=${el?.tags[k]}, which the source says this place does not have`,
+				),
 				...matchWarnings(x, el, elements),
 				...others.map((o) => `Also matched by “${o.name}”, another candidate on this object`),
 			].join("\n") || null;

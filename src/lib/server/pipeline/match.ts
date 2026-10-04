@@ -115,6 +115,7 @@ export function sameValue(k: string, a: string, b: string): boolean {
 	if (a === b) return true;
 	if (NAMES.includes(k)) return fold(a) === fold(b);
 	if (k === "opening_hours") return allDay(a) === allDay(b);
+	if (k.endsWith(":output")) return Number.parseFloat(a) === Number.parseFloat(b);
 	if (k === "phone" || k === "fax") return digits(a) === digits(b);
 	if (k === "website") return site(a) === site(b);
 	if (k.startsWith("ref:")) {

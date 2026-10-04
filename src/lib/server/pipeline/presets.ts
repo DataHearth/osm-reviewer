@@ -135,7 +135,7 @@ class Tags {
 			kind,
 			parts: [
 				{ text: `${field}: `, mark: false },
-				{ text: value || v, mark: true },
+				{ text: value || "—", mark: true },
 			],
 		};
 		this.list.push(tag);
@@ -156,9 +156,24 @@ function openingHours(raw: string): string | null {
 	return OPENING_HOURS.test(v) ? v : null;
 }
 
-const DC_SOCKETS = new Set(["socket:type2_combo", "socket:chademo"]);
+/** What `prise_type_autre` covers: every connector the schema has no column of its own for. */
+const OTHER_SOCKETS = [
+	"socket:type1",
+	"socket:type1_combo",
+	"socket:type3",
+	"socket:type3a",
+	"socket:type3c",
+	"socket:schuko",
+];
 
-const POWER_KW = (n: number) => `${Number.isInteger(n) ? n : Number(n.toFixed(1))} kW`;
+/** A registry's 22.08 is the 22 kW everyone writes; a real 7.4 or 3.7 keeps its decimal. */
+export const POWER_KW = (n: number) => {
+	const whole = Math.round(n);
+	return `${Math.abs(n - whole) < 0.15 ? whole : Number(n.toFixed(1))} kW`;
+};
+
+/** A tariff column says the charge is paid only when it gives a price or where to find one. */
+const isTariff = (v: string) => /\d|€|kwh|tarif|https?:/i.test(v) && !/inconnu|gratuit/i.test(v);
 
 const NOT_A_POINT = /^non concern/i;
 
@@ -237,38 +252,60 @@ const irve: Preset = {
 		fill(t.add("operator", operator, 0.85, "nom_operateur"));
 		if (normaliseName(network) !== normaliseName(operator))
 			fill(t.add("network", network, 0.8, "nom_enseigne"));
-		if (capacity)
+		// `nbre_pdc` is what the operator declared for one of the stations merged here, and the
+		// distinct points are what the rows show; quote the one the value really is.
+		if (capacity && str(first, "nbre_pdc") === String(capacity))
+			t.add("capacity", String(capacity), 0.85, "nbre_pdc");
+		else if (capacity)
 			t.add(
 				"capacity",
 				String(capacity),
-				0.85,
-				"nbre_pdc",
-				str(first, "nbre_pdc") || String(capacity),
+				0.8,
+				"id_pdc_itinerance",
+				`${capacity} distinct`,
+				"derived",
 			);
 		const stations = [...new Set(rows.map((r) => str(r, "id_station_itinerance")).filter(Boolean))];
 		const pools = [...new Set(stations.map(poolId).filter((v) => v !== null))].join(";");
 		if (pools.length <= OSM_MAX)
 			t.add("ref:EU:EVSE", pools, 0.95, "id_station_itinerance", stations.join(";"));
 
-		const sockets: [string, string][] = [
-			["socket:type2", "prise_type_2"],
-			["socket:type2_combo", "prise_type_combo_ccs"],
-			["socket:chademo", "prise_type_chademo"],
-			["socket:typee", "prise_type_ef"],
+		// A type 2 point with its cable attached is `socket:type2_cable`, not a socket.
+		const cable = (r: Row) => truthy(str(r, "cable_t2_attache"));
+		const sockets: [string, string, (r: Row) => boolean][] = [
+			["socket:type2", "prise_type_2", (r) => !cable(r)],
+			["socket:type2_cable", "prise_type_2", cable],
+			["socket:type2_combo", "prise_type_combo_ccs", () => true],
+			["socket:chademo", "prise_type_chademo", () => true],
+			["socket:typee", "prise_type_ef", () => true],
 		];
+		const has = (r: Row, field: string) => truthy(str(r, field));
+		const kinds = (r: Row) =>
+			new Set(sockets.filter(([, f, only]) => has(r, f) && only(r)).map(([, f]) => f)).size;
+		const absent: string[] = [];
 		// The schema gives one power per charge point and none per connector. That power is a
-		// connector's only when the point has that connector alone, or when the connector is DC
-		// on a DC unit: the type 2 cable on a 300 kW unit is AC, 22–43 kW. One point where the
-		// power cannot be pinned on this type and the type gets no output, rather than a guess.
-		const kinds = (r: Row) => sockets.filter(([, f]) => truthy(str(r, f))).length;
-		for (const [k, field] of sockets) {
-			const carrying = rows.filter((r) => truthy(str(r, field)));
-			if (carrying.length === 0) continue;
-			t.add(k, String(carrying.length), 0.9, field, "true");
-			if (!DC_SOCKETS.has(k) && carrying.some((r) => kinds(r) > 1)) continue;
+		// connector's only when the point has that connector alone, or when it is the CCS of a
+		// DC unit: the type 2 cable on a 300 kW unit is AC, 22–43 kW, and CHAdeMO beside CCS
+		// tops out near 50–100 kW. One point where the power cannot be pinned on this type and
+		// the type gets no output, rather than a guess.
+		for (const [k, field, only] of sockets) {
+			const carrying = rows.filter((r) => has(r, field) && only(r));
+			if (carrying.length === 0) {
+				if (!rows.some((r) => has(r, field))) absent.push(k);
+				continue;
+			}
+			t.add(
+				k,
+				String(carrying.length),
+				0.9,
+				field,
+				`true on ${carrying.length} of ${rows.length} points`,
+				"derived",
+			);
+			const shared = carrying.some((r) => kinds(r) > 1);
+			if (shared && k !== "socket:type2_combo") continue;
 			const power = Math.max(0, ...carrying.map((r) => Number(str(r, "puissance_nominale")) || 0));
 			if (power === 0) continue;
-			const shared = carrying.some((r) => kinds(r) > 1);
 			t.add(
 				`${k}:output`,
 				POWER_KW(power),
@@ -278,15 +315,19 @@ const irve: Preset = {
 				"derived",
 			);
 		}
+		if (!rows.some((r) => has(r, "prise_type_autre"))) absent.push(...OTHER_SOCKETS);
+		const notes = rows.some((r) => has(r, "prise_type_autre"))
+			? ["The registry lists connectors of another type on this station, which it does not name"]
+			: [];
 
 		const free = rows.every((r) => truthy(str(r, "gratuit")));
-		const paid = rows.some(
-			(r) =>
-				truthy(str(r, "paiement_acte")) || truthy(str(r, "paiement_cb")) || str(r, "tarification"),
+		const paidBy = ["paiement_acte", "paiement_cb"].find((f) =>
+			rows.some((r) => truthy(str(r, f))),
 		);
+		const tariff = rows.map((r) => str(r, "tarification")).find(isTariff);
 		if (free) t.add("fee", "no", 0.8, "gratuit", "true", "derived");
-		else if (paid)
-			t.add("fee", "yes", 0.75, "paiement_acte", str(first, "paiement_acte") || "true", "derived");
+		else if (paidBy) t.add("fee", "yes", 0.75, paidBy, "true", "derived");
+		else if (tariff) t.add("fee", "yes", 0.7, "tarification", tariff, "derived");
 
 		// "Accès réservé" covers a shop's customers, residents, employees and a network's
 		// subscribers alike (customers, private, no standard value), so it proposes nothing.
@@ -302,17 +343,20 @@ const irve: Preset = {
 		const refs: Record<string, string> = known ? { "ref:EU:EVSE": known } : {};
 		const commune = str(first, "consolidated_commune");
 		const cp = str(first, "consolidated_code_postal");
+		const street = str(first, "adresse_station");
 		return {
 			key,
 			url,
 			name: str(first, "nom_station", "nom_enseigne") || "Charging station",
-			addr: [str(first, "adresse_station"), [cp, commune].filter(Boolean).join(" ")]
+			addr: [street, cp && street.includes(cp) ? "" : [cp, commune].filter(Boolean).join(" ")]
 				.filter(Boolean)
 				.join(", "),
 			lat: pos[0],
 			lon: pos[1],
 			refs,
 			tags: t.list,
+			absent,
+			notes,
 		};
 	},
 };
@@ -368,6 +412,31 @@ export function schoolName(raw: string): string {
 		.replace(/\p{Lu}{4,}/gu, (w) => (ACRONYMS.has(w) ? w : w[0] + w.slice(1).toLowerCase()));
 }
 
+const STREET =
+	/^(rue|avenue|boulevard|chemin|place|allée|allées|impasse|route|quai|cours|square|voie|passage|esplanade|rond-point|montée|chaussée|parvis|promenade|sentier|faubourg|clos|cité|grande rue|petite rue)\b/i;
+
+/**
+ * `adresse_1` split into number and street, with the commune the address uses: Lyon, not
+ * "Lyon 6e Arrondissement", and no CEDEX postcode, which routes mail, not places. Null when
+ * the line is not a plain street address or is written in capitals.
+ */
+export function schoolAddress(r: Row) {
+	const line = str(r, "adresse_1").replace(/\s+/g, " ");
+	const m = /^(\d+(?: ?(?:bis|ter|quater|[a-z]))?) (.+)$/i.exec(line);
+	const number = m ? m[1].replace(/ /g, "") : "";
+	const street = m ? m[2] : line;
+	if (!STREET.test(street) || /\p{Lu}{3,}/u.test(street)) return null;
+	const mail = `${str(r, "adresse_2")} ${str(r, "adresse_3")}`;
+	return {
+		number,
+		street: street[0].toUpperCase() + street.slice(1),
+		postcode: /cedex|\bbp\b|\bcs ?\d/i.test(mail) ? "" : str(r, "code_postal"),
+		city: str(r, "nom_commune")
+			.replace(/\s+/g, " ")
+			.replace(/ \d+(?:er|e|ème)? arrondissement$/i, ""),
+	};
+}
+
 /** Annuaire de l'éducation. */
 const education: Preset = {
 	id: "annuaire-education",
@@ -410,8 +479,15 @@ const education: Preset = {
 		const status = str(r, "statut_public_prive");
 		if (/^public/i.test(status)) t.add("operator:type", "public", 0.9, "statut_public_prive");
 		else if (/priv/i.test(status)) t.add("operator:type", "private", 0.9, "statut_public_prive");
-		t.add("addr:postcode", str(r, "code_postal"), 0.85, "code_postal");
-		t.add("addr:city", str(r, "nom_commune"), 0.85, "nom_commune");
+		// An address fills gaps only, and only whole: a postcode and city on an object with no
+		// street is half an address, and the directory's street is sometimes in capitals.
+		const at = schoolAddress(r);
+		if (at) {
+			fill(t.add("addr:housenumber", at.number, 0.8, "adresse_1"));
+			fill(t.add("addr:street", at.street, 0.8, "adresse_1"));
+			fill(t.add("addr:postcode", at.postcode, 0.85, "code_postal"));
+			fill(t.add("addr:city", at.city, 0.85, "nom_commune"));
+		}
 
 		return {
 			key,

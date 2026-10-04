@@ -232,6 +232,12 @@ describe("updateOps regressions", () => {
 		).toEqual([]);
 	});
 
+	it("reads a power by its number, not its spelling", () => {
+		expect(
+			updateOps([tag("socket:type2:output", "22 kW")], { "socket:type2:output": "22.0 kW" }),
+		).toEqual([]);
+	});
+
 	it("reads 23:57 as all day", () => {
 		expect(
 			updateOps([tag("opening_hours", "Mo-Su 00:00-23:57")], { opening_hours: "24/7" }),

@@ -5,6 +5,7 @@ import {
 	phoneFR,
 	poolId,
 	presetById,
+	schoolAddress,
 	schoolName,
 	website,
 } from "./presets";
@@ -104,6 +105,23 @@ describe("IRVE preset", () => {
 		expect(tags["ref:EU:EVSE"]).toBeUndefined();
 	});
 
+	it("reads a fee from what fired, never from an unknown tariff", () => {
+		const fee = (over: Row) =>
+			irve
+				.extract([irveRow({ paiement_acte: "false", paiement_cb: "false", ...over })], "u")
+				?.tags.find((t) => t.k === "fee");
+		expect(fee({ tarification: "Inconnu" })).toBeUndefined();
+		expect(fee({ tarification: "49 cts/kWh" })).toMatchObject({ v: "yes", path: "tarification" });
+		expect(fee({ paiement_cb: "true" })).toMatchObject({ v: "yes", path: "paiement_cb" });
+	});
+
+	it("names the sockets it rules out, and a connector it cannot name", () => {
+		const x = irve.extract([irveRow()], "u");
+		expect(x?.absent).toEqual(expect.arrayContaining(["socket:chademo", "socket:type3"]));
+		expect(x?.notes).toEqual([]);
+		expect(irve.extract([irveRow({ prise_type_autre: "true" })], "u")?.notes).toHaveLength(1);
+	});
+
 	it("proposes access=yes only to fill a gap, and nothing for reserved access", () => {
 		const access = (condition: string) =>
 			irve
@@ -123,7 +141,7 @@ describe("IRVE preset", () => {
 		const point = (n: number, over: Row) =>
 			irveRow({ id_pdc_itinerance: `FR*S63*E0001*${n}`, prise_type_2: "false", ...over });
 
-		it("pins a DC unit's power on its DC connectors, never on its AC type 2 cable", () => {
+		it("pins a DC unit's power on its CCS, never on its type 2 or the CHAdeMO beside it", () => {
 			// RELAIS GARIBALDI's shape: 2 triple units (CCS, CHAdeMO, type 2) and 5 CCS-only.
 			const triple = {
 				prise_type_combo_ccs: "true",
@@ -142,7 +160,19 @@ describe("IRVE preset", () => {
 				"socket:type2_combo": ["7", 0.9],
 				"socket:type2_combo:output": ["300 kW", 0.7],
 				"socket:chademo": ["2", 0.9],
-				"socket:chademo:output": ["300 kW", 0.7],
+			});
+		});
+
+		it("counts an attached type 2 cable apart and rounds a registry's 22.08 kW", () => {
+			const rows = [
+				point(1, { prise_type_2: "true", cable_t2_attache: "true", puissance_nominale: "22.08" }),
+				point(2, { prise_type_2: "true", puissance_nominale: "7.4" }),
+			];
+			expect(outputs(rows)).toEqual({
+				"socket:type2": ["1", 0.9],
+				"socket:type2:output": ["7.4 kW", 0.8],
+				"socket:type2_cable": ["1", 0.9],
+				"socket:type2_cable:output": ["22 kW", 0.8],
 			});
 		});
 
@@ -267,6 +297,29 @@ describe("Annuaire de l'éducation preset", () => {
 
 	it("needs a position", () => {
 		expect(edu.extract([row({ latitude: "", longitude: "" })], "u")).toBeNull();
+	});
+});
+
+describe("schoolAddress", () => {
+	const at = (over: Row) =>
+		schoolAddress({
+			adresse_1: "68 boulevard de Strasbourg",
+			code_postal: "31000",
+			nom_commune: "Toulouse",
+			...over,
+		});
+	it("splits the number from the street and keeps the commune, not its arrondissement", () => {
+		expect(at({ nom_commune: "Lyon 6e  Arrondissement", code_postal: "69006" })).toEqual({
+			number: "68",
+			street: "Boulevard de Strasbourg",
+			postcode: "69006",
+			city: "Lyon",
+		});
+	});
+	it("drops a CEDEX postcode and refuses a street in capitals or no street at all", () => {
+		expect(at({ adresse_3: "31076 TOULOUSE CEDEX 3" })?.postcode).toBe("");
+		expect(at({ adresse_1: "75 rue SAINT ROCH" })).toBeNull();
+		expect(at({ adresse_1: "BP 41023" })).toBeNull();
 	});
 });
 
