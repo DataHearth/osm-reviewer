@@ -75,6 +75,11 @@ export const nominatim = {
 	url: base(process.env.NOMINATIM_URL, "https://nominatim.openstreetmap.org"),
 };
 
+/** The national address base, which gives a proposed address its postcode. */
+export const ban = {
+	url: base(process.env.BAN_URL, "https://api-adresse.data.gouv.fr"),
+};
+
 /**
  * `false` disables the scheduler and every fetch at boot. "Run now" still works, because
  * that is an operator asking. The e2e suite sets it so it stays offline.

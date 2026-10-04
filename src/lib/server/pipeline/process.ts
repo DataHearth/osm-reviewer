@@ -3,6 +3,7 @@ import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import type { SourceRecord } from "$lib/types";
+import { checkAddress } from "./ban";
 import { refreshConflicts } from "./conflicts";
 import { askModel, modelLabel, vetTags } from "./llm";
 import {
@@ -122,9 +123,10 @@ export async function processArea(
 			continue;
 		}
 		try {
-			const x = await extract(source, rec, input.reader, allow);
+			const raw = await extract(source, rec, input.reader, allow);
 			failedInARow = 0;
-			if (!x) continue;
+			if (!raw) continue;
+			const x = await checkAddress(raw);
 			const tags = x.tags.filter((tag) => allowedBy(allow, tag.k) && tag.conf >= source.floor);
 			if (tags.length) extracted.push({ x: { ...x, tags }, rec });
 		} catch (err) {
