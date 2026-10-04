@@ -492,11 +492,19 @@ const POST_BAC_ONLY = "400";
  * French OSM maps every level from the maternelle up as `amenity=school`, with the level in
  * `school:FR` (FR:Key:school:FR); `amenity=kindergarten` there is a crèche. Post-bac-only
  * schools are `amenity=college`. Null for a row that is not a school at all.
+ *
+ * Medico-social institutes (IME, ITEP, IES…) are in the directory for the classroom they
+ * host, but are care facilities run under the Health ministry, and Toulouse and Lyon mappers
+ * tag them `amenity=social_facility`. Whether one is a day centre or residential, which
+ * `social_facility=*` would say, is not in the directory (`hebergement` is empty on all of
+ * them), so that tag is left to the mapper. `social_facility:for` keeps to `disabled`: the
+ * wiki documents no value for the blind or deaf.
  */
-function schoolKind(r: Row): { amenity: string; level: string | null } | null {
+function schoolKind(r: Row): { amenity: string; level: string | null; for?: string } | null {
 	const type = str(r, "type_etablissement");
 	const nature = str(r, "code_nature");
 	if (nature === POST_BAC_ONLY) return { amenity: "college", level: null };
+	if (/^m[ée]dico/i.test(type)) return { amenity: "social_facility", level: null, for: "disabled" };
 	if (!type || NOT_A_SCHOOL.test(type) || nature === CIRCONSCRIPTION) return null;
 	if (/^[ée]cole/i.test(type)) {
 		const mat = truthy(str(r, "ecole_maternelle"));
@@ -583,14 +591,22 @@ const education: Preset = {
 		const key = education.key(r);
 		if (!pos || !key) return null;
 		const kind = schoolKind(r);
-		if (!kind) return null;
+		// A SEGPA or a lycée's vocational section lives in its parent's buildings, with the
+		// parent's SIRET and switchboard: it is not a place of its own on the map.
+		if (!kind || /section/i.test(str(r, "type_rattachement_etablissement_mere"))) return null;
 		const t = new Tags(r);
 		const name = schoolName(str(r, "nom_etablissement"));
 		const state = str(r, "etat", "etat_etablissement");
 		const siret = str(r, "siren_siret", "numero_siren_siret").replace(/\s/g, "");
 
 		const nature = str(r, "libelle_nature");
-		t.add("amenity", kind.amenity, 0.9, "libelle_nature", nature, "derived");
+		const amenity = t.add("amenity", kind.amenity, 0.9, "libelle_nature", nature, "derived");
+		if (kind.for) {
+			// Already mapped, an institute is a school to some mappers and a social facility to
+			// others; which main tag it keeps is theirs to decide.
+			fill(amenity);
+			fill(t.add("social_facility:for", kind.for, 0.8, "type_etablissement", undefined, "derived"));
+		}
 		if (kind.level) t.add("school:FR", kind.level, 0.9, "libelle_nature", nature, "derived");
 		// The directory's name is the administrative one, level words and all; a mapper's
 		// usual name stays, and the directory's is still on screen in the header.

@@ -353,6 +353,27 @@ describe("Annuaire de l'éducation preset", () => {
 		]);
 	});
 
+	it("maps a medico-social institute as a social facility, leaving a mapped one's main tag", () => {
+		const tags = edu.extract(
+			[row({ type_etablissement: "Médico-social", code_nature: "240" })],
+			"u",
+		)?.tags;
+		expect(tags?.find((t) => t.k === "amenity")).toMatchObject({
+			v: "social_facility",
+			addOnly: true,
+		});
+		expect(tags?.find((t) => t.k === "social_facility:for")?.v).toBe("disabled");
+		expect(tags?.find((t) => t.k === "school:FR")).toBeUndefined();
+	});
+
+	it("proposes nothing for a section housed in its parent establishment", () => {
+		const section = { type_rattachement_etablissement_mere: "FILIERE OU DEPARTEMENT OU SECTION" };
+		expect(edu.extract([row(section)], "u")).toBeNull();
+		expect(
+			edu.extract([row({ type_rattachement_etablissement_mere: "ANNEXE GEOGRAPHIQUE" })], "u"),
+		).not.toBeNull();
+	});
+
 	it("proposes nothing for an office that is not a school", () => {
 		expect(edu.extract([row({ type_etablissement: "Service Administratif" })], "u")).toBeNull();
 		expect(edu.extract([row({ type_etablissement: "" })], "u")).toBeNull();
