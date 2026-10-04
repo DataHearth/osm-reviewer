@@ -194,7 +194,13 @@ guess: no socket output above what the connector can deliver, no `network` that 
 own name, no school `start_date` from the register's bulk entries or a merged primaire. The
 directory's medico-social institutes become `amenity=social_facility` (the main tag of one
 already mapped is left alone), its sections housed in a parent establishment are skipped, and
-"hors contrat" is dropped from school names, since OSM has no key for it and mappers drop it. The **model** extractor sends one record or page per call
+"hors contrat" is dropped from school names, since OSM has no key for it and mappers drop it.
+An address an object already holds as `contact:housenumber|street|postcode|city` (how the
+2016–2018 Éducation nationale imports wrote it) is moved to `addr:*` in the mapper's spelling,
+as a `del`/`add` pair the reviewer sees, rather than duplicated beside it; a part that differs
+from the source leaves the whole address alone. `fee` follows the registry's `gratuit` ("free
+with no condition of use", so false is `fee=yes` per the FR wiki) and may overwrite a mapper's
+value, with a banner line when it reverses one. The **model** extractor sends one record or page per call
 (`llm.ts`; OpenAI-compatible `/chat/completions` with a JSON schema, or the Anthropic Messages
 API with structured output, both by plain `fetch`) and treats the answer as a witness: a tag
 survives only if its quote is really on the page, its key matches the source's allowed
