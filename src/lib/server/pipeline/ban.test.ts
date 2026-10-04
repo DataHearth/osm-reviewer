@@ -107,6 +107,24 @@ describe("placeAddress", () => {
 		expect(values(x)).toEqual({ "ref:UAI": "0310001A" });
 	});
 
+	it("takes the base's street type, but no address from a street of another name", async () => {
+		const street = (q: string, theirs: string) => {
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => answer(0.75, { street: theirs })),
+			);
+			const x = school(q);
+			x.geocode = { q, farM: 1000 };
+			return placeAddress(x).then(values);
+		};
+		expect(await street("4 rue Félix Faure 69007 Lyon", "Avenue Félix Faure")).toMatchObject({
+			"addr:street": "Avenue Félix Faure",
+		});
+		expect(await street("25 rue des 36 ponts 31400 Toulouse", "Rue des Potiers")).toEqual({
+			"ref:UAI": "0310001A",
+		});
+	});
+
 	it("asks again without the postcode when the line with it misses", async () => {
 		const fetch = vi.fn(async (u: string) =>
 			answer(/\d{5}/.test(decodeURIComponent(u)) ? 0.46 : 0.98),

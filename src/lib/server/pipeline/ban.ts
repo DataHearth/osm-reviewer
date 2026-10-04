@@ -90,15 +90,23 @@ const sameWord = (a: string, b: string) =>
 	abbreviates(a, b) ||
 	abbreviates(b, a);
 
+/** As `words` leaves them: singular, unaccented. */
+const STREET_TYPES = new Set(
+	"rue avenue boulevard chemin cheminement place port allee impasse route quai cour square voie passage esplanade rond point montee chaussee parvi promenade sentier faubourg clo cite".split(
+		" ",
+	),
+);
+
 /**
  * Whether the base's street is the one asked for: one's words all in the other's, so a
  * half-name ("boulevard Kennedy") or a dropped particle agrees, and "5 boulevard de
  * Matabiau" does not with the base's 5 Rue Matabiau.
  */
-function sameStreet(p: Feature["properties"], q: string): boolean {
-	const theirs = words(streetOf(p));
+function sameStreet(p: Feature["properties"], q: string, anyType = false): boolean {
+	const named = (ws: string[]) => (anyType ? ws.filter((w) => !STREET_TYPES.has(w)) : ws);
+	const theirs = named(words(streetOf(p)));
 	const place = new Set(words(`${p.city} ${p.oldcity ?? ""}`));
-	const ours = words(q).filter((w) => !place.has(w));
+	const ours = named(words(q).filter((w) => !place.has(w)));
 	const within = (xs: string[], ys: string[]) => xs.every((x) => ys.some((y) => sameWord(x, y)));
 	return within(theirs, ours) || within(ours, theirs);
 }
@@ -152,7 +160,11 @@ export async function placeAddress(x: Extraction): Promise<Extraction> {
 	const address = x.tags.filter((t) => t.group === "addr");
 	const tags = [
 		...x.tags.filter((t) => t.group !== "addr"),
-		...(hit && address.length ? spelled(address, hit) : []),
+		// The base corrects a street's type ("rue Félix Faure" is an Avenue), but a street of
+		// another name is another address: "rue des 36 ponts" is not its Rue des Potiers.
+		...(hit && address.length && sameStreet(hit.properties, x.geocode.q, true)
+			? spelled(address, hit)
+			: []),
 	];
 	if (hit?.properties.type !== "housenumber" || !sameStreet(hit.properties, x.geocode.q))
 		return { ...x, tags };
