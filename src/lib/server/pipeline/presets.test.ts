@@ -8,6 +8,7 @@ import {
 	presetById,
 	schoolAddress,
 	schoolName,
+	siteName,
 	website,
 } from "./presets";
 import type { Row } from "./types";
@@ -413,6 +414,19 @@ describe("schoolAddress", () => {
 		expect(at({ adresse_3: "31076 TOULOUSE CEDEX 3" })?.postcode).toBe("");
 		expect(at({ adresse_1: "75 rue SAINT ROCH" })).toBeNull();
 		expect(at({ adresse_1: "BP 41023" })).toBeNull();
+	});
+});
+
+describe("siteName", () => {
+	it("tells a site's own name from a network named inside it", () => {
+		expect(siteName("LPA Perrache", "Parking Perrache")).toBe(true);
+		expect(siteName("Allego - Leclerc Blagnac", "Leclerc Blagnac")).toBe(true);
+		expect(siteName("VIL13 - Grandclément", "VIL13 Grandclément")).toBe(true);
+		expect(siteName("313", "McDo Montaudran")).toBe(true);
+		expect(siteName("Parking Morand", "PARKING MORAND")).toBe(true);
+		expect(siteName("Reveo", "Reveo Route d'Espagne")).toBe(false);
+		expect(siteName("TOULIBEO", "TOULOUSE - Marengo")).toBe(false);
+		expect(siteName("DRIVECO", "Airbus ADS - Toulouse - GEO - powered by DRIVECO")).toBe(false);
 	});
 });
 

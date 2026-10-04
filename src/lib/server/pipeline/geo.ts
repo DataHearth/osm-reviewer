@@ -78,7 +78,7 @@ const STOP = new Set([
 	"aux",
 ]);
 
-const tokens = (s: string) =>
+export const tokens = (s: string) =>
 	new Set(
 		normaliseName(s)
 			.split(" ")

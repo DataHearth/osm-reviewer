@@ -1,5 +1,5 @@
 import { fmtDate } from "$lib/format";
-import { normaliseName } from "./geo";
+import { normaliseName, tokens } from "./geo";
 import { openingHours as parsedHours } from "./llm";
 import type { Extraction, ProposedTag, Row } from "./types";
 
@@ -254,6 +254,21 @@ function newestPerPoint(rows: Row[]): Row[] {
 		});
 }
 
+/**
+ * `nom_enseigne` is meant to be the network's commercial name, but operators often put the
+ * site's own name there ("LPA Perrache" at "Parking Perrache", "Allego - Leclerc Blagnac",
+ * "VIL13"). A network shows up whole inside a station name ("Reveo" in "Reveo Route
+ * d'Espagne"); a site name shares some of its words and adds its own.
+ */
+export function siteName(network: string, station: string): boolean {
+	if (/ - |^\s*\d+\s*$/.test(network)) return true;
+	if (normaliseName(network) === normaliseName(station)) return true;
+	const ours = tokens(network);
+	const theirs = tokens(station);
+	const shared = [...ours].filter((w) => theirs.has(w)).length;
+	return shared > 0 && shared < ours.size;
+}
+
 /** IRVE "statique" v2.3, consolidated: one row per charge point, grouped into one station. */
 const irve: Preset = {
 	id: "irve",
@@ -295,7 +310,10 @@ const irve: Preset = {
 		const operator = str(first, "nom_operateur") || str(first, "nom_amenageur");
 		const network = str(first, "nom_enseigne");
 		fill(t.add("operator", operator, 0.85, "nom_operateur"));
-		if (normaliseName(network) !== normaliseName(operator))
+		if (
+			normaliseName(network) !== normaliseName(operator) &&
+			!siteName(network, str(first, "nom_station"))
+		)
 			fill(t.add("network", network, 0.8, "nom_enseigne"));
 		// `nbre_pdc` is what the operator declared for one of the stations merged here, and the
 		// distinct points are what the rows show; quote the one the value really is.
