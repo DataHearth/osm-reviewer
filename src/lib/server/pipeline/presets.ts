@@ -1,5 +1,6 @@
 import { fmtDate } from "$lib/format";
 import { normaliseName } from "./geo";
+import { openingHours as parsedHours } from "./llm";
 import type { Extraction, ProposedTag, Row } from "./types";
 
 /** First non-empty value among the field names a dataset has used for the same thing. */
@@ -148,14 +149,16 @@ const fill = (tag: ProposedTag | undefined) => {
 	if (tag) tag.addOnly = true;
 };
 
-const OPENING_HOURS = /^(24\/7|(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)[A-Za-z0-9:,;\-+ /]*)$/;
+/** Already written in OSM's day tokens: the parser reads plain English too, "Monday to Friday" as open all day. */
+const OPENING_HOURS = /^(24\/7|(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)(?![a-z])[A-Za-z0-9:,;\-+ /]*)$/;
 
 const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 /**
  * Registries write "all day" as the last minute they count to, and some spell every day
  * out: `Mo 00:00-23:59, Tu 00:00-23:59, …`. Seven such days are `24/7`, a run of them is
- * `Mo-Fr 00:00-24:00`; anything else is left as written.
+ * `Mo-Fr 00:00-24:00`; anything else goes through OSM's own parser, which repairs `Mo-Fri:` and
+ * `Sat` and refuses what it cannot read.
  */
 export function openingHours(raw: string): string | null {
 	const v = raw.trim().replace(/23:5\d\b/g, "24:00");
@@ -164,7 +167,7 @@ export function openingHours(raw: string): string | null {
 	const idx = each.map((d) => (d ? DAYS.indexOf(d) : -1));
 	if (idx.length > 1 && idx.every((d, i) => d >= 0 && (i === 0 || d === idx[i - 1] + 1)))
 		return idx.length === 7 ? "24/7" : `${DAYS[idx[0]]}-${DAYS[idx[idx.length - 1]]} 00:00-24:00`;
-	return OPENING_HOURS.test(v) ? v : null;
+	return OPENING_HOURS.test(v) ? parsedHours(v) : null;
 }
 
 /** What `prise_type_autre` covers: every connector the schema has no column of its own for. */

@@ -358,6 +358,14 @@ describe("openingHours", () => {
 		);
 		expect(openingHours("Mo-Fr 08:00-18:00")).toBe("Mo-Fr 08:00-18:00");
 	});
+
+	it("repairs what OSM's parser can read and refuses the rest", () => {
+		expect(openingHours("Mo-Fri: 07:30-19:00")).toBe("Mo-Fr 07:30-19:00");
+		expect(openingHours("Mo-Fr 09:00-19:00,Sat 09:00-18:00")).toBe(
+			"Mo-Fr 09:00-19:00, Sa 09:00-18:00",
+		);
+		expect(openingHours("Monday to Friday")).toBeNull();
+	});
 });
 
 describe("schoolAddress", () => {
