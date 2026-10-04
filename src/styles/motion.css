@@ -131,6 +131,30 @@
 	animation: om-back-out 200ms cubic-bezier(0.33, 1, 0.68, 1) both;
 }
 
+/* 150ms — a <details> opening (m-disclose) and the chevron in its summary turning
+   (m-turn). Native: interpolate-size lets block-size ease to and from auto, and
+   content-visibility flips at the end of the close so the body is really hidden.
+   A browser without ::details-content or interpolate-size opens it instantly. */
+.m-disclose {
+	interpolate-size: allow-keywords;
+}
+.m-disclose::details-content {
+	block-size: 0;
+	overflow: clip;
+	opacity: 0;
+	transition:
+		block-size 150ms cubic-bezier(0.33, 1, 0.68, 1),
+		opacity 150ms cubic-bezier(0.33, 1, 0.68, 1),
+		content-visibility 150ms allow-discrete;
+}
+.m-disclose[open]::details-content {
+	block-size: auto;
+	opacity: 1;
+}
+.m-turn {
+	transition: transform 150ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.m-fade,
 	.m-fade-out,
@@ -146,7 +170,9 @@
 	.m-back-out {
 		animation: none;
 	}
-	.m-grow {
+	.m-grow,
+	.m-disclose::details-content,
+	.m-turn {
 		transition: none;
 	}
 }

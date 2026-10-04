@@ -241,7 +241,8 @@ neither until it actually repeats.
 **Motion comes from `src/styles/motion.css`** — `m-fade`/`m-pop` (110ms), `m-rise`/`m-lift`
 (150ms), `m-sheet` (240ms), `m-push`/`m-back` (200ms, a rail drilling into a list and
 backing out), each with an `-out` partner, plus `m-grow` (200ms, a size transition for a box
-resizing in place), all disabled under `prefers-reduced-motion`.
+resizing in place) and `m-disclose`/`m-turn` (150ms, a `<details>` opening and its chevron
+turning), all disabled under `prefers-reduced-motion`.
 
 **Do not use Svelte `transition:` directives.** An outro holds the node in the DOM until
 its animation reports finished, and in a throttled or backgrounded tab that report never

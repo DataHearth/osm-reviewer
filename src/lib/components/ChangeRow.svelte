@@ -7,9 +7,9 @@ let { row, children }: { row: Staged; children?: Snippet } = $props();
 </script>
 
 <div class="flex items-start gap-2.5 border-b border-line-soft px-[14px] md:px-[18px]">
-	<details class="group min-w-0 flex-1">
+	<details class="group m-disclose min-w-0 flex-1">
 		<summary class="flex min-h-[40px] cursor-pointer list-none items-center gap-2.5 [&::-webkit-details-marker]:hidden">
-			<span class="shrink-0 text-[11px] text-faint group-open:rotate-90">›</span>
+			<span class="shrink-0 text-[11px] text-faint m-turn group-open:rotate-90">›</span>
 			<span class="shrink-0 text-[13px] text-accent">{row.osmId ?? "new POI"}</span>
 			<span class="truncate font-medium text-ink">{row.name}</span>
 			<span class="shrink-0 text-[11.5px] text-muted">{typeSlug(row.type)} · {row.tags.length} tags</span>

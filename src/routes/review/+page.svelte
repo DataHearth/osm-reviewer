@@ -391,11 +391,11 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 						</div>
 					</div>
 					<details
-						class="group border-t border-line-soft px-4 py-3 text-[12.5px] leading-[1.65] text-muted md:col-span-2 lg:col-span-1"
+						class="group m-disclose border-t border-line-soft px-4 py-3 text-[12.5px] leading-[1.65] text-muted md:col-span-2 lg:col-span-1"
 						bind:open={recordOpen}
 					>
 						<summary class="cursor-pointer list-none text-[12px] font-medium text-faint group-open:mb-1.5 [&::-webkit-details-marker]:hidden">
-							<span class="inline-block group-open:rotate-90">›</span> Source record
+							<span class="m-turn inline-block group-open:rotate-90">›</span> Source record
 						</summary>
 						{#if !record || record.id !== c?.id}
 							<div class="text-faint">loading…</div>
