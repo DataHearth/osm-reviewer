@@ -12,6 +12,7 @@ import {
 	KBD_ACCENT,
 	osmUrl,
 	pct,
+	TEXT_BTN,
 	typeDot,
 	typeLabel,
 	typeText,
@@ -130,8 +131,6 @@ const seg = (on: boolean) =>
 	"flex min-h-[38px] flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md border-0 text-[13px] font-medium " +
 	(on ? "bg-raised text-ink" : "bg-transparent text-muted");
 const label = "mb-1.5 text-[12px] font-medium text-faint";
-const rowBtn =
-	"shrink-0 cursor-pointer border-0 bg-transparent p-0 font-sans text-[11.5px] text-faint hover:text-ink";
 const blurOnEnter = (e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
 	if (e.key !== "Enter") return;
 	e.preventDefault();
@@ -299,14 +298,23 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 						: ''}"
 				>
 					{#each c?.tags ?? [] as tag, i ((c?.id ?? "") + tag.k)}
-						<TagRow
-							{tag}
-							index={i}
-							selected={!!review.selected[i]}
-							value={edits.vals[i] ?? tag.v}
-							onToggle={() => review.toggle(i)}
-							onEdit={(v) => review.editValue(i, v)}
-						/>
+						{#if edits.dropped.includes(i)}
+							<div class="m-fade flex items-baseline gap-2 px-2 py-1 font-mono text-[12px]">
+								<span class="min-w-0 truncate text-faint line-through">{tag.k}={tag.v}</span>
+								<span class="font-sans text-[11.5px] text-faint">deleted</span>
+								<button class={TEXT_BTN} onclick={() => review.restoreTag(i)}>restore</button>
+							</div>
+						{:else}
+							<TagRow
+								{tag}
+								index={i}
+								selected={!!review.selected[i]}
+								value={edits.vals[i] ?? tag.v}
+								onToggle={() => review.toggle(i)}
+								onEdit={(v) => review.editValue(i, v)}
+								onDelete={tag.op === "add" ? () => review.dropTag(i) : undefined}
+							/>
+						{/if}
 					{/each}
 					<div class="flex flex-col gap-1 px-2 py-2 text-[12px] leading-relaxed text-faint">
 						<div class="font-medium">Unchanged{#if !c?.unchanged.length}<span class="ml-2 font-mono font-normal">—</span>{/if}</div>
@@ -316,7 +324,7 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 								<span class="truncate text-key">{x.k}</span>
 								{#if cur === null}
 									<span class="text-bad line-through [overflow-wrap:anywhere]">{x.v}</span>
-									<button class={rowBtn} onclick={() => review.editExisting(x.k, x.v)}>restore</button>
+									<button class={TEXT_BTN} onclick={() => review.editExisting(x.k, x.v)}>restore</button>
 								{:else}
 									<textarea
 										rows="1"
@@ -326,7 +334,7 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 										oninput={(e) => review.editExisting(x.k, e.currentTarget.value)}
 										onkeydown={blurOnEnter}
 									></textarea>
-									<button class={rowBtn} aria-label="Delete {x.k}" onclick={() => review.editExisting(x.k, null)}>delete</button>
+									<button class={TEXT_BTN} aria-label="Delete {x.k}" onclick={() => review.editExisting(x.k, null)}>delete</button>
 								{/if}
 							</div>
 						{/each}
@@ -348,10 +356,10 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 									oninput={(e) => review.editAdded(j, { k: a.k, v: e.currentTarget.value })}
 									onkeydown={blurOnEnter}
 								></textarea>
-								<button class={rowBtn} onclick={() => review.editAdded(j, null)}>remove</button>
+								<button class={TEXT_BTN} onclick={() => review.editAdded(j, null)}>remove</button>
 							</div>
 						{/each}
-						<button class="{rowBtn} self-start" onclick={() => review.addTag()}>+ add tag</button>
+						<button class="{TEXT_BTN} self-start" onclick={() => review.addTag()}>+ add tag</button>
 					</div>
 				</div>
 

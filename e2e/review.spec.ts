@@ -67,6 +67,22 @@ test("what the reviewer typed is what gets staged", async ({ page }) => {
 	await expect(page.getByText("+33 5 61 00 00 00")).toBeVisible();
 });
 
+test("a deleted proposal is left out of the accept until it is restored", async ({ page }) => {
+	await onScreen(page.getByText(CANDIDATE.name, { exact: true })).click();
+	await page.getByRole("button", { name: "Delete shop" }).click();
+	await expect(page.getByText("shop=florist")).toBeVisible();
+	await expect(page.getByRole("button", { name: /^Accept 1/ })).toBeVisible();
+
+	await page.getByRole("button", { name: "restore" }).click();
+	await expect(page.getByRole("button", { name: /^Accept 2/ })).toBeVisible();
+
+	await page.getByRole("button", { name: "Delete shop" }).click();
+	await page.getByRole("button", { name: /^Accept 1/ }).click();
+	await expect(page.getByText(`accepted ${CANDIDATE.name} · u to undo`)).toBeVisible();
+	await page.goto("/composer");
+	await expect(page.getByText("1 candidates · 1 tag writes · 1 changeset")).toBeVisible();
+});
+
 test("a candidate in conflict cannot be accepted", async ({ page }) => {
 	await onScreen(page.getByText("Le Bibent", { exact: true })).click();
 	await expect(page).toHaveURL("/review");

@@ -31,9 +31,11 @@ export interface Edits {
 	/** A key the object already has → its new value, or null to delete it. */
 	existing: Record<string, string | null>;
 	added: { k: string; v: string }[];
+	/** Proposal positions the reviewer deleted: never selected, never written. */
+	dropped: number[];
 }
 
-const NO_EDITS: Edits = { vals: {}, existing: {}, added: [] };
+const NO_EDITS: Edits = { vals: {}, existing: {}, added: [], dropped: [] };
 
 /** Tags start selected unless they are unevidenced, invalid, or under conflict. */
 const freshSel = (c: Candidate) => c.tags.map((t) => !!t.ev && !t.invalid && !c.conflict);
@@ -221,7 +223,8 @@ class ReviewState {
 	get selected() {
 		const c = this.candidate;
 		if (!c) return [];
-		return this.sel[c.id] ?? freshSel(c);
+		const dropped = this.edit.dropped;
+		return (this.sel[c.id] ?? freshSel(c)).map((on, i) => on && !dropped.includes(i));
 	}
 
 	get edit(): Edits {
@@ -418,10 +421,22 @@ class ReviewState {
 
 	toggle(i: number) {
 		const c = this.candidate;
-		if (!c?.tags[i]) return;
+		if (!c?.tags[i] || this.edit.dropped.includes(i)) return;
 		const row = this.selected.slice();
 		row[i] = !row[i];
 		this.sel = { ...this.sel, [c.id]: row };
+	}
+
+	dropTag(i: number) {
+		this.patch((e) => ({ ...e, dropped: [...e.dropped, i] }));
+	}
+
+	/** Back as it was proposed: selected the way a fresh candidate would have it. */
+	restoreTag(i: number) {
+		const c = this.candidate;
+		if (!c) return;
+		this.patch((e) => ({ ...e, dropped: e.dropped.filter((j) => j !== i) }));
+		this.sel = { ...this.sel, [c.id]: this.selected.with(i, freshSel(c)[i]) };
 	}
 
 	private patch(fn: (e: Edits) => Edits) {

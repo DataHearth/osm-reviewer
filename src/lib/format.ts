@@ -131,6 +131,10 @@ export const ghost = (on: boolean) =>
 export const INERT_BTN =
 	"cursor-not-allowed rounded-sm border border-line bg-transparent px-[11px] py-1 text-[12px] whitespace-nowrap text-faint";
 
+/** A bare word that acts on a row — reset, delete, restore. */
+export const TEXT_BTN =
+	"shrink-0 cursor-pointer border-0 bg-transparent p-0 font-sans text-[11.5px] text-faint hover:text-ink";
+
 /** A ‹ / › step of a pager, dimmed at the end it cannot step past. */
 export const pageStep = (on: boolean) =>
 	`${on ? ghost(false) : INERT_BTN} inline-flex items-center justify-center !px-2 !py-0 leading-[20px] max-md:min-h-[40px] max-md:min-w-[44px]`;

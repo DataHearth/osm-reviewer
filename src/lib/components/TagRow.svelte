@@ -2,7 +2,7 @@
 // One proposed tag and the evidence for it, side by side. The pairing is the
 // whole screen: a tag whose quote does not contain its value cannot be
 // accepted, and the layout has to make that obvious without being read.
-import { confText, OP_BG, OP_CHIP, OP_LABEL, pct } from "$lib/format";
+import { confText, OP_BG, OP_CHIP, OP_LABEL, pct, TEXT_BTN } from "$lib/format";
 import type { Tag } from "$lib/types";
 
 let {
@@ -12,6 +12,7 @@ let {
 	value,
 	onToggle,
 	onEdit,
+	onDelete,
 }: {
 	tag: Tag;
 	index: number;
@@ -20,6 +21,8 @@ let {
 	value: string;
 	onToggle: () => void;
 	onEdit: (v: string) => void;
+	/** Offered on proposals that only add a key: dropping one leaves the object as it is. */
+	onDelete?: () => void;
 } = $props();
 
 const edited = $derived(value !== tag.v);
@@ -58,6 +61,9 @@ const square = $derived(
 				>{OP_LABEL[tag.op]}</span
 			>
 			<span class="min-w-0 truncate font-mono text-[12.5px] text-key">{tag.k}</span>
+			{#if onDelete}
+				<button class="{TEXT_BTN} ml-auto" aria-label="Delete {tag.k}" onclick={onDelete}>delete</button>
+			{/if}
 		</div>
 
 		{#if tag.was}
@@ -79,7 +85,7 @@ const square = $derived(
 				<div class="flex items-baseline gap-2 text-[11.5px]">
 					<span class="text-accent">edited</span>
 					<span class="min-w-0 truncate font-mono text-faint">proposed {tag.v}</span>
-					<button class="shrink-0 cursor-pointer border-0 bg-transparent p-0 text-faint hover:text-ink" onclick={() => onEdit(tag.v)}>reset</button>
+					<button class={TEXT_BTN} onclick={() => onEdit(tag.v)}>reset</button>
 				</div>
 			{/if}
 		{/if}
