@@ -162,11 +162,14 @@ function nameScore(
 ): number | null {
 	const words = (s: string) => [...tokens(s)].filter((w) => !GENERIC.has(w));
 	const theirs = words(e.tags.name ?? "");
-	const who = new Set([...whoOf(x), ...WHO.map((k) => e.tags[k] ?? "")].flatMap(words));
-	if (!theirs.length || theirs.every((w) => who.has(w))) return null;
-	const dice = nameSimilarity(x.name, e.tags.name);
 	const ours = new Set(words(x.name));
-	return theirs.every((w) => ours.has(w)) ? Math.max(dice, 0.8) : dice;
+	const inOurs = theirs.every((w) => ours.has(w));
+	// An operator named after its one place ("Association La Fourmi") does not make the
+	// place's name a brand.
+	const who = new Set([...whoOf(x), ...WHO.map((k) => e.tags[k] ?? "")].flatMap(words));
+	if (!theirs.length || (!inOurs && theirs.every((w) => who.has(w)))) return null;
+	const dice = nameSimilarity(x.name, e.tags.name);
+	return inOurs ? Math.max(dice, 0.8) : dice;
 }
 
 export function findMatch(

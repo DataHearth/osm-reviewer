@@ -169,7 +169,13 @@ describe("findMatch", () => {
 	});
 
 	it("reaches as far as a directory misplaces a place for a name that clearly names it", () => {
-		const fourmi = [el(14, 45.7012, 4.8, { amenity: "school", name: "La Fourmi" })];
+		const fourmi = [
+			el(14, 45.7012, 4.8, {
+				amenity: "school",
+				name: "La Fourmi",
+				operator: "Association La Fourmi",
+			}),
+		];
 		const x = { lat: 45.7, lon: 4.8, name: "École élémentaire privée La Fourmi", refs: {} };
 		expect(findMatch(x, fourmi, new Map())?.id).toBe(14);
 		expect(findMatch({ ...x, name: "École La Ruche" }, fourmi, new Map())).toBeNull();
