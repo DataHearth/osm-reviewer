@@ -239,6 +239,9 @@ export function sameValue(k: string, a: string, b: string): boolean {
 	if (a.includes(";") || b.includes(";")) {
 		const sa = new Set(values(a));
 		const sb = new Set(values(b));
+		// One value among the object's several is that value: a cité scolaire is
+		// `school:FR=collège;primaire;lycée` to each of its establishments.
+		if (sa.size === 1 && sb.has([...sa][0])) return true;
 		return sa.size === sb.size && [...sa].every((x) => sb.has(x));
 	}
 	return a.trim() === b.trim();
@@ -252,7 +255,17 @@ export interface TagOp extends ProposedTag {
 const CONTACT = ["phone", "website", "email", "fax", "mobile"];
 
 /** A detail the object may already carry under another key: a station's phone is usually its operator's line. */
-const SAME_AS: Record<string, string[]> = { "operator:phone": ["phone", "contact:phone"] };
+const PHONES = ["phone", "contact:phone", "mobile", "contact:mobile"];
+const SAME_AS: Record<string, string[]> = { phone: PHONES, "operator:phone": PHONES };
+
+/** What the object already says that rules a proposed value out: a station surveyed as badge-only. */
+const RULED_OUT: Record<string, (current: Record<string, string>) => boolean> = {
+	"authentication:none": (c) =>
+		c["payment:membership_card"] === "yes" ||
+		Object.entries(c).some(
+			([k, v]) => k.startsWith("authentication:") && k !== "authentication:none" && v === "yes",
+		),
+};
 
 /**
  * The key this object keeps `k` under: mappers write contact details as `contact:phone`
@@ -263,25 +276,64 @@ function keyOn(k: string, current: Record<string, string>): string {
 	if (current[k] !== undefined || !CONTACT.includes(k)) return k;
 	const scheme = `contact:${k}`;
 	if (current[scheme] !== undefined) return scheme;
-	return Object.keys(current).some((x) => x.startsWith("contact:")) ? scheme : k;
+	return CONTACT.some((c) => current[`contact:${c}`] !== undefined) ? scheme : k;
 }
+
+const ADDRESS_HELD = /^contact:(housenumber|street|postcode|city)$/;
+
+/**
+ * An address proposed whole, or not at all when any part differs from the object's. One the
+ * object holds as `contact:housenumber`… (how the 2016–2018 Éducation nationale imports wrote
+ * it) is its address all the same, and moves to `addr:*`, where OSM keeps one, rather than
+ * gaining a second copy beside it.
+ */
+function addressOps(parts: ProposedTag[], current: Record<string, string>): TagOp[] {
+	if (!parts.length) return [];
+	const held = (k: string) => current[k] ?? current[k.replace(/^addr:/, "contact:")];
+	if (parts.some((p) => held(p.k) !== undefined && !sameValue(p.k, p.v, held(p.k)))) return [];
+	const ops: TagOp[] = [];
+	for (const from of Object.keys(current).filter((k) => ADDRESS_HELD.test(k))) {
+		const to = from.replace(/^contact:/, "addr:");
+		if (current[to] !== undefined) continue;
+		const v = current[from];
+		const ev = parts.find((p) => p.k === to) ?? {
+			...parts[0],
+			path: from,
+			kind: "OSM",
+			parts: [
+				{ text: `${from}: `, mark: false },
+				{ text: v, mark: true },
+			],
+		};
+		ops.push({ ...ev, k: to, v, op: "add", was: null });
+		ops.push({ ...ev, k: from, v, op: "del", was: null });
+	}
+	for (const p of parts) if (held(p.k) === undefined) ops.push({ ...p, op: "add", was: null });
+	return ops;
+}
+
+/** A count of connectors of no stated type, which typed counts replace rather than add to. */
+const UNTYPED = ["socket:unknown", "socket:unknown:output"];
 
 /** Tag operations that turn the element's tags into what the source says; nothing for what already agrees. */
 export function updateOps(proposed: ProposedTag[], current: Record<string, string>): TagOp[] {
-	const clash = new Set(
-		proposed
-			.filter((p) => p.group && current[p.k] !== undefined && !sameValue(p.k, p.v, current[p.k]))
-			.map((p) => p.group),
+	const ops: TagOp[] = addressOps(
+		proposed.filter((p) => p.group === "addr"),
+		current,
 	);
-	const ops: TagOp[] = [];
 	for (const p of proposed) {
-		if (p.group && clash.has(p.group)) continue;
-		if (SAME_AS[p.k]?.some((o) => current[o] && digits(current[o]) === digits(p.v))) continue;
+		if (p.group === "addr" || RULED_OUT[p.k]?.(current)) continue;
 		const k = keyOn(p.k, current);
+		const elsewhere = SAME_AS[p.k]?.filter((o) => o !== k);
+		if (elsewhere?.some((o) => current[o] && digits(current[o]) === digits(p.v))) continue;
 		const had = current[k];
 		if (had === undefined) ops.push({ ...p, k, op: "add", was: null });
 		else if (!p.addOnly && !sameValue(p.k, p.v, had)) ops.push({ ...p, k, op: "mod", was: had });
 	}
+	const typed = ops.find((o) => /^socket:(?!unknown)[^:]+$/.test(o.k));
+	if (typed)
+		for (const k of UNTYPED)
+			if (current[k] !== undefined) ops.push({ ...typed, k, v: current[k], op: "del", was: null });
 	return ops;
 }
 
@@ -426,7 +478,7 @@ const CONTEXT_KEYS = [
 const contextRank = (k: string) => {
 	const at = CONTEXT_KEYS.indexOf(k);
 	if (at >= 0) return at;
-	return k.startsWith("addr:") ? CONTEXT_KEYS.length : -1;
+	return k.startsWith("addr:") || ADDRESS_HELD.test(k) ? CONTEXT_KEYS.length : -1;
 };
 
 /** The element's tags the candidate leaves alone, the ones a reviewer looks at for context. */

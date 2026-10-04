@@ -13,6 +13,7 @@ import {
 	nearbyLabels,
 	newOps,
 	REF_SELECTORS,
+	sameValue,
 	sharedRefs,
 	splitParts,
 	type TagOp,
@@ -172,6 +173,25 @@ export async function processArea(
 				ops = ops.filter((o) => !counts.includes(o));
 				if (counts.length) notes.push(SPLIT_COUNTS_NOTE);
 			}
+			// Several establishments on one object (a cité scolaire) each propose their own phone,
+			// SIRET or UAI for it; whichever a reviewer accepted last would win.
+			const disputed = ops.filter((o) =>
+				(byElement.get(osmRef(el)) ?? []).some(
+					(other) =>
+						other.key !== x.key && other.tags.some((t) => t.k === o.k && !sameValue(o.k, t.v, o.v)),
+				),
+			);
+			if (disputed.length) {
+				ops = ops.filter((o) => !disputed.includes(o));
+				notes.push(
+					`Left out, since another record on this object says otherwise: ${disputed.map((o) => o.k).join(", ")}`,
+				);
+			}
+			const fee = ops.find((o) => o.k === "fee" && o.op === "mod");
+			if (fee)
+				notes.push(
+					`OSM has fee=${fee.was} where the source says ${fee.v}; a mapper may have set it on purpose`,
+				);
 		} else {
 			type = "new";
 			ops = newOps(x.tags);

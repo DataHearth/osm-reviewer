@@ -289,6 +289,56 @@ describe("updateOps", () => {
 		]);
 	});
 
+	it("moves an address held as contact:* to addr:*, in the mapper's spelling", () => {
+		const addr = (k: string, v: string) => ({ ...tag(k, v), addOnly: true, group: "addr" });
+		const proposed = [addr("addr:street", "Rue des troubadours"), addr("addr:city", "Cugnaux")];
+		const ops = updateOps(proposed, {
+			"contact:street": "Rue des Troubadours",
+			"contact:housenumber": "20",
+		});
+		expect(ops.map((o) => [o.op, o.k, o.v])).toEqual([
+			["add", "addr:street", "Rue des Troubadours"],
+			["del", "contact:street", "Rue des Troubadours"],
+			["add", "addr:housenumber", "20"],
+			["del", "contact:housenumber", "20"],
+			["add", "addr:city", "Cugnaux"],
+		]);
+		expect(updateOps(proposed, { "contact:street": "Rue du Nord" })).toEqual([]);
+	});
+
+	it("leaves a level the object lists among others, and a number it has as its mobile", () => {
+		expect(
+			updateOps([tag("school:FR", "lycée")], { "school:FR": "collège;primaire;lycée" }),
+		).toEqual([]);
+		expect(
+			updateOps([tag("phone", "+33 6 95 80 09 08")], {
+				mobile: "+33 6 95 80 09 08",
+				"contact:instagram": "x",
+			}),
+		).toEqual([]);
+		expect(
+			updateOps([tag("phone", "+33 4 00 00 00 00")], { "contact:instagram": "x" }).map((o) => o.k),
+		).toEqual(["phone"]);
+	});
+
+	it("replaces an untyped connector count with the typed ones", () => {
+		const ops = updateOps([tag("socket:type2_combo", "4")], {
+			"socket:unknown": "4",
+			"socket:unknown:output": "150",
+		});
+		expect(ops.map((o) => [o.op, o.k])).toEqual([
+			["add", "socket:type2_combo"],
+			["del", "socket:unknown"],
+			["del", "socket:unknown:output"],
+		]);
+	});
+
+	it("proposes no ad-hoc access to a station surveyed as badge-only", () => {
+		const none = { ...tag("authentication:none", "yes"), addOnly: true };
+		expect(updateOps([none], { "payment:membership_card": "yes" })).toEqual([]);
+		expect(updateOps([none], {})).toHaveLength(1);
+	});
+
 	it("never replaces a list of ids that already holds the record's", () => {
 		expect(updateOps([tag("ref:UAI", "0692864N")], { "ref:UAI": "0692864N;0690053H" })).toEqual([]);
 		expect(updateOps([tag("ref:UAI", "0692864N")], { "ref:UAI": "0690053H" })).toHaveLength(1);
