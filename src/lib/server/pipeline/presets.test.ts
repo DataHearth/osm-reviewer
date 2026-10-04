@@ -366,6 +366,28 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(tags?.find((t) => t.k === "school:FR")).toBeUndefined();
 	});
 
+	it("reads a UAI over several sites from its main site, and says so", () => {
+		const annex = row({
+			nom_etablissement: "Collège Michelet - annexe",
+			adresse_1: "17 rue Larrey",
+		});
+		const main = row({ nom_etablissement: "Collège Michelet", adresse_1: "6 boulevard Michelet" });
+		const x = edu.extract([annex, main], "u");
+		expect(x?.name).toBe("Collège Michelet");
+		expect(x?.notes?.[0]).toMatch(/at 2 sites.*6 boulevard Michelet/);
+	});
+
+	it("quotes the level flags a school's level comes from, and skips a webmail address", () => {
+		const tags = edu.extract([row({ mail: "someone@gmail.com" })], "u")?.tags ?? [];
+		expect(
+			tags
+				.find((t) => t.k === "school:FR")
+				?.parts.map((p) => p.text)
+				.join(""),
+		).toBe("ecole_maternelle: 1, ecole_elementaire: 1");
+		expect(tags.find((t) => t.k === "email")).toBeUndefined();
+	});
+
 	it("proposes nothing for a section housed in its parent establishment", () => {
 		const section = { type_rattachement_etablissement_mere: "FILIERE OU DEPARTEMENT OU SECTION" };
 		expect(edu.extract([row(section)], "u")).toBeNull();
@@ -490,6 +512,16 @@ describe("schoolName", () => {
 			"École élémentaire Jules-Géraud Saliege",
 		);
 		expect(schoolName("Collège Rosa PARKS - SEGPA")).toBe("Collège Rosa Parks - SEGPA");
+	});
+
+	it("drops the contract status and writes a shouted name as a name", () => {
+		expect(schoolName("Ecole primaire privée hors contrat  Les sarments")).toBe(
+			"École primaire privée Les sarments",
+		);
+		expect(schoolName("ASSOCIATION DE GESTION DES ECOLES DU CAMPUS VIDAL")).toBe(
+			"Association de Gestion des Écoles du Campus Vidal",
+		);
+		expect(schoolName("IME Les Troënes")).toBe("IME Les Troënes");
 	});
 });
 

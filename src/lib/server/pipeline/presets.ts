@@ -530,15 +530,30 @@ const ACRONYMS = new Set([
 	"IFSI",
 ]);
 
+/** Small words a name written all in capitals has in capitals too. */
+const PARTICLES = new Set(["DE", "DES", "DU", "LA", "LE", "LES", "ET", "AU", "AUX", "EN", "SUR"]);
+
 /**
- * The directory drops the accent off "École" and shouts surnames ("Rosa PARKS"); OSM France
- * writes neither.
+ * The directory drops the accent off "École" and shouts surnames ("Rosa PARKS"), sometimes
+ * the whole name; OSM France writes neither.
+ *
+ * "hors contrat" goes: it is the private school's legal status (no contract with the state),
+ * which the directory writes into the name on 29 of its 111 such schools in Toulouse and Lyon.
+ * OSM has no key for it, and of 773 school names already mapped there 1 keeps it; mappers who
+ * named these schools wrote "École primaire privée Les Sarments", not "…privée hors contrat…".
  */
 export function schoolName(raw: string): string {
-	return raw
+	const shouting = raw === raw.toUpperCase();
+	const out = raw
 		.replace(/\s+/g, " ")
-		.replace(/\bEcole(s?)\b/g, "École$1")
-		.replace(/\p{Lu}{4,}/gu, (w) => (ACRONYMS.has(w) ? w : w[0] + w.slice(1).toLowerCase()));
+		.replace(/ hors contrat\b/i, "")
+		.replace(/\p{Lu}{2,}/gu, (w) => {
+			if (ACRONYMS.has(w)) return w;
+			if (shouting && PARTICLES.has(w)) return w.toLowerCase();
+			return w.length >= 4 || shouting ? w[0] + w.slice(1).toLowerCase() : w;
+		})
+		.replace(/\bEcole(s?)\b/g, "École$1");
+	return out[0].toUpperCase() + out.slice(1);
 }
 
 const STREET =
@@ -577,6 +592,10 @@ export function openedForSure(date: string, level: string | null): boolean {
 	return /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= "1978" && level !== "primaire";
 }
 
+/** A school's address at a webmail provider is often a person's, which does not belong on the map. */
+const WEBMAIL =
+	/@(gmail|hotmail|outlook|live|yahoo|icloud|wanadoo|orange|free|laposte|sfr|neuf)\.[a-z.]+$/i;
+
 /** Annuaire de l'éducation. */
 const education: Preset = {
 	id: "annuaire-education",
@@ -586,7 +605,11 @@ const education: Preset = {
 	key: (r) => str(r, "identifiant_de_l_etablissement") || null,
 	position: (r) => findCoords(r),
 	extract(rows, url) {
-		const r = rows[0];
+		// One UAI over several sites comes as several rows; the main one carries the plain name,
+		// its annexes a suffix ("Collège Michelet - annexe", "… - Site St Didier").
+		const r = [...rows].sort(
+			(a, b) => str(a, "nom_etablissement").length - str(b, "nom_etablissement").length,
+		)[0];
 		const pos = education.position(r);
 		const key = education.key(r);
 		if (!pos || !key) return null;
@@ -600,6 +623,8 @@ const education: Preset = {
 		const siret = str(r, "siren_siret", "numero_siren_siret").replace(/\s/g, "");
 
 		const nature = str(r, "libelle_nature");
+		const mat = str(r, "ecole_maternelle") || "0";
+		const elem = str(r, "ecole_elementaire") || "0";
 		const amenity = t.add("amenity", kind.amenity, 0.9, "libelle_nature", nature, "derived");
 		if (kind.for) {
 			// Already mapped, an institute is a school to some mappers and a social facility to
@@ -607,7 +632,17 @@ const education: Preset = {
 			fill(amenity);
 			fill(t.add("social_facility:for", kind.for, 0.8, "type_etablissement", undefined, "derived"));
 		}
-		if (kind.level) t.add("school:FR", kind.level, 0.9, "libelle_nature", nature, "derived");
+		if (kind.level && /^[ée]cole/i.test(str(r, "type_etablissement")))
+			t.add(
+				"school:FR",
+				kind.level,
+				0.9,
+				"ecole_maternelle",
+				`${mat}, ecole_elementaire: ${elem}`,
+				"derived",
+			);
+		else if (kind.level)
+			t.add("school:FR", kind.level, 0.9, "type_etablissement", undefined, "derived");
 		// The directory's name is the administrative one, level words and all; a mapper's
 		// usual name stays, and the directory's is still on screen in the header.
 		fill(t.add("name", name, 0.9, "nom_etablissement"));
@@ -625,7 +660,8 @@ const education: Preset = {
 		const site = website(str(r, "web", "site_web"));
 		if (site) t.add("website", site, 0.8, "web");
 		const mail = str(r, "mail");
-		if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail)) fill(t.add("email", mail, 0.8, "mail"));
+		if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail) && !WEBMAIL.test(mail))
+			fill(t.add("email", mail, 0.8, "mail"));
 		const opened = str(r, "date_ouverture");
 		if (openedForSure(opened, kind.level)) fill(t.add("start_date", opened, 0.7, "date_ouverture"));
 		const status = str(r, "statut_public_prive");
@@ -668,6 +704,12 @@ const education: Preset = {
 				string
 			>,
 			tags: t.list,
+			notes:
+				rows.length > 1
+					? [
+							`The directory lists this UAI at ${rows.length} sites; the details are ${str(r, "adresse_1")}'s, the main one`,
+						]
+					: [],
 		};
 	},
 };
