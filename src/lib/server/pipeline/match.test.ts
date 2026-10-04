@@ -276,6 +276,28 @@ describe("context", () => {
 		expect(labels[0]).toMatch(/^22 m {2}shop=bakery$/);
 	});
 
+	it("shows what identifies the object before its address", () => {
+		const out = unchangedTags(
+			{
+				"addr:street": "Rue X",
+				"addr:city": "Lyon",
+				"addr:postcode": "69001",
+				"addr:housenumber": "1",
+				"contact:email": "ce.0690001A@ac-lyon.fr",
+				"ref:UAI": "0690001A",
+				"school:FR": "lycée",
+			},
+			new Set(),
+		);
+		expect(out.slice(0, 3).map((t) => t.k)).toEqual(["ref:UAI", "school:FR", "contact:email"]);
+	});
+
+	it("does not propose an operator line the object already has as its phone", () => {
+		expect(
+			updateOps([tag("operator:phone", "+33 4 72 00 00 01")], { phone: "04 72 00 00 01" }),
+		).toEqual([]);
+	});
+
 	it("keeps context tags the candidate did not touch", () => {
 		const out = unchangedTags(
 			{ name: "A", phone: "1", "addr:city": "Lyon", wheelchair: "yes" },

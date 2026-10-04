@@ -193,6 +193,9 @@ export interface TagOp extends ProposedTag {
 
 const CONTACT = ["phone", "website", "email", "fax", "mobile"];
 
+/** A detail the object may already carry under another key: a station's phone is usually its operator's line. */
+const SAME_AS: Record<string, string[]> = { "operator:phone": ["phone", "contact:phone"] };
+
 /**
  * The key this object keeps `k` under: mappers write contact details as `contact:phone`
  * as often as `phone`, and an object already using the `contact:` scheme gets the new
@@ -215,6 +218,7 @@ export function updateOps(proposed: ProposedTag[], current: Record<string, strin
 	const ops: TagOp[] = [];
 	for (const p of proposed) {
 		if (p.group && clash.has(p.group)) continue;
+		if (SAME_AS[p.k]?.some((o) => current[o] && digits(current[o]) === digits(p.v))) continue;
 		const k = keyOn(p.k, current);
 		const had = current[k];
 		if (had === undefined) ops.push({ ...p, k, op: "add", was: null });
@@ -333,12 +337,38 @@ export function nearbyLabels(
 		});
 }
 
-const CONTEXT_KEYS = ["name", "opening_hours", "phone", "website", "operator", "brand"];
+/**
+ * What tells a reviewer this is the right object comes first: the identifiers and level it
+ * already carries. The address, which rarely settles it, comes last.
+ */
+const CONTEXT_KEYS = [
+	"name",
+	"ref:UAI",
+	"ref:EU:EVSE",
+	"ref:FR:SIRET",
+	"school:FR",
+	"operator",
+	"brand",
+	"opening_hours",
+	"phone",
+	"contact:phone",
+	"email",
+	"contact:email",
+	"website",
+	"contact:website",
+];
+
+const contextRank = (k: string) => {
+	const at = CONTEXT_KEYS.indexOf(k);
+	if (at >= 0) return at;
+	return k.startsWith("addr:") ? CONTEXT_KEYS.length : -1;
+};
 
 /** The element's tags the candidate leaves alone, the ones a reviewer looks at for context. */
 export function unchangedTags(current: Record<string, string>, touched: Set<string>) {
-	const picked = Object.entries(current).filter(
-		([k]) => !touched.has(k) && (CONTEXT_KEYS.includes(k) || k.startsWith("addr:")),
-	);
-	return picked.slice(0, 6).map(([k, v]) => ({ k, v }));
+	return Object.entries(current)
+		.filter(([k]) => !touched.has(k) && contextRank(k) >= 0)
+		.sort(([a], [b]) => contextRank(a) - contextRank(b))
+		.slice(0, 6)
+		.map(([k, v]) => ({ k, v }));
 }
