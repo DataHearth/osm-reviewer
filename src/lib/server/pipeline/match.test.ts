@@ -7,6 +7,7 @@ import {
 	nearbyLabels,
 	newOps,
 	sameValue,
+	sharedRefs,
 	unchangedTags,
 	updateOps,
 } from "./match";
@@ -91,6 +92,42 @@ describe("findMatch", () => {
 				indexRefs(sibling, ["ref:UAI"]),
 			),
 		).toBeNull();
+	});
+
+	it("reads a school's académie mailbox as its UAI", () => {
+		const other = [
+			el(10, 45.7, 4.8, { name: "IME", "contact:email": "ce.0311827T@ac-toulouse.fr" }),
+		];
+		const x = { lat: 45.7, lon: 4.8, name: "IME", refs: { "ref:UAI": "0312873E" } };
+		expect(findMatch(x, other, new Map())).toBeNull();
+		expect(findMatch({ ...x, refs: { "ref:UAI": "0311827T" } }, other, new Map())?.id).toBe(10);
+	});
+
+	it("never matches another operator's station by name or distance", () => {
+		const tesla = [
+			el(11, 45.7, 4.8, { name: "Blagnac Supercharger", "ref:EU:EVSE": "FR*TSL*P16979" }),
+		];
+		const x = {
+			lat: 45.7,
+			lon: 4.8,
+			name: "Leclerc Blagnac",
+			refs: { "ref:EU:EVSE": "FREVCP000406;FREVCE000406A" },
+		};
+		expect(findMatch(x, tesla, new Map())).toBeNull();
+		expect(findMatch({ ...x, refs: {} }, tesla, new Map())?.id).toBe(11);
+	});
+
+	it("does not let an identifier several records carry decide a match", () => {
+		const ime = [el(12, 45.71, 4.8, { "ref:FR:SIRET": "77558121800465" })];
+		const recs = [
+			{ refs: { "ref:FR:SIRET": "77558121800465", "ref:UAI": "0312873E" } },
+			{ refs: { "ref:FR:SIRET": "77558121800465", "ref:UAI": "0311827T" } },
+		];
+		const shared = sharedRefs(recs);
+		const idx = indexRefs(ime, ["ref:FR:SIRET"]);
+		const x = { lat: 45.7, lon: 4.8, name: "", ...recs[0] };
+		expect(findMatch(x, ime, idx, shared)).toBeNull();
+		expect(findMatch(x, ime, idx)?.id).toBe(12);
 	});
 
 	it("matches an alias of a ref key and a ;-separated list", () => {

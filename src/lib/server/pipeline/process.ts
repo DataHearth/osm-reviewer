@@ -12,6 +12,7 @@ import {
 	matchWarnings,
 	nearbyLabels,
 	newOps,
+	sharedRefs,
 	type TagOp,
 	unchangedTags,
 	updateOps,
@@ -139,9 +140,10 @@ export async function processArea(
 	const refIndex = indexRefs(elements, [
 		...new Set(extracted.flatMap((e) => Object.keys(e.x.refs))),
 	]);
+	const shared = sharedRefs(extracted.map((e) => e.x));
 	const matched = extracted.map((e) => ({
 		...e,
-		el: e.rec.element ?? findMatch(e.x, elements, refIndex),
+		el: e.rec.element ?? findMatch(e.x, elements, refIndex, shared),
 	}));
 	const byElement = new Map<string, Extraction[]>();
 	for (const { x, el } of matched)

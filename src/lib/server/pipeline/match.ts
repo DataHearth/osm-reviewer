@@ -32,19 +32,48 @@ const values = (v: string) =>
 		.map((x) => x.trim().replace(/\s+/g, ""))
 		.filter(Boolean);
 
-/** Identifiers that name one establishment, so an object carrying another value is another place. */
-const ONE_PLACE = ["ref:UAI"];
+/** The `ce.<UAI>@ac-…` mailbox an académie gives every school names its establishment too. */
+const mailUai = (e: OsmElement) =>
+	/^ce\.(\d{7}[a-z])@ac-/i.exec(e.tags["contact:email"] ?? e.tags.email ?? "")?.[1].toUpperCase();
 
-/** Whether `e` carries one of these identifiers with a value the record does not have. */
+/** Whether `e` is another establishment: it carries a UAI, and none of them is the record's. */
 export function otherPlace(e: OsmElement, refs: Record<string, string>): boolean {
-	return ONE_PLACE.some((k) => {
-		if (!refs[k]) return false;
-		const ours = new Set(ids(refs[k]));
-		return (ALIASES[k] ?? [k]).some((alias) => {
-			const v = e.tags[alias];
-			return v !== undefined && !ids(v).some((x) => ours.has(x));
-		});
-	});
+	if (!refs["ref:UAI"]) return false;
+	const ours = new Set(ids(refs["ref:UAI"]));
+	const theirs = ALIASES["ref:UAI"].flatMap((k) => (e.tags[k] ? ids(e.tags[k]) : []));
+	const mail = mailUai(e);
+	if (mail) theirs.push(mail);
+	return theirs.length > 0 && !theirs.some((x) => ours.has(x));
+}
+
+/** `FR*TLS*P31555019` belongs to operator `FRTLS`. */
+const operatorCodes = (v: string) =>
+	new Set(ids(v).flatMap((x) => /^[A-Z]{2}[A-Z0-9]{3}(?=[EP])/.exec(x)?.[0] ?? []));
+
+/**
+ * Whether `e` carries only another operator's EVSE ids. A mapper's pool id is often finer than
+ * the registry's, so whole ids prove nothing, but the operator code does. It only rules out a
+ * name or distance match: a network that changed hands keeps its old code on OSM, and the
+ * duplicate banner must still see it.
+ */
+function otherOperator(e: OsmElement, refs: Record<string, string>): boolean {
+	const ours = operatorCodes(refs["ref:EU:EVSE"] ?? "");
+	const theirs = operatorCodes(e.tags["ref:EU:EVSE"] ?? "");
+	return ours.size > 0 && theirs.size > 0 && ![...theirs].some((x) => ours.has(x));
+}
+
+const refKeys = (refs: Record<string, string>) =>
+	Object.entries(refs).flatMap(([k, v]) => [...new Set(ids(v))].map((one) => `${k}\u0000${one}`));
+
+/**
+ * Identifiers several records carry, which therefore pick none of them: a SIRET is the
+ * organisation's, and one organisation can run several establishments.
+ */
+export function sharedRefs(xs: Pick<Extraction, "refs">[]): Set<string> {
+	const seen = new Set<string>();
+	const shared = new Set<string>();
+	for (const x of xs) for (const at of refKeys(x.refs)) (seen.has(at) ? shared : seen).add(at);
+	return shared;
 }
 
 /** Every element per identifier: a SIRET or an EVSE pool can sit on several objects. */
@@ -68,10 +97,11 @@ export function findMatch(
 	x: Pick<Extraction, "lat" | "lon" | "name" | "refs">,
 	els: OsmElement[],
 	refIndex: Map<string, OsmElement[]>,
+	shared: Set<string> = new Set(),
 ): OsmElement | null {
-	const hits = Object.entries(x.refs).flatMap(([k, v]) =>
-		ids(v).flatMap((one) => refIndex.get(`${k}\u0000${one}`) ?? []),
-	);
+	const hits = refKeys(x.refs)
+		.filter((at) => !shared.has(at))
+		.flatMap((at) => refIndex.get(at) ?? []);
 	const byRef = hits
 		.filter((e) => !otherPlace(e, x.refs))
 		.map((e) => ({ e, d: distance(x.lat, x.lon, e.lat, e.lon) }))
@@ -80,7 +110,7 @@ export function findMatch(
 
 	let best: { el: OsmElement; score: number } | null = null;
 	for (const e of els) {
-		if (otherPlace(e, x.refs)) continue;
+		if (otherPlace(e, x.refs) || otherOperator(e, x.refs)) continue;
 		if (Math.abs(e.lat - x.lat) > LAT_PREFILTER) continue;
 		const d = distance(x.lat, x.lon, e.lat, e.lon);
 		if (d > MATCH_RADIUS_M) continue;
