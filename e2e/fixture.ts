@@ -42,7 +42,9 @@ export const CANDIDATES: FixtureCandidate[] = [
 		conf: 0.93,
 		ageDays: 5,
 		tags: [["amenity", "cafe", "activité: |débits de boissons|"]],
-		warning: "Possible duplicate: amenity=cafe already mapped at node/77 “Café 7”, 12 m away",
+		warning:
+			"Possible duplicate: amenity=cafe already mapped at node/77 “Café 7”, 12 m away\n" +
+			"Same site may be mapped as 4 objects (also node/9873301813, 5 m away; node/9873301816, 7 m away; node/9873301815, 12 m away): what is written here would land on this one only",
 	},
 	{
 		id: "c5",

@@ -288,7 +288,7 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 			{#if c?.warnings?.length}
 				<div class="m-rise flex shrink-0 flex-wrap items-baseline gap-2.5 border-b border-warn-line bg-warn-bg px-4 py-2.5 text-[13px]">
 					<span class="{banner} bg-warn">Check</span>
-					<div class="min-w-0 flex-1 text-warn-ink max-md:basis-full">
+					<div class="flex min-w-0 flex-1 flex-col gap-1 text-warn-ink max-md:basis-full">
 						{#each c.warnings as w, i (i)}<div class="[overflow-wrap:anywhere]">{w}</div>{/each}
 					</div>
 				</div>
