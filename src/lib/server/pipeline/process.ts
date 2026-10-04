@@ -16,7 +16,7 @@ import {
 	updateOps,
 } from "./match";
 import { countPois, fetchElements } from "./overpass";
-import { str } from "./presets";
+import { mergeSites, str } from "./presets";
 import { hash, type Reader } from "./reader";
 import { existingCandidates, saveCandidate, sweepVanished, touchSeen } from "./store";
 import { allowedBy, mergeSelectors, parseMatching, selectorsFromTags } from "./tagfilter";
@@ -107,7 +107,7 @@ export async function processArea(
 	const extracted: { x: Extraction; rec: RawRecord }[] = [];
 
 	let failedInARow = 0;
-	for (const rec of input.records) {
+	for (const rec of mergeSites(input.records, input.reader?.preset)) {
 		if (rec.unchanged) {
 			unchanged.push(rec.key);
 			continue;

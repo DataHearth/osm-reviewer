@@ -86,6 +86,36 @@ export interface Preset {
 	position(row: Row): [number, number] | null;
 	/** `rows` are every row that shares the key; `url` is the record's own address. */
 	extract(rows: Row[], url: string): Extraction | null;
+	/** Records whose rows give the same site are one place, whatever their keys say. */
+	site?(row: Row): string | null;
+}
+
+/**
+ * Some operators declare every charge point of a car park as a station of its own, which
+ * would make one candidate per point, all on the same spot. Records on one site become
+ * one, under the smallest key, so an existing candidate keeps its id and the others are
+ * swept as gone.
+ */
+export function mergeSites<R extends { key: string; rows: Row[] }>(
+	records: R[],
+	preset: Preset | null | undefined,
+): R[] {
+	const site = preset?.site;
+	if (!site) return records;
+	const bySite = new Map<string, R>();
+	const out: R[] = [];
+	for (const rec of [...records].sort((a, b) => a.key.localeCompare(b.key))) {
+		const s = rec.rows[0] ? site(rec.rows[0]) : null;
+		const into = s ? bySite.get(s) : undefined;
+		if (into) {
+			into.rows.push(...rec.rows);
+			continue;
+		}
+		const own = { ...rec, rows: [...rec.rows] };
+		if (s) bySite.set(s, own);
+		out.push(own);
+	}
+	return out;
 }
 
 class Tags {
@@ -152,6 +182,11 @@ const irve: Preset = {
 	keyField: "id_station_itinerance",
 	detect: (c) => c.includes("id_station_itinerance") && c.includes("id_pdc_itinerance"),
 	key: (r) => str(r, "id_station_itinerance") || null,
+	site(r) {
+		const pos = irve.position(r);
+		const operator = (str(r, "nom_operateur") || str(r, "nom_amenageur")).toLowerCase();
+		return pos ? `${pos[0].toFixed(6)},${pos[1].toFixed(6)}|${operator}` : null;
+	},
 	position(r) {
 		const flag = str(r, "consolidated_is_lon_lat_correct");
 		if (flag && !truthy(flag)) return null;

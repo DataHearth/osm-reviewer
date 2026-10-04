@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectPreset, phoneFR, presetById, website } from "./presets";
+import { detectPreset, mergeSites, phoneFR, presetById, website } from "./presets";
 import type { Row } from "./types";
 
 const irveRow = (over: Row = {}): Row => ({
@@ -74,6 +74,25 @@ describe("IRVE preset", () => {
 		expect(tags.capacity).toMatchObject({ v: "2", parts: [{}, { text: "2" }] });
 		expect(tags["socket:type2"]?.v).toBe("2");
 		expect(tags.operator?.v).toBe("Operateur SA");
+	});
+
+	it("makes one record of the stations an operator declared per charge point on one site", () => {
+		const rec = (key: string, over: Row = {}) => ({
+			key,
+			rows: [irveRow({ id_station_itinerance: key, id_pdc_itinerance: key, ...over })],
+		});
+		const merged = mergeSites(
+			[rec("S3"), rec("S1"), rec("S2"), rec("S4", { nom_operateur: "Autre SA" })],
+			irve,
+		);
+		expect(merged.map((r) => [r.key, r.rows.length])).toEqual([
+			["S1", 3],
+			["S4", 1],
+		]);
+		const tags = Object.fromEntries(
+			(irve.extract(merged[0].rows, "u")?.tags ?? []).map((t) => [t.k, t.v]),
+		);
+		expect(tags).toMatchObject({ capacity: "3", "socket:type2": "3", "ref:EU:EVSE": "S1;S2;S3" });
 	});
 
 	it("proposes access=yes only to fill a gap, and nothing for reserved access", () => {
