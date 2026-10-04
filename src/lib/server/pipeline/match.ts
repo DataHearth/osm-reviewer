@@ -231,27 +231,53 @@ const SPLIT_RADIUS_M = 25;
 const label = (e: OsmElement, d: number) =>
 	`${osmRef(e)}${e.tags.name ? ` “${e.tags.name}”` : ""}, ${Math.round(d)} m away`;
 
-/** What a reviewer must check before trusting this match, or this "new". */
-export function matchWarnings(
+const kinOf = (
 	x: Pick<Extraction, "lat" | "lon" | "tags" | "refs">,
 	el: OsmElement | null,
 	els: OsmElement[],
-): string[] {
+) => {
 	const main = x.tags.find((t) => MAIN.includes(t.k));
-	if (!main) return [];
+	if (!main) return null;
 	const from = el ?? x;
 	const kin = els
 		.filter((e) => e.tags[main.k] === main.v && (!el || osmRef(e) !== osmRef(el)))
 		.filter((e) => !otherPlace(e, x.refs))
 		.map((e) => ({ e, d: distance(from.lat, from.lon, e.lat, e.lon) }))
 		.sort((a, b) => a.d - b.d);
+	return { main, kin };
+};
+
+/**
+ * The other objects the matched site is mapped as. A neighbour named for something else
+ * (another school in the same building) is not one of them.
+ */
+export function splitParts(
+	x: Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "name">,
+	el: OsmElement,
+	els: OsmElement[],
+): { e: OsmElement; d: number }[] {
+	const names = [x.name, el.tags.name].filter(Boolean);
+	const samePlace = (e: OsmElement) =>
+		!e.tags.name || names.some((n) => nameSimilarity(n, e.tags.name) >= NAME_MATCH);
+	return (kinOf(x, el, els)?.kin ?? []).filter((k) => k.d <= SPLIT_RADIUS_M && samePlace(k.e));
+}
+
+/** What a reviewer must check before trusting this match, or this "new". */
+export function matchWarnings(
+	x: Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "name">,
+	el: OsmElement | null,
+	els: OsmElement[],
+): string[] {
 	if (!el) {
-		const near = kin[0];
-		return near && near.d <= DUPLICATE_RADIUS_M
-			? [`Possible duplicate: ${main.k}=${main.v} already mapped at ${label(near.e, near.d)}`]
+		const found = kinOf(x, null, els);
+		const near = found?.kin[0];
+		return found && near && near.d <= DUPLICATE_RADIUS_M
+			? [
+					`Possible duplicate: ${found.main.k}=${found.main.v} already mapped at ${label(near.e, near.d)}`,
+				]
 			: [];
 	}
-	const split = kin.filter((k) => k.d <= SPLIT_RADIUS_M);
+	const split = splitParts(x, el, els);
 	return split.length
 		? [
 				`Same site may be mapped as ${split.length + 1} objects (also ${split.map((k) => label(k.e, k.d)).join("; ")}): what is written here would land on this one only`,

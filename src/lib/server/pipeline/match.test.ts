@@ -8,6 +8,7 @@ import {
 	newOps,
 	sameValue,
 	sharedRefs,
+	splitParts,
 	unchangedTags,
 	updateOps,
 } from "./match";
@@ -298,7 +299,7 @@ describe("updateOps regressions", () => {
 
 describe("matchWarnings", () => {
 	const station = { k: "amenity", v: "charging_station" } as const;
-	const x = { lat: 45.7, lon: 4.8, tags: [tag(station.k, station.v)], refs: {} };
+	const x = { lat: 45.7, lon: 4.8, name: "", tags: [tag(station.k, station.v)], refs: {} };
 
 	it("calls a new POI with one of its kind close by a possible duplicate", () => {
 		const near = el(1, 45.7005, 4.8, { amenity: "charging_station" });
@@ -321,10 +322,19 @@ describe("matchWarnings", () => {
 		const school = {
 			lat: 45.7,
 			lon: 4.8,
+			name: "ESARC",
 			tags: [tag("amenity", "school")],
 			refs: { "ref:UAI": "0690001A" },
 		};
 		const sibling = el(3, 45.7002, 4.8, { amenity: "school", "ref:UAI": "0690002B" });
 		expect(matchWarnings(school, null, [sibling])).toEqual([]);
+	});
+
+	it("does not take another school in the same building for a part of the site", () => {
+		const school = { lat: 45.7, lon: 4.8, name: "ESARC", tags: [tag("amenity", "school")], refs: {} };
+		const esarc = el(4, 45.7, 4.8, { amenity: "school", name: "ESARC Évolution" });
+		const lisaa = el(5, 45.70005, 4.8, { amenity: "school", name: "LISAA Toulouse" });
+		const annex = el(6, 45.70005, 4.8, { amenity: "school" });
+		expect(splitParts(school, esarc, [esarc, lisaa, annex]).map((k) => k.e.id)).toEqual([6]);
 	});
 });

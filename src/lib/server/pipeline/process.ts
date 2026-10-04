@@ -13,6 +13,7 @@ import {
 	nearbyLabels,
 	newOps,
 	sharedRefs,
+	splitParts,
 	type TagOp,
 	unchangedTags,
 	updateOps,
@@ -46,6 +47,10 @@ export interface AreaOutcome {
 /** After this many model calls in a row fail the model is down, not the pages odd. */
 const MODEL_FAILURES_BEFORE_ABORT = 3;
 const POI_RECOUNT_MS = 7 * 24 * 3_600_000;
+/** What a source counts for a whole site, which no single part of a split site carries. */
+const SITE_COUNTS = /^(capacity|socket:.+)$/;
+const SPLIT_COUNTS_NOTE =
+	"Capacity and sockets are left out: the source counts the whole site, not this one object";
 
 async function extract(
 	source: SourceRow,
@@ -153,6 +158,7 @@ export async function processArea(
 	for (const { x, rec, el } of matched) {
 		let type: "new" | "update" | "closure";
 		let ops: TagOp[];
+		const notes: string[] = [];
 		if (x.closedBy) {
 			if (!el) continue;
 			type = "closure";
@@ -160,6 +166,11 @@ export async function processArea(
 		} else if (el) {
 			type = "update";
 			ops = updateOps(x.tags, el.tags);
+			if (splitParts(x, el, elements).length) {
+				const counts = ops.filter((o) => SITE_COUNTS.test(o.k));
+				ops = ops.filter((o) => !counts.includes(o));
+				if (counts.length) notes.push(SPLIT_COUNTS_NOTE);
+			}
 		} else {
 			type = "new";
 			ops = newOps(x.tags);
@@ -179,6 +190,7 @@ export async function processArea(
 		const warning =
 			[
 				...(x.notes ?? []),
+				...notes,
 				...(el ? (x.absent ?? []).filter((k) => el.tags[k] !== undefined) : []).map(
 					(k) => `OSM has ${k}=${el?.tags[k]}, which the source says this place does not have`,
 				),

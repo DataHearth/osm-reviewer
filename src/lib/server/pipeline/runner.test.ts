@@ -160,6 +160,28 @@ describe("runSource (registry)", () => {
 		expect(db.select().from(t.areas).get()?.lastRunAt).not.toBeNull();
 	});
 
+	it("writes no site counts onto one part of a station mapped as several objects", async () => {
+		osm.elements.push({
+			type: "node",
+			id: 101,
+			lat: 45.76005,
+			lon: 4.83,
+			version: 1,
+			tags: { amenity: "charging_station" },
+		});
+		await runSource(db, "irve");
+
+		const split = cands().find((c) => c.sourceRecordKey === "FRS1");
+		const keys = db
+			.select()
+			.from(t.tags)
+			.where(eq(t.tags.candidateId, split?.id as string))
+			.all()
+			.map((x) => x.k);
+		expect(keys.filter((k) => k === "capacity" || k.startsWith("socket:"))).toEqual([]);
+		expect(split?.warning).toContain("Capacity and sockets are left out");
+	});
+
 	it("leaves unchanged records alone and sweeps a record that left the file", async () => {
 		await runSource(db, "irve");
 		const before = new Map(cands().map((c) => [c.sourceRecordKey, c.id]));
