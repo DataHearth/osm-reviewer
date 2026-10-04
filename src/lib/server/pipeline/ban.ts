@@ -1,5 +1,5 @@
 import { ban } from "$lib/server/config";
-import { distance, houseNumber, tokens } from "./geo";
+import { distance, houseNumber, spacedNumber, tokens } from "./geo";
 import { getJson } from "./http";
 import { findMatch } from "./match";
 import type { Preset } from "./presets";
@@ -129,7 +129,7 @@ function spelled(parts: ProposedTag[], hit: Feature): ProposedTag[] {
 	};
 	const number = parts.find((t) => t.k === "addr:housenumber")?.v;
 	if (p.housenumber && number && houseNumber(number) === houseNumber(p.housenumber))
-		from["addr:housenumber"] = p.housenumber;
+		from["addr:housenumber"] = spacedNumber(p.housenumber);
 	const like = parts.find((t) => t.k === "addr:street") ?? parts[0];
 	return [
 		...parts.filter((t) => !(t.k in from)),

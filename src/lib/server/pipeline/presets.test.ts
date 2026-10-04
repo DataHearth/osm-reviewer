@@ -1156,7 +1156,7 @@ describe("schoolAddress", () => {
 	});
 	it("writes a housenumber without its leading zero, its suffix in lower case, and reads a port as a street", () => {
 		expect(at({ adresse_1: "07 chemin des Prés" })?.number).toBe("7");
-		expect(at({ adresse_1: "158 BIS RUE DU 4 AOUT 1789" })?.number).toBe("158bis");
+		expect(at({ adresse_1: "158 BIS RUE DU 4 AOUT 1789" })?.number).toBe("158 bis");
 		expect(at({ adresse_1: "8 port SAINT-SAUVEUR" })?.street).toBe("Port SAINT-SAUVEUR");
 	});
 	it("keeps a housenumber range whole and asks for its first number", () => {

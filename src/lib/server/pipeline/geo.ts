@@ -109,3 +109,7 @@ export const houseNumber = (s: string) =>
 		.replace(/\s+/g, "")
 		.toLowerCase()
 		.replace(/(^|-)0+(?=\d)/g, "$1");
+
+/** A housenumber as Lyon's and Toulouse's mappers write it: "74 bis", not the address base's "74bis". */
+export const spacedNumber = (s: string) =>
+	houseNumber(s).replace(/(\d)(bis|ter|quater|quinquies)$/, "$1 $2");

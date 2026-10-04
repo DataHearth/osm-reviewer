@@ -93,7 +93,7 @@ describe("placeAddress", () => {
 		x.tags[1] = tag("addr:housenumber", "158 BIS");
 		x.geocode = { q: "158 bis rue Ampère 69600 Oullins", farM: 1000 };
 		expect(values(await placeAddress(x))).toMatchObject({
-			"addr:housenumber": "158bis",
+			"addr:housenumber": "158 bis",
 			"addr:street": "Rue Ampère",
 		});
 	});

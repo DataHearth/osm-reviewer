@@ -1,5 +1,5 @@
 import { fmtDate } from "$lib/format";
-import { distance, houseNumber, normaliseName, tokens } from "./geo";
+import { distance, normaliseName, spacedNumber, tokens } from "./geo";
 import { openingHours as parsedHours } from "./llm";
 import type { Extraction, ProposedTag, Row } from "./types";
 
@@ -1312,7 +1312,7 @@ export function schoolAddress(r: Row) {
 			.trim(),
 	);
 	const m = /^(\d+(?: ?- ?\d+)?(?: ?(?:bis|ter|quater|[a-z]))?) (.+)$/i.exec(line);
-	const number = m ? houseNumber(m[1]) : "";
+	const number = m ? spacedNumber(m[1]) : "";
 	const street = m ? m[2] : line;
 	if (!STREET.test(street)) return null;
 	const mail = `${str(r, "adresse_2")} ${str(r, "adresse_3")}`;
