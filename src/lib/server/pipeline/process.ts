@@ -3,7 +3,7 @@ import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import type { SourceRecord } from "$lib/types";
-import { placeAddress } from "./ban";
+import { addressGaps, placeAddress, settlePoints } from "./ban";
 import { refreshConflicts } from "./conflicts";
 import { inArea } from "./geo";
 import { askModel, modelLabel, vetTags } from "./llm";
@@ -79,8 +79,13 @@ async function extract(
 	reader: Reader | null,
 	allow: string[],
 ): Promise<Extraction | null> {
-	if (source.extractor === "deterministic")
-		return reader?.preset?.extract(rec.rows, rec.url) ?? null;
+	if (source.extractor === "deterministic") {
+		const preset = reader?.preset;
+		if (!preset) return null;
+		const gaps =
+			preset.siteQuery && rec.rows.length > 1 ? await addressGaps(rec.rows, preset) : undefined;
+		return preset.extract(rec.rows, rec.url, gaps);
+	}
 
 	const row = rec.rows[0] ?? {};
 	const pos: [number, number] | null = rec.element
@@ -132,7 +137,7 @@ export async function processArea(
 	const errors: string[] = [];
 	const failedKeys: string[] = [];
 	const unchanged: string[] = [];
-	const extracted: { x: Extraction; rec: RawRecord }[] = [];
+	const read: { x: Extraction; rec: RawRecord }[] = [];
 	let outside = 0;
 	let withheld = 0;
 
@@ -148,12 +153,8 @@ export async function processArea(
 			if (!raw) continue;
 			const x = await placeAddress(raw);
 			withheld += x.withheld ?? 0;
-			if ((x.lat !== raw.lat || x.lon !== raw.lon) && !inArea(area, x.lat, x.lon)) {
-				outside += 1;
-				continue;
-			}
 			const tags = x.tags.filter((tag) => allowedBy(allow, tag.k) && tag.conf >= source.floor);
-			if (tags.length) extracted.push({ x: { ...x, tags }, rec });
+			if (tags.length) read.push({ x: { ...x, tags }, rec });
 		} catch (err) {
 			if (err instanceof PipelineError && /no model configured/.test(err.message)) throw err;
 			errors.push(err instanceof Error ? err.message : String(err));
@@ -165,13 +166,13 @@ export async function processArea(
 		}
 	}
 
-	const refKeys = [...new Set(extracted.flatMap((e) => Object.keys(e.x.refs)))];
+	const refKeys = [...new Set(read.flatMap((e) => Object.keys(e.x.refs)))];
 	const selectors = mergeSelectors(
 		parseMatching(source.matching),
-		selectorsFromTags(extracted.flatMap((e) => e.x.tags)),
+		selectorsFromTags(read.flatMap((e) => e.x.tags)),
 		...refKeys.map((k) => REF_SELECTORS[k] ?? []),
 	);
-	const lookalikes = lookalikeSelectors(extracted.flatMap((e) => e.x.tags));
+	const lookalikes = lookalikeSelectors(read.flatMap((e) => e.x.tags));
 	const fetched =
 		input.elements ?? (await fetchElements(area, mergeSelectors(selectors, lookalikes)));
 	// Lookalikes are only for the duplicate banner: never a match, nor part of a site.
@@ -180,6 +181,22 @@ export async function processArea(
 		: fetched.filter((e) => selectors.some((s) => selects(s, e.tags)));
 
 	const refIndex = indexRefs(elements, refKeys);
+	// Whether a point moves to its address depends on what matches it where it stands, so
+	// the move waits for OSM's objects, and so does dropping one its address took outside.
+	const settled = settlePoints(
+		read.map((e) => e.x),
+		elements,
+		refIndex,
+		sharedRefs(read.map((e) => e.x)),
+	);
+	const extracted = read.flatMap((e, i) => {
+		const x = settled[i];
+		if (x.from && !inArea(area, x.lat, x.lon)) {
+			outside += 1;
+			return [];
+		}
+		return [{ ...e, x }];
+	});
 	const shared = sharedRefs(extracted.map((e) => e.x));
 	const matched = extracted.map((e) => ({
 		...e,

@@ -1,4 +1,4 @@
-import { distance, nameSimilarity, normaliseName, tokens } from "./geo";
+import { distance, houseNumber, nameSimilarity, normaliseName, tokens } from "./geo";
 import { lookalike, SCHOOLS, type Selector, sameKind, schoolBuilding } from "./tagfilter";
 import { type Extraction, type OsmElement, osmRef, type ProposedTag } from "./types";
 
@@ -287,6 +287,7 @@ export function sameValue(k: string, a: string, b: string): boolean {
 	if (k === "opening_hours") return allDay(a) === allDay(b);
 	if (k.endsWith(":output")) return Number.parseFloat(a) === Number.parseFloat(b);
 	if (k === "phone" || k === "fax") return digits(a) === digits(b);
+	if (k === "addr:housenumber") return houseNumber(a) === houseNumber(b);
 	if (k === "website") return site(a) === site(b);
 	// One object often carries several establishments' ids (a collège and its SEGPA):
 	// the record's own id among them agrees, and replacing the list would delete the others.
@@ -388,7 +389,8 @@ export function updateOps(proposed: ProposedTag[], current: Record<string, strin
 		if (elsewhere?.some((o) => current[o] && digits(current[o]) === digits(p.v))) continue;
 		const had = current[k];
 		if (had === undefined) ops.push({ ...p, k, op: "add", was: null });
-		else if (!p.addOnly && !sameValue(p.k, p.v, had)) ops.push({ ...p, k, op: "mod", was: had });
+		else if (!p.addOnly && ![p.v, ...(p.also ?? [])].some((v) => sameValue(p.k, v, had)))
+			ops.push({ ...p, k, op: "mod", was: had });
 	}
 	const typed = ops.find((o) => /^socket:(?!unknown)[^:]+$/.test(o.k));
 	if (typed)
@@ -444,7 +446,7 @@ function addressOf(tags: Record<string, string>): string | null {
 	return n && street ? `${fold(n)} ${fold(street)}` : null;
 }
 
-type Placed = Pick<Extraction, "lat" | "lon" | "tags" | "refs">;
+type Placed = Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "from">;
 
 /** Objects of the record's kind other than `el`, nearest to it (or to the record) first. */
 function kinOf(x: Placed, el: OsmElement | null, els: OsmElement[]) {
@@ -505,10 +507,12 @@ function duplicates(x: Placed, els: OsmElement[]): string[] {
 	const reach = (e: OsmElement, d: number) =>
 		d <= DUPLICATE_RADIUS_M ||
 		(d <= SAME_OPERATOR_RADIUS_M && (whoAgrees(x, e) || (!!at && addressOf(e.tags) === at)));
+	// A record moved to its address may be mapped where the source placed it.
+	const points = [x, ...(x.from ? [x.from] : [])];
 	const nearest = (kind: (tags: Record<string, string>) => boolean) =>
 		els
 			.filter((e) => kind(e.tags) && !otherPlace(e, x.refs))
-			.map((e) => ({ e, d: distance(x.lat, x.lon, e.lat, e.lon) }))
+			.map((e) => ({ e, d: Math.min(...points.map((p) => distance(p.lat, p.lon, e.lat, e.lon))) }))
 			.filter(({ e, d }) => reach(e, d))
 			.sort((a, b) => a.d - b.d)[0];
 	const kin = nearest((tags) => sameKind(main.k, main.v, tags));
@@ -560,7 +564,7 @@ function siblingOf(x: Placed, els: OsmElement[]): string | null {
 
 /** What a reviewer must check before trusting this match, or this "new". */
 export function matchWarnings(
-	x: Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "name">,
+	x: Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "name" | "from">,
 	el: OsmElement | null,
 	els: OsmElement[],
 	refIndex: Map<string, OsmElement[]> = new Map(),

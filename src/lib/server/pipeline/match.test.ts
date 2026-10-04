@@ -521,6 +521,19 @@ describe("context", () => {
 });
 
 describe("updateOps regressions", () => {
+	it("agrees with a value another site of the same establishment gives", () => {
+		const phone = { ...tag("phone", "+33 5 61 62 46 59"), also: ["+33 5 61 21 99 71"] };
+		expect(updateOps([phone], { phone: "+33 5 61 21 99 71" })).toEqual([]);
+		expect(updateOps([phone], { phone: "+33 5 61 00 00 00" })).toHaveLength(1);
+	});
+
+	it("reads a housenumber the same whatever its spacing, case or leading zero", () => {
+		expect(sameValue("addr:housenumber", "62bis", "62 bis")).toBe(true);
+		expect(sameValue("addr:housenumber", "7", "07")).toBe(true);
+		expect(sameValue("addr:housenumber", "158bis", "158 BIS")).toBe(true);
+		expect(sameValue("addr:housenumber", "17", "7")).toBe(false);
+	});
+
 	it("leaves a name that only differs by accents, case or punctuation", () => {
 		expect(
 			updateOps([tag("name", "Ecole maternelle Charles Peguy")], {
@@ -566,6 +579,12 @@ describe("matchWarnings", () => {
 		expect(matchWarnings(x, null, [el(2, 45.71, 4.8, { amenity: "charging_station" })])).toEqual(
 			[],
 		);
+	});
+
+	it("looks for a moved record's duplicate where the source placed it too", () => {
+		const moved = { ...x, lat: 45.71, from: { lat: 45.7, lon: 4.8 } };
+		const near = el(1, 45.7005, 4.8, { amenity: "charging_station" });
+		expect(matchWarnings(moved, null, [near])[0]).toMatch(/^Possible duplicate: .*node\/1, 56 m/);
 	});
 
 	it("names the other objects a matched site is split over", () => {

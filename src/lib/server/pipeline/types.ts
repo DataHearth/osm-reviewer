@@ -31,6 +31,11 @@ export interface ProposedTag {
 	group?: string;
 	/** Why the value cannot be written as it stands; the reviewer sees it and has to type over it. */
 	invalid?: string;
+	/**
+	 * Other values the same source gives for this key (another row of one establishment
+	 * listed at several sites): OSM holding any of them agrees with the source.
+	 */
+	also?: string[];
 }
 
 export interface Extraction {
@@ -54,6 +59,14 @@ export interface Extraction {
 	 * sit from its housenumber before the point is the one taken to be wrong.
 	 */
 	geocode?: { q: string; farM: number };
+	/**
+	 * Where the address base places the record's own housenumber, on a street that agrees
+	 * with the source's. Set by `placeAddress`; the point moves there only once matching at
+	 * the source's own point has had its say (`settlePoints`).
+	 */
+	atAddress?: { lat: number; lon: number; label: string };
+	/** The source's own point, when the record was moved off it to its address. */
+	from?: { lat: number; lon: number };
 	/** Contact details the source gave that read as a person's own, and were left out. */
 	withheld?: number;
 }

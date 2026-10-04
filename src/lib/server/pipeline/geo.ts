@@ -97,3 +97,10 @@ export function nameSimilarity(a: string, b: string, ignore: Set<string> = new S
 	for (const w of ta) if (tb.has(w)) shared += 1;
 	return (2 * shared) / (ta.size + tb.size);
 }
+
+/** A housenumber as OSM writes it from a directory's: "07" is 7, "158 BIS" is 158bis. */
+export const houseNumber = (s: string) =>
+	s
+		.replace(/\s+/g, "")
+		.toLowerCase()
+		.replace(/(^|-)0+(?=\d)/g, "$1");

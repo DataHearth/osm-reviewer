@@ -1,5 +1,5 @@
 import { fmtDate } from "$lib/format";
-import { distance, normaliseName, tokens } from "./geo";
+import { distance, houseNumber, normaliseName, tokens } from "./geo";
 import { openingHours as parsedHours } from "./llm";
 import type { Extraction, ProposedTag, Row } from "./types";
 
@@ -86,8 +86,13 @@ export interface Preset {
 	detect(columns: string[]): boolean;
 	key(row: Row): string | null;
 	position(row: Row): [number, number] | null;
-	/** `rows` are every row that shares the key; `url` is the record's own address. */
-	extract(rows: Row[], url: string): Extraction | null;
+	/**
+	 * `rows` are every row that shares the key; `url` is the record's own address; `gaps`, for
+	 * a key at several sites, how far each row's address lies from its point (`addressGaps`).
+	 */
+	extract(rows: Row[], url: string, gaps?: Map<Row, number>): Extraction | null;
+	/** What to ask the address base for one row's own address, for a key at several sites. */
+	siteQuery?(row: Row): string | null;
 	/** Records whose rows give the same site are one place, whatever their keys say. */
 	site?(row: Row): string | null;
 	/**
@@ -846,6 +851,12 @@ const ACRONYMS = new Set([
 	"CMPP",
 	"IFSI",
 	"ISSEC",
+	"EPNAK",
+	"IESCA",
+	"ICS",
+	"ASEI",
+	"OVE",
+	"ISO",
 ]);
 
 /** Small words a name written all in capitals has in capitals too. */
@@ -939,7 +950,7 @@ export function schoolName(raw: string): string {
 const SURNAME_AFTER = /^(\p{Lu}\p{Ll}+([-'’]\p{Lu}\p{Ll}+)*|de|du|des|d'|la|le)$/u;
 
 const STREET =
-	/^(rue|avenue|boulevard|cheminement|chemin|place|allée|allées|impasse|route|quai|cours|square|voie|passage|esplanade|rond-point|montée|chaussée|parvis|promenade|sentier|faubourg|clos|cité|grande? rue|petite rue)\b/i;
+	/^(rue|avenue|boulevard|cheminement|chemin|place|port|allée|allées|impasse|route|quai|cours|square|voie|passage|esplanade|rond-point|montée|chaussée|parvis|promenade|sentier|faubourg|clos|cité|grande? rue|petite rue)\b/i;
 
 /** Street types as an address line abbreviates them, read only where the type stands. */
 const STREET_TYPES: Record<string, string> = {
@@ -1041,7 +1052,7 @@ export function schoolAddress(r: Row) {
 			.trim(),
 	);
 	const m = /^(\d+(?: ?- ?\d+)?(?: ?(?:bis|ter|quater|[a-z]))?) (.+)$/i.exec(line);
-	const number = m ? m[1].replace(/ /g, "") : "";
+	const number = m ? houseNumber(m[1]) : "";
 	const street = m ? m[2] : line;
 	if (!STREET.test(street)) return null;
 	const mail = `${str(r, "adresse_2")} ${str(r, "adresse_3")}`;
@@ -1093,19 +1104,28 @@ const ROLE_WORDS = new Set(
 	).split(" "),
 );
 
+/** A first name, or an initial run into a surname ("maubert", "ehatzakortzian"). */
+const ONE_WORD = /^[a-z]{4,}$/;
+/** Shorter words turn up inside names by chance ("ce" in "vincent"). */
+const WORD_INSIDE = 4;
+
 /**
  * A mailbox that reads as somebody's own: a staff member's address is personal data, and
  * one that leaves with them. A part that is a role word, or is in the domain, the school's
- * name or its commune ("immaculee.conception@immaculee.net", "campus.toulouse@…") is the
- * establishment's.
+ * name or its place (commune and street) is the establishment's
+ * ("immaculee.conception@immaculee.net", "campus.toulouse@…"), and so is a single word
+ * built on one ("secretariatmontchat", "lyceepro", "neyret" on rue Neyret).
  */
-export function personalMailbox(mail: string, name: string, city: string): boolean {
+export function personalMailbox(mail: string, name: string, place: string): boolean {
 	const [local, domain = ""] = bare(mail).toLowerCase().split("@");
-	if (!PERSON_MAILBOX.test(local)) return false;
-	const own = new Set([...tokens(name), ...tokens(city)]);
-	return !local
-		.split(/[._-]/)
-		.some((p) => ROLE_WORDS.has(p) || own.has(p) || (p.length >= 3 && domain.includes(p)));
+	const own = new Set([...tokens(name), ...tokens(place)]);
+	const theirs = (p: string) =>
+		ROLE_WORDS.has(p) || own.has(p) || (p.length >= 3 && domain.includes(p));
+	if (PERSON_MAILBOX.test(local)) return !local.split(/[._-]/).some(theirs);
+	if (!ONE_WORD.test(local) || theirs(local)) return false;
+	return ![...ROLE_WORDS, ...own, ...domain.split(/[.-]/)].some(
+		(w) => w.length >= WORD_INSIDE && local.includes(w),
+	);
 }
 
 const isMobile = (phone: string) => /^\+33 [67] /.test(phone);
@@ -1117,6 +1137,32 @@ const isMobile = (phone: string) => /^\+33 [67] /.test(phone);
  */
 const publicBody = (siret: string) => (/^\d{14}$/.test(siret) ? /^[12]/.test(siret) : null);
 
+const SEGPA = "390";
+
+/** Addresses this close to the point are one site as far as the point can tell. */
+const SAME_SITE_M = 100;
+
+/**
+ * One UAI over several sites comes as several rows, each at the one point the directory has
+ * for the UAI: the main site is the one whose address is at that point. Where the address
+ * base cannot tell, the main row carries the plain name and its annexes a suffix ("Collège
+ * Michelet - annexe", "… - Site St Didier").
+ */
+function mainSite(rows: Row[], gaps?: Map<Row, number>): Row {
+	const gap = (r: Row) => gaps?.get(r) ?? Number.POSITIVE_INFINITY;
+	const nearest = Math.min(...rows.map(gap));
+	return rows
+		.filter((r) => gap(r) <= nearest + SAME_SITE_M || nearest === Number.POSITIVE_INFINITY)
+		.sort((a, b) => str(a, "nom_etablissement").length - str(b, "nom_etablissement").length)[0];
+}
+
+/** The values a UAI's other sites give for the same tag, which OSM may hold just as well. */
+function alsoAt(tag: ProposedTag | undefined, rows: Row[], read: (row: Row) => string | null) {
+	if (!tag) return;
+	const also = [...new Set(rows.map(read))].filter((v): v is string => !!v && v !== tag.v);
+	if (also.length) tag.also = also;
+}
+
 /** Annuaire de l'éducation. */
 const education: Preset = {
 	id: "annuaire-education",
@@ -1125,19 +1171,22 @@ const education: Preset = {
 	detect: (c) => c.includes("identifiant_de_l_etablissement") && c.includes("nom_etablissement"),
 	key: (r) => str(r, "identifiant_de_l_etablissement") || null,
 	position: (r) => findCoords(r),
-	extract(rows, url) {
-		// One UAI over several sites comes as several rows; the main one carries the plain name,
-		// its annexes a suffix ("Collège Michelet - annexe", "… - Site St Didier").
-		const r = [...rows].sort(
-			(a, b) => str(a, "nom_etablissement").length - str(b, "nom_etablissement").length,
-		)[0];
+	siteQuery: (r) => schoolAddress(r)?.query ?? null,
+	extract(rows, url, gaps) {
+		const r = mainSite(rows, gaps);
 		const pos = education.position(r);
 		const key = education.key(r);
 		if (!pos || !key) return null;
 		const kind = schoolKind(r);
 		// A SEGPA or a lycée's vocational section lives in its parent's buildings, with the
-		// parent's SIRET and switchboard: it is not a place of its own on the map.
-		if (!kind || /section/i.test(str(r, "type_rattachement_etablissement_mere"))) return null;
+		// parent's SIRET and switchboard: it is not a place of its own on the map, even where the
+		// directory attaches a SEGPA as a geographic annex rather than as a section.
+		if (
+			!kind ||
+			/section/i.test(str(r, "type_rattachement_etablissement_mere")) ||
+			str(r, "code_nature") === SEGPA
+		)
+			return null;
 		const t = new Tags(r);
 		const name = schoolName(str(r, "nom_etablissement"));
 		const state = str(r, "etat", "etat_etablissement");
@@ -1179,14 +1228,18 @@ const education: Preset = {
 			);
 		const at = schoolAddress(r);
 		let withheld = 0;
-		const phone = phoneFR(str(r, "telephone"));
+		const phoneOf = (row: Row) => phoneFR(str(row, "telephone"));
+		const phone = phoneOf(r);
 		if (phone && isMobile(phone)) withheld += 1;
-		else if (phone) t.add("phone", phone, 0.85, "telephone", undefined, "normalised");
-		const site = website(str(r, "web", "site_web"));
-		if (site) t.add("website", site, 0.8, "web");
+		else if (phone)
+			alsoAt(t.add("phone", phone, 0.85, "telephone", undefined, "normalised"), rows, phoneOf);
+		const siteOf = (row: Row) => website(str(row, "web", "site_web"));
+		const site = siteOf(r);
+		if (site) alsoAt(t.add("website", site, 0.8, "web"), rows, siteOf);
 		const mail = str(r, "mail");
 		if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail) && !WEBMAIL.test(mail)) {
-			if (personalMailbox(mail, name, at?.city ?? str(r, "nom_commune"))) withheld += 1;
+			if (personalMailbox(mail, name, `${str(r, "nom_commune")} ${str(r, "adresse_1")}`))
+				withheld += 1;
 			else fill(t.add("email", mail, 0.8, "mail"));
 		}
 		const opened = str(r, "date_ouverture");

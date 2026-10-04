@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { placeAddress } from "./ban";
+import { addressGaps, placeAddress, settlePoints } from "./ban";
 import { updateOps } from "./match";
-import type { Extraction, ProposedTag } from "./types";
+import type { Extraction, OsmElement, ProposedTag } from "./types";
 
 const tag = (k: string, v: string): ProposedTag => ({
 	k,
@@ -30,10 +30,13 @@ const school = (q: string, lat = 43.6, lon = 1.45): Extraction => ({
 		tag("addr:street", "rue louis auguste blanqui"),
 		tag("addr:city", "Oullins"),
 	],
-	geocode: { q, farM: 1000 },
+	geocode: { q: `20 rue Louis Auguste Blanqui 69600 Oullins ${q}`, farM: 1000 },
 });
 
-const answer = (score: number, { type = "housenumber", lon = 1.45, lat = 43.6 } = {}) =>
+const answer = (
+	score: number,
+	{ type = "housenumber", lon = 1.45, lat = 43.6, ...props }: Record<string, string | number> = {},
+) =>
 	Response.json({
 		features: [
 			{
@@ -42,10 +45,12 @@ const answer = (score: number, { type = "housenumber", lon = 1.45, lat = 43.6 } 
 					label: "20 Rue Louis-Auguste Blanqui 69600 Oullins-Pierre-Bénite",
 					name: "20 Rue Louis-Auguste Blanqui",
 					street: "Rue Louis-Auguste Blanqui",
+					housenumber: "20",
 					postcode: "69600",
 					city: "Oullins-Pierre-Bénite",
 					score,
 					type,
+					...props,
 				},
 			},
 		],
@@ -73,6 +78,26 @@ describe("placeAddress", () => {
 		expect(x.notes).toBeUndefined();
 	});
 
+	it("takes the base's housenumber when it is the source's, and drops a merged commune's old name from the street", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				answer(0.97, {
+					housenumber: "158bis",
+					street: "Rue Ampère (Oullins)",
+					oldcity: "Oullins",
+				}),
+			),
+		);
+		const x = school("oldcity");
+		x.tags[1] = tag("addr:housenumber", "158 BIS");
+		x.geocode = { q: "158 bis rue Ampère 69600 Oullins", farM: 1000 };
+		expect(values(await placeAddress(x))).toMatchObject({
+			"addr:housenumber": "158bis",
+			"addr:street": "Rue Ampère",
+		});
+	});
+
 	it("proposes no address at all without a confident match", async () => {
 		vi.stubGlobal(
 			"fetch",
@@ -80,6 +105,16 @@ describe("placeAddress", () => {
 		);
 		const x = await placeAddress(school("miss"));
 		expect(values(x)).toEqual({ "ref:UAI": "0310001A" });
+	});
+
+	it("asks again without the postcode when the line with it misses", async () => {
+		const fetch = vi.fn(async (u: string) =>
+			answer(/\d{5}/.test(decodeURIComponent(u)) ? 0.46 : 0.98),
+		);
+		vi.stubGlobal("fetch", fetch);
+		const x = await placeAddress(school("retry"));
+		expect(values(x)["addr:street"]).toBe("Rue Louis-Auguste Blanqui");
+		expect(fetch).toHaveBeenCalledTimes(2);
 	});
 
 	it("asks the address base once per address", async () => {
@@ -90,31 +125,27 @@ describe("placeAddress", () => {
 		expect(fetch).toHaveBeenCalledTimes(1);
 	});
 
-	it("moves a point far from its own housenumber there, and says so", async () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () => answer(0.95, { lon: 1.48942, lat: 43.529141 })),
-		);
-		const x = await placeAddress(school("far", 43.628, 1.4346));
-		expect(x).toMatchObject({ lat: 43.529141, lon: 1.48942 });
-		expect(x.notes?.[0]).toMatch(/^Moved 1\d\.\d km to its address, 20 Rue Louis-Auguste/);
-	});
-
-	it("leaves a point within reach of its address, or placed only on its street, where it is", async () => {
+	it("places the housenumber for later, on the source's street only", async () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async (u: string) =>
-				answer(0.95, {
-					type: u.includes("street") ? "street" : "housenumber",
-					lon: 1.4346,
-					lat: u.includes("street") ? 43.5 : 43.625,
-				}),
+				u.includes("Matabiau")
+					? answer(0.76, { street: "Rue Matabiau", label: "5 Rue Matabiau 31000 Toulouse" })
+					: u.includes("Tuilliers")
+						? answer(0.9, { street: "Rue des Tuiliers", label: "31 Rue des Tuiliers" })
+						: u.includes("street")
+							? answer(0.95, { type: "street" })
+							: answer(0.95, { lon: 1.48942, lat: 43.529141 }),
 			),
 		);
-		for (const q of ["near", "street"]) {
-			const x = await placeAddress(school(q, 43.628, 1.4346));
-			expect(x).toMatchObject({ lat: 43.628, lon: 1.4346 });
-		}
+		const x = await placeAddress(school("far", 43.628, 1.4346));
+		expect(x).toMatchObject({ lat: 43.628, lon: 1.4346 });
+		expect(x.atAddress).toMatchObject({ lat: 43.529141, lon: 1.48942 });
+		expect((await placeAddress(school("street"))).atAddress).toBeUndefined();
+		const at = async (q: string) =>
+			(await placeAddress({ ...school(q), geocode: { q, farM: 100 } })).atAddress;
+		expect(await at("5 Boulevard de Matabiau 31000 Toulouse")).toBeUndefined();
+		expect(await at("31 rue des Tuilliers 69008 Lyon")).toBeDefined();
 	});
 
 	it("leaves a record with nothing to ask alone", async () => {
@@ -125,7 +156,7 @@ describe("placeAddress", () => {
 		expect(fetch).not.toHaveBeenCalled();
 	});
 
-	it("agrees with an object whose address differs from the base's only in case and accents", async () => {
+	it("agrees with an object whose address differs from the base's only in case, accents and spacing", async () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () => answer(0.97)),
@@ -134,11 +165,89 @@ describe("placeAddress", () => {
 		expect(
 			updateOps(x.tags, {
 				"ref:UAI": "0310001A",
-				"addr:housenumber": "20-28",
+				"addr:housenumber": "20 - 28",
 				"addr:street": "rue Louis Auguste Blanqui",
 				"addr:postcode": "69600",
 				"addr:city": "OULLINS-PIERRE-BENITE",
 			}),
 		).toEqual([]);
+	});
+});
+
+describe("addressGaps", () => {
+	it("measures each site's address from its point", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (u: string) =>
+				answer(0.95, u.includes("quai") ? { lat: 43.61, lon: 1.45 } : { lat: 43.6, lon: 1.45 }),
+			),
+		);
+		const near = { adresse: "30 rue Couturier" };
+		const far = { adresse: "2 quai Moulin" };
+		const gaps = await addressGaps([near, far], {
+			siteQuery: (r) => String(r.adresse),
+			position: () => [43.6, 1.45],
+		});
+		expect(gaps.get(near)).toBeLessThan(1);
+		expect(gaps.get(far)).toBeGreaterThan(1000);
+	});
+});
+
+describe("settlePoints", () => {
+	const station = (key: string, lat: number, lon: number, operator = "IZIVIA"): Extraction => ({
+		key,
+		url: "u",
+		name: "",
+		addr: "700 La Pyrénéenne, 31670 Labège",
+		lat,
+		lon,
+		refs: {},
+		tags: [
+			{ ...tag("amenity", "charging_station"), group: undefined },
+			{ ...tag("operator", operator), group: undefined },
+		],
+		geocode: { q: "700 La Pyrénéenne, 31670 Labège", farM: 100 },
+		atAddress: { lat: 43.549142, lon: 1.506215, label: "700 La Pyreneenne 31670 Labège" },
+	});
+	const node = (id: number, lat: number, lon: number): OsmElement => ({
+		type: "node",
+		id,
+		version: 1,
+		lat,
+		lon,
+		tags: { amenity: "charging_station" },
+	});
+	const settle = (xs: Extraction[], els: OsmElement[] = []) =>
+		settlePoints(xs, els, new Map(), new Set());
+
+	it("moves a point far from its housenumber there, and says so", () => {
+		const [x] = settle([station("a", 43.550283, 1.50233)]);
+		expect(x).toMatchObject({
+			lat: 43.549142,
+			lon: 1.506215,
+			from: { lat: 43.550283, lon: 1.50233 },
+		});
+		expect(x.notes?.[0]).toBe("Moved 338 m to its address, 700 La Pyreneenne 31670 Labège");
+	});
+
+	it("keeps a point an object already stands at", () => {
+		const [x] = settle([station("a", 43.550283, 1.50233)], [node(1, 43.55031, 1.50235)]);
+		expect(x).toMatchObject({ lat: 43.550283, lon: 1.50233 });
+		expect(x.from).toBeUndefined();
+	});
+
+	it("keeps the points of one operator's stations at one address, a mall's or a campus's", () => {
+		const one = settle([station("a", 43.550283, 1.50233), station("b", 43.548046, 1.509322)]);
+		expect(one.every((x) => !x.from)).toBe(true);
+		const two = settle([
+			station("a", 43.550283, 1.50233),
+			station("b", 43.548046, 1.509322, "Allego"),
+		]);
+		expect(two.every((x) => x.from)).toBe(true);
+	});
+
+	it("leaves a point within reach of its address", () => {
+		const [x] = settle([station("a", 43.5495, 1.5063)]);
+		expect(x.from).toBeUndefined();
 	});
 });

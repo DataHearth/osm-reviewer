@@ -641,6 +641,26 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(x?.notes?.[0]).toMatch(/at 2 sites.*6 boulevard Michelet/);
 	});
 
+	it("takes the site whose address is at the directory's point as the main one", () => {
+		const there = row({
+			nom_etablissement: "Lycée de coiffure de Lyon",
+			adresse_1: "30 rue Couturier",
+		});
+		const away = row({ nom_etablissement: "École de coiffure", adresse_1: "2 quai Jean Moulin" });
+		const gaps = new Map([
+			[there, 15],
+			[away, 1300],
+		]);
+		expect(edu.extract([there, away], "u", gaps)?.name).toBe("Lycée de coiffure de Lyon");
+	});
+
+	it("lets OSM keep the phone another site of the same UAI gives", () => {
+		const annex = row({ adresse_1: "17 rue Larrey", telephone: "05 61 21 99 71" });
+		const main = row({ nom_etablissement: "Ecole", telephone: "05 61 62 46 59" });
+		const phone = edu.extract([annex, main], "u")?.tags.find((t) => t.k === "phone");
+		expect(phone).toMatchObject({ v: "+33 5 61 62 46 59", also: ["+33 5 61 21 99 71"] });
+	});
+
 	it("quotes the level flags a school's level comes from, and skips a webmail address", () => {
 		const tags = edu.extract([row({ mail: "someone@gmail.com" })], "u")?.tags ?? [];
 		expect(
@@ -665,6 +685,11 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(
 			edu.extract([row({ type_rattachement_etablissement_mere: "ANNEXE GEOGRAPHIQUE" })], "u"),
 		).not.toBeNull();
+		const segpa = {
+			type_rattachement_etablissement_mere: "ANNEXE GEOGRAPHIQUE",
+			code_nature: "390",
+		};
+		expect(edu.extract([row(segpa)], "u")).toBeNull();
 	});
 
 	it("proposes nothing for an office that is not a school", () => {
@@ -799,6 +824,11 @@ describe("schoolAddress", () => {
 		expect(at({ adresse_1: "95  bd PINEL" })?.query).toBe("95 boulevard PINEL 31000 Toulouse");
 		expect(at({ adresse_1: "373 r L'Occitane" })?.street).toBe("Rue L'Occitane");
 	});
+	it("writes a housenumber without its leading zero, its suffix in lower case, and reads a port as a street", () => {
+		expect(at({ adresse_1: "07 chemin des Prés" })?.number).toBe("7");
+		expect(at({ adresse_1: "158 BIS RUE DU 4 AOUT 1789" })?.number).toBe("158bis");
+		expect(at({ adresse_1: "8 port SAINT-SAUVEUR" })?.street).toBe("Port SAINT-SAUVEUR");
+	});
 	it("keeps a housenumber range whole and asks for its first number", () => {
 		const range = at({ adresse_1: "20-28 rue Louis Auguste Blanqui", code_postal: "69921" });
 		expect(range).toMatchObject({
@@ -898,6 +928,16 @@ describe("schoolName", () => {
 			"École technique privée ADONIS",
 		);
 	});
+
+	it("keeps the initialisms of a name written all in capitals", () => {
+		expect(schoolName("ICS LYON")).toBe("ICS Lyon");
+		expect(schoolName("ADONIS IESCA")).toBe("Adonis IESCA");
+		expect(schoolName("ASEI CENTRE PHILIAE")).toBe("ASEI Centre Philiae");
+		expect(schoolName("EPNAK TOULOUSE")).toBe("EPNAK Toulouse");
+		expect(schoolName("Foyer de la Fondation OVE - Appartements")).toBe(
+			"Foyer de la Fondation OVE - Appartements",
+		);
+	});
 });
 
 describe("expandStreet", () => {
@@ -945,6 +985,21 @@ describe("personalMailbox", () => {
 		expect(own("immaculee.conception@immaculee.net")).toBe(false);
 		expect(own("campus.lyon@x.fr")).toBe(false);
 		expect(own("lycee.neyret@x.fr", "Lycée Neyret")).toBe(false);
+	});
+
+	it("reads a mailbox of one word as a person's unless the word is the school's", () => {
+		const own = (mail: string, name = "Lycée professionnel de coiffure", place = "Lyon") =>
+			personalMailbox(mail, name, place);
+		expect(own("maubert@lyceedecoiffure.com")).toBe(true);
+		expect(own("ehatzakortzian@prado.asso.fr")).toBe(true);
+		expect(own("yolene@lespetitsplus.org")).toBe(true);
+		expect(own("accueil@x.fr")).toBe(false);
+		expect(own("lyceepro@slsb.fr")).toBe(false);
+		expect(own("secretariatmontchat@pierre-termier.fr")).toBe(false);
+		expect(own("carrel@carrel.fr")).toBe(false);
+		expect(own("contact31-toulouse@epnak.org")).toBe(false);
+		expect(own("maisondesenfants@adsea69.fr", "DITEP La Maison des enfants")).toBe(false);
+		expect(own("neyret@lasalle-69.com", "Lycée La Salle", "Lyon 22 rue Neyret")).toBe(false);
 	});
 });
 
