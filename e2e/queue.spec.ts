@@ -74,7 +74,7 @@ test("a candidate opened from a filtered queue steps through that view and back 
 }) => {
 	await page.goto("/?type=closure");
 	await onScreen(page.getByText("Pharmacie du Capitole", { exact: true })).click();
-	await expect(page).toHaveURL("/review?type=closure");
+	await expect(page).toHaveURL(/\/review\?type=closure&id=/);
 	await expect(onScreen(page.getByText("1 / 2", { exact: true }))).toBeVisible();
 
 	await page.getByRole("button", { name: /^Skip/ }).click();

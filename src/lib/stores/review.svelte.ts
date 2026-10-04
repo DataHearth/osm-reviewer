@@ -209,7 +209,9 @@ class ReviewState {
 	get candidate(): Candidate | undefined {
 		const list = this.candidates;
 		if (this.wanted) {
-			const found = list.find((c) => c.id === this.wanted);
+			const linked: Candidate | null = page.data.linked ?? null;
+			const found =
+				list.find((c) => c.id === this.wanted) ?? (linked?.id === this.wanted ? linked : null);
 			if (found) return found;
 		}
 		return list[this.idx] ?? list[0];
@@ -264,6 +266,7 @@ class ReviewState {
 	get blockedReason(): string | null {
 		const c = this.candidate;
 		if (!c) return null;
+		if (c.decided) return `accept blocked — already ${c.decided.kind} by ${c.decided.by}.`;
 		if (c.conflict)
 			return (
 				"accept blocked — version conflict unresolved. Rebase onto v" +

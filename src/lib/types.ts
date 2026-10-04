@@ -32,6 +32,8 @@ export type CandidateType = "new" | "update" | "closure";
 
 export interface Candidate {
 	id: string;
+	/** Only on a candidate opened by its link: someone already decided it. */
+	decided?: { kind: "accepted" | "rejected"; by: string; at: string };
 	osmId: string | null;
 	type: CandidateType;
 	name: string;

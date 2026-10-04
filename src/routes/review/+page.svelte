@@ -1,7 +1,8 @@
 <script lang="ts">
 import { untrack } from "svelte";
 import { superForm } from "sveltekit-superforms";
-import { goto } from "$app/navigation";
+import { goto, replaceState } from "$app/navigation";
+import { page } from "$app/state";
 import CandidateMap from "$lib/components/CandidateMap.svelte";
 import EmptyState from "$lib/components/EmptyState.svelte";
 import TagRow from "$lib/components/TagRow.svelte";
@@ -48,6 +49,24 @@ $effect(() => {
 		.catch((e: Error) => {
 			if (c?.id === id) record = { id, error: e.message };
 		});
+});
+
+// `?id=` names the candidate on screen, so a link opens exactly it. Keyed on the id
+// alone: a reload that carries the same link again must not pull the session back.
+const linkedId = $derived(data.linked?.id);
+$effect(() => {
+	if (linkedId) untrack(() => review.openCandidate(linkedId));
+});
+
+// Shallow, so stepping through the queue costs no load. That leaves page.url behind
+// the address bar, hence reading location.
+$effect(() => {
+	const id = c?.id;
+	if (!id) return;
+	const url = new URL(location.href);
+	if (url.searchParams.get("id") === id) return;
+	url.searchParams.set("id", id);
+	replaceState(url, page.state);
 });
 
 // Phone splits the screen into two panes instead of one long scroll: the
@@ -223,6 +242,13 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 					{/if}
 				</div>
 			</header>
+
+			{#if c?.decided}
+				<div class="m-rise flex shrink-0 flex-wrap items-center gap-2.5 border-b border-line bg-raised px-4 py-2.5 text-[13px] text-muted">
+					<span class="{banner} {c.decided.kind === 'accepted' ? 'bg-ok' : 'bg-bad'}">{c.decided.kind}</span>
+					<span>by {c.decided.by} · <span class="font-mono text-[12px]">{c.decided.at}</span> — no longer in the queue</span>
+				</div>
+			{/if}
 
 			{#if c?.conflict}
 				<div class="m-rise shrink-0 border-b border-bad-line bg-bad-bg">

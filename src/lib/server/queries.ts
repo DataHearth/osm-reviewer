@@ -285,76 +285,110 @@ export async function loadQueue(
 
 	const rows = ids.length
 		? await db.query.candidates.findMany({
-				// A page is 50 candidates; the record is fetched for the one being read.
 				columns: { record: false },
-				with: {
-					tags: {
-						orderBy: (x) => asc(x.position),
-						with: { evidence: { with: { parts: { orderBy: (x) => asc(x.position) } } } },
-					},
-					nearby: { orderBy: (x) => asc(x.position) },
-					conflictTags: { orderBy: (x) => asc(x.position) },
-				},
+				with: CANDIDATE_WITH,
 				where: (x) => inArray(x.id, ids),
 			})
 		: [];
 	const at = new Map(ids.map((id, i) => [id, i]));
 	rows.sort((x, y) => (at.get(x.id) ?? 0) - (at.get(y.id) ?? 0));
 
-	const candidates = rows.map((c) => {
-		const tags: Tag[] = c.tags.map((tag) => ({
-			op: tag.op,
-			k: tag.k,
-			v: tag.v,
-			was: tag.was ?? undefined,
-			conf: tag.conf,
-			invalid: tag.invalid,
-			invalidMsg: tag.invalidMsg ?? undefined,
-			invalidHint: tag.invalidHint ?? undefined,
-			ev: tag.evidence
-				? {
-						parts: tag.evidence.parts.map((p) => ({ text: p.text, mark: p.mark })),
-						path: tag.evidence.path,
-						url: tag.evidence.url,
-						when: tag.evidence.when,
-						kind: tag.evidence.kind,
-						conf: tag.evidence.conf,
-					}
-				: null,
-		}));
-		const side = (which: "theirs" | "ours") =>
-			c.conflictTags.filter((x) => x.side === which).map((x) => ({ k: x.k, v: x.v }));
+	return {
+		candidates: rows.map(toCandidate),
+		total,
+		page,
+		pages,
+		offset,
+		query: { ...query, page },
+	};
+}
 
-		return {
-			id: c.id,
-			osmId: c.osmId,
-			type: c.type,
-			name: c.name,
-			addr: c.addr,
-			lat: c.lat,
-			lon: c.lon,
-			source: c.sourceId,
-			conf: c.conf,
-			version: c.version,
-			fetched: fmtDate(c.fetchedAt),
-			age: `${daysSince(c.fetchedAt)}d`,
-			stale: daysSince(c.fetchedAt) >= STALE_AFTER_DAYS ? daysSince(c.fetchedAt) : undefined,
-			conflict: c.headVersion !== null,
-			baseVersion: c.baseVersion ?? undefined,
-			headVersion: c.headVersion ?? undefined,
-			conflictWho: c.conflictWho ?? undefined,
-			theirs: side("theirs"),
-			ours: side("ours"),
-			nearby: c.nearby.map((n) => n.label),
-			unchanged: c.unchangedTags,
-			tags,
-			allQuarantined: tags.every((tag) => !tag.ev),
-			hasNoEv: tags.some((tag) => !tag.ev),
-			hasInvalid: tags.some((tag) => tag.invalid),
-		} satisfies Candidate;
+/** One candidate by id, decided or not and whatever the scope: what a shared `/review?id=` link opens. */
+export async function loadCandidate(db: Db, id: string): Promise<Candidate | null> {
+	const row = await db.query.candidates.findFirst({
+		columns: { record: false },
+		with: { ...CANDIDATE_WITH, decision: { with: { user: { columns: { name: true } } } } },
+		where: (x) => eq(x.id, id),
 	});
+	if (!row) return null;
+	const d = row.decision;
+	return {
+		...toCandidate(row),
+		decided: d ? { kind: d.kind, by: d.user.name, at: stamp(d.decidedAt) } : undefined,
+	};
+}
 
-	return { candidates, total, page, pages, offset, query: { ...query, page } };
+// A page is 50 candidates; the record is fetched for the one being read.
+const CANDIDATE_WITH = {
+	tags: {
+		orderBy: (x, { asc }) => asc(x.position),
+		with: { evidence: { with: { parts: { orderBy: (x, { asc }) => asc(x.position) } } } },
+	},
+	nearby: { orderBy: (x, { asc }) => asc(x.position) },
+	conflictTags: { orderBy: (x, { asc }) => asc(x.position) },
+} satisfies NonNullable<Parameters<Db["query"]["candidates"]["findMany"]>[0]>["with"];
+
+type CandidateRow = Omit<typeof t.candidates.$inferSelect, "record"> & {
+	tags: (typeof t.tags.$inferSelect & {
+		evidence:
+			| (typeof t.evidence.$inferSelect & { parts: (typeof t.evidenceParts.$inferSelect)[] })
+			| null;
+	})[];
+	nearby: (typeof t.candidateNearby.$inferSelect)[];
+	conflictTags: (typeof t.candidateConflictTags.$inferSelect)[];
+};
+
+function toCandidate(c: CandidateRow): Candidate {
+	const tags: Tag[] = c.tags.map((tag) => ({
+		op: tag.op,
+		k: tag.k,
+		v: tag.v,
+		was: tag.was ?? undefined,
+		conf: tag.conf,
+		invalid: tag.invalid,
+		invalidMsg: tag.invalidMsg ?? undefined,
+		invalidHint: tag.invalidHint ?? undefined,
+		ev: tag.evidence
+			? {
+					parts: tag.evidence.parts.map((p) => ({ text: p.text, mark: p.mark })),
+					path: tag.evidence.path,
+					url: tag.evidence.url,
+					when: tag.evidence.when,
+					kind: tag.evidence.kind,
+					conf: tag.evidence.conf,
+				}
+			: null,
+	}));
+	const side = (which: "theirs" | "ours") =>
+		c.conflictTags.filter((x) => x.side === which).map((x) => ({ k: x.k, v: x.v }));
+
+	return {
+		id: c.id,
+		osmId: c.osmId,
+		type: c.type,
+		name: c.name,
+		addr: c.addr,
+		lat: c.lat,
+		lon: c.lon,
+		source: c.sourceId,
+		conf: c.conf,
+		version: c.version,
+		fetched: fmtDate(c.fetchedAt),
+		age: `${daysSince(c.fetchedAt)}d`,
+		stale: daysSince(c.fetchedAt) >= STALE_AFTER_DAYS ? daysSince(c.fetchedAt) : undefined,
+		conflict: c.headVersion !== null,
+		baseVersion: c.baseVersion ?? undefined,
+		headVersion: c.headVersion ?? undefined,
+		conflictWho: c.conflictWho ?? undefined,
+		theirs: side("theirs"),
+		ours: side("ours"),
+		nearby: c.nearby.map((n) => n.label),
+		unchanged: c.unchangedTags,
+		tags,
+		allQuarantined: tags.every((tag) => !tag.ev),
+		hasNoEv: tags.some((tag) => !tag.ev),
+		hasInvalid: tags.some((tag) => tag.invalid),
+	};
 }
 
 const STAGED = and(eq(t.decisions.kind, "accepted"), isNull(t.decisions.changesetId));

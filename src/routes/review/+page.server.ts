@@ -7,19 +7,21 @@ import { acceptSchema, candidateSchema } from "$lib/schemas/review";
 import { osm } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { rebase } from "$lib/server/mutations";
-import { loadQueue } from "$lib/server/queries";
+import { loadCandidate, loadQueue } from "$lib/server/queries";
 import { accept, RefusedError, reject, undo } from "$lib/server/review";
 import { requireUser } from "$lib/server/user";
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ parent, url }) => {
 	const { counts } = await parent();
-	const [queue, acceptForm, rejectForm] = await Promise.all([
+	const id = url.searchParams.get("id");
+	const [queue, linked, acceptForm, rejectForm] = await Promise.all([
 		loadQueue(db, counts?.scope ?? null, parseQueueQuery(url.searchParams)),
+		id ? loadCandidate(db, id) : null,
 		superValidate(zod4(acceptSchema), { id: "accept" }),
 		superValidate(zod4(candidateSchema), { id: "reject" }),
 	]);
-	return { ...queue, osmBase: osm.url, acceptForm, rejectForm };
+	return { ...queue, linked, osmBase: osm.url, acceptForm, rejectForm };
 };
 
 export const actions: Actions = {

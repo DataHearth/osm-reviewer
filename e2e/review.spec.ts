@@ -21,7 +21,7 @@ test.afterEach(async ({ page }) => {
 
 test("a candidate opens with its tags and evidence", async ({ page }) => {
 	await onScreen(page.getByText(CANDIDATE.name, { exact: true })).click();
-	await expect(page).toHaveURL("/review");
+	await expect(page).toHaveURL(/\/review\?id=/);
 
 	await expect(page.getByRole("button", { name: "Deselect shop" })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Deselect name" })).toBeVisible();
@@ -33,6 +33,22 @@ test("a candidate opens with its tags and evidence", async ({ page }) => {
 
 	await expect(page.getByText("all tags evidenced")).toBeVisible();
 	await expect(page.getByText(fetched(), { exact: true })).toBeVisible();
+});
+
+test("a link opens its candidate, decided or not, and follows the reviewer on", async ({
+	page,
+}) => {
+	await page.goto("/review?id=c7");
+	await expect(onScreen(page.getByText("Épicerie Compans", { exact: true }))).toBeVisible();
+	await page.getByRole("button", { name: /^Skip/ }).click();
+	await expect(page).not.toHaveURL(/id=c7/);
+
+	await page.goto(`/review?id=${CANDIDATE.id}`);
+	await page.getByRole("button", { name: /^Accept 2/ }).click();
+	await expect(page.getByText(`accepted ${CANDIDATE.name} · u to undo`)).toBeVisible();
+	await page.goto(`/review?id=${CANDIDATE.id}`);
+	await expect(onScreen(page.getByText(CANDIDATE.name, { exact: true }))).toBeVisible();
+	await expect(page.getByText("no longer in the queue")).toBeVisible();
 });
 
 test("accepting a candidate outlives a reload and takes it out of the queue", async ({ page }) => {
@@ -85,7 +101,7 @@ test("a deleted proposal is left out of the accept until it is restored", async 
 
 test("a candidate in conflict cannot be accepted", async ({ page }) => {
 	await onScreen(page.getByText("Le Bibent", { exact: true })).click();
-	await expect(page).toHaveURL("/review");
+	await expect(page).toHaveURL(/\/review\?id=/);
 
 	await expect(page.getByText("Conflict", { exact: true })).toBeVisible();
 	await expect(page.getByRole("button", { name: /^Accept/ })).toBeDisabled();
