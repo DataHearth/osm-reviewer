@@ -133,6 +133,8 @@ function pointsOn(e: OsmElement, refs: Record<string, string>): { on: number; of
 	const theirs = ids(evseOn(e));
 	if (!theirs.length || !theirs.every((t) => points.some((p) => t.startsWith(p)))) return null;
 	const on = points.filter((p) => theirs.some((t) => t.startsWith(p))).length;
+	// A mapper who names one point but counts them all has mapped the whole station.
+	if (Number.parseInt(e.tags.capacity ?? "", 10) === points.length) return null;
 	return on < points.length ? { on, of: points.length } : null;
 }
 
@@ -419,12 +421,13 @@ function current(keys: string[]): "ac" | "dc" | null {
  * which is another station of the site rather than a stale count on this one.
  */
 function stationFit(
-	x: Partial<Pick<Extraction, "tags" | "absent">>,
+	x: Partial<Pick<Extraction, "tags" | "absent" | "fit">>,
 	e: OsmElement,
 ): { agree: number; against: number; types: boolean } | null {
 	let agree = 0;
 	let against = (x.absent ?? []).filter((k) => e.tags[k] !== undefined).length;
-	for (const t of x.tags ?? []) {
+	const listed = [...(x.tags ?? []), ...(x.fit ?? [])];
+	for (const t of listed) {
 		if (!/^(capacity|socket:(?!unknown)[^:]+(:output)?)$/.test(t.k)) continue;
 		const had = e.tags[t.k];
 		if (had === undefined) continue;
@@ -436,7 +439,7 @@ function stationFit(
 		if (a === b) agree += 1;
 		else against += 1;
 	}
-	const [ours, theirs] = [current((x.tags ?? []).map((t) => t.k)), current(Object.keys(e.tags))];
+	const [ours, theirs] = [current(listed.map((t) => t.k)), current(Object.keys(e.tags))];
 	const types = !!ours && !!theirs && ours !== theirs;
 	if (types) against += 1;
 	return agree + against ? { agree, against, types } : null;
@@ -1364,6 +1367,8 @@ export function planUpdate(
 	// A group's object (a primaire and its collège, a cité scolaire) opened once for each of them.
 	if (others.length || sharedByOthers(el, x.refs) || campus(el.tags))
 		leave((o) => o.k === "start_date");
+	// Nor does one of its establishments give it a single level.
+	if (campus(el.tags)) leave((o) => o.k === "school:FR" && o.op === "add");
 	// Several establishments on one object (a cité scolaire) each propose their own phone,
 	// SIRET or UAI for it; whichever a reviewer accepted last would win.
 	const disputed = disputedOps(ops, others, el.tags);

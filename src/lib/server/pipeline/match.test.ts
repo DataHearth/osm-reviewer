@@ -1184,6 +1184,15 @@ describe("one object, several establishments", () => {
 		expect(planUpdate(x, one, [one]).ops).toHaveLength(1);
 	});
 
+	it("gives no campus a single level", () => {
+		const collège = { ...x, tags: [...x.tags, tag("school:FR", "collège")] };
+		const grounds = el(5, 45.7, 4.8, {
+			amenity: "school",
+			name: "École et collège privés Notre-Dame du Bon Conseil",
+		});
+		expect(planUpdate(collège, grounds, [grounds]).ops.map((o) => o.k)).not.toContain("school:FR");
+	});
+
 	it("takes a site's root and a page of it from two records for two values", () => {
 		const ops = updateOps([tag("website", "https://www.la-favorite.org/college/")], {});
 		const root = { tags: [tag("website", "https://la-favorite.org")] };
@@ -1274,18 +1283,16 @@ describe("stations told apart by what they hold", () => {
 			lat: 43.637548,
 			lon: 1.375103,
 			name: "Electra Blagnac - BYD & Quick",
-			tags: [
-				tag("amenity", "charging_station"),
-				tag("operator", "Electra"),
-				tag("socket:type2_combo:output", "150 kW"),
-			],
+			// An unsure count proposes no sockets; the points it lists still tell the object.
+			tags: [tag("amenity", "charging_station"), tag("operator", "Electra")],
+			fit: [{ k: "socket:type2_combo", v: "4" }],
 			refs: { "ref:EU:EVSE": "FRELCP12953885;FRELCE7TTK" },
 		};
 		const at = (id: number, tags: Record<string, string>) =>
 			el(id, 43.6377, 1.375103, {
 				amenity: "charging_station",
 				name: "Electra - Smart Lyon",
-				"socket:type2_combo:output": "150 kW",
+				"socket:type2_combo": "4",
 				...tags,
 			});
 		const renamed = at(1, { operator: "Electra" });
@@ -1324,6 +1331,8 @@ describe("plain refs on stations", () => {
 		expect(plan.notes[0]).toMatch(
 			/ref=FR\*TLS\*E31555\*059\*3\*1 names 1 of the station's 4 points/,
 		);
+		const whole = { ...borne, tags: { ...borne.tags, capacity: "4" } };
+		expect(planUpdate(x, whole, [whole]).ops.map((o) => o.k)).toEqual(["socket:type2"]);
 	});
 
 	it("tell one station's bornes from another's", () => {

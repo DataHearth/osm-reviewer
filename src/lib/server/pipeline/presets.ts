@@ -1,5 +1,5 @@
 import { fmtDate } from "$lib/format";
-import { distance, normaliseName, spacedNumber, tokens } from "./geo";
+import { distance, houseNumber, normaliseName, spacedNumber, tokens } from "./geo";
 import { openingHours as parsedHours } from "./llm";
 import type { Extraction, ProposedTag, Row } from "./types";
 
@@ -614,6 +614,13 @@ const SOCKETS: [string, string, (r: Row) => boolean][] = [
 	["socket:typee", "prise_type_ef", () => true],
 ];
 
+/** Each socket type's listed points, for matching only. */
+const listedSockets = (rows: Row[]) =>
+	SOCKETS.map(([k, field, only]) => ({
+		k,
+		v: String(rows.filter((r) => has(r, field) && only(r)).length),
+	})).filter((s) => s.v !== "0");
+
 const DC = ["prise_type_combo_ccs", "prise_type_chademo"];
 
 /** How many connector types a point carries. */
@@ -1027,6 +1034,7 @@ const irve: Preset = {
 			lon: pos[1],
 			refs,
 			tags: t.list,
+			fit: unsure && !oneRow && !everything && !blank ? listedSockets(rows) : undefined,
 			absent,
 			notes,
 			geocode: str(first, "adresse_station")
@@ -1328,7 +1336,11 @@ export function schoolAddress(r: Row) {
 		street: street[0].toUpperCase() + street.slice(1),
 		postcode,
 		city,
-		query: addressQuery(`${number.replace(/-.*/, "")} ${street}`.trim(), postcode, city),
+		query: addressQuery(
+			`${houseNumber(number).replace(/-.*/, "")} ${street}`.trim(),
+			postcode,
+			city,
+		),
 	};
 }
 
