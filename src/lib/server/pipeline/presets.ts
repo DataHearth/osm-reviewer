@@ -180,6 +180,17 @@ const OTHER_SOCKETS = [
 	"socket:schuko",
 ];
 
+/**
+ * What a connector can physically deliver: AC type 2 at 63 A three-phase, a domestic socket at
+ * 16 A. Some operators declare a DC unit's power on its AC outlet too (150 kW on a type 2), and
+ * one declares its type 2 points as domestic sockets at 7 kW; no output is better than those.
+ */
+const MAX_KW: Record<string, number> = {
+	"socket:type2": 43.5,
+	"socket:type2_cable": 43.5,
+	"socket:typee": 3.7,
+};
+
 /** A registry's 22.08 is the 22 kW everyone writes; a real 7.4 or 3.7 keeps its decimal. */
 export const POWER_KW = (n: number) => {
 	const whole = Math.round(n);
@@ -346,7 +357,8 @@ const irve: Preset = {
 		];
 		const has = (r: Row, field: string) => truthy(str(r, field));
 		const kinds = (r: Row) =>
-			new Set(sockets.filter(([, f, only]) => has(r, f) && only(r)).map(([, f]) => f)).size;
+			new Set(sockets.filter(([, f, only]) => has(r, f) && only(r)).map(([, f]) => f)).size +
+			(has(r, "prise_type_autre") ? 1 : 0);
 		const absent: string[] = [];
 		// The schema gives one power per charge point and none per connector. That power is a
 		// connector's only when the point has that connector alone, or when it is the CCS of a
@@ -372,7 +384,7 @@ const irve: Preset = {
 			const shared = carrying.some((r) => kinds(r) > 1);
 			if (shared && k !== "socket:type2_combo") continue;
 			const power = Math.max(0, ...carrying.map((r) => Number(str(r, "puissance_nominale")) || 0));
-			if (power === 0) continue;
+			if (power === 0 || power > (MAX_KW[k] ?? Number.POSITIVE_INFINITY)) continue;
 			t.add(
 				`${k}:output`,
 				POWER_KW(power),

@@ -47,7 +47,7 @@ describe("IRVE preset", () => {
 
 	it("groups the rows of one station into one record with socket counts and power", () => {
 		const x = irve.extract(
-			[irveRow(), irveRow({ id_pdc_itinerance: "FR*S63*E0001*2", puissance_nominale: "50" })],
+			[irveRow(), irveRow({ id_pdc_itinerance: "FR*S63*E0001*2", puissance_nominale: "43" })],
 			"https://x.test/f.csv#FRS63P0001",
 		);
 		const tags = Object.fromEntries((x?.tags ?? []).map((t) => [t.k, t.v]));
@@ -57,7 +57,7 @@ describe("IRVE preset", () => {
 			network: "ReseauCharge",
 			capacity: "2",
 			"socket:type2": "2",
-			"socket:type2:output": "50 kW",
+			"socket:type2:output": "43 kW",
 			fee: "yes",
 			access: "yes",
 			opening_hours: "24/7",
@@ -247,6 +247,20 @@ describe("IRVE preset", () => {
 				"socket:type2:output": ["7.4 kW", 0.8],
 				"socket:type2_combo:output": ["150 kW", 0.8],
 			});
+		});
+
+		it("gives no output a connector cannot deliver", () => {
+			expect(outputs([point(1, { prise_type_2: "true", puissance_nominale: "150" })])).toEqual({
+				"socket:type2": ["1", 0.9],
+			});
+			expect(outputs([point(1, { prise_type_ef: "true", puissance_nominale: "7" })])).toEqual({
+				"socket:typee": ["1", 0.9],
+			});
+			expect(
+				outputs([
+					point(1, { prise_type_ef: "true", prise_type_autre: "true", puissance_nominale: "3.4" }),
+				])["socket:typee:output"],
+			).toBeUndefined();
 		});
 
 		it("gives an AC type no output once one of its points shares the power", () => {
