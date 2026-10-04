@@ -194,7 +194,7 @@ survives only if its quote is really on the page, its key matches the source's a
 patterns and its confidence clears the floor, which is also capped.
 
 Matching asks Overpass once per area for the source's `matching` selector plus whatever main
-tag the records carry (a filter written for `amenity=school` still finds kindergartens), then
+tag the records carry (a filter written for `amenity=school` still finds a post-bac `amenity=college`), then
 matches by shared ref (`ref:EU:EVSE`, `ref:UAI`, `ref:FR:SIRET`) before distance and name.
 Candidates upsert on `(source_id, source_record_key)`; a record whose `content_hash` is
 unchanged is left as the reviewer saw it, and a queued candidate whose OSM object has a newer

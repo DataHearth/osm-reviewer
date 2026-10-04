@@ -1,4 +1,4 @@
-import { distance, nameSimilarity } from "./geo";
+import { distance, nameSimilarity, normaliseName } from "./geo";
 import { type Extraction, type OsmElement, osmRef, type ProposedTag } from "./types";
 
 /** Keys OSM mappers have used for the same identifier. */
@@ -102,9 +102,19 @@ const site = (s: string) =>
 		.replace(/^https?:\/\/(www\.)?/, "")
 		.replace(/\/$/, "");
 
+/** Accents, case, punctuation and `&` for "et" are how a registry and a mapper differ, not what they say. */
+const NAMES = ["name", "operator", "network", "brand", "owner"];
+const fold = (s: string) => normaliseName(s.replace(/&/g, " et "));
+
+/** Registries write "open all day" as the last minute they bother to count to. */
+const allDay = (s: string) =>
+	/^(Mo-Su )?00:00-(24:00|23:5\d)$/.test(s.trim()) ? "24/7" : s.trim();
+
 /** Whether two values say the same thing, so a re-spaced phone number is not an edit. */
 export function sameValue(k: string, a: string, b: string): boolean {
 	if (a === b) return true;
+	if (NAMES.includes(k)) return fold(a) === fold(b);
+	if (k === "opening_hours") return allDay(a) === allDay(b);
 	if (k === "phone" || k === "fax") return digits(a) === digits(b);
 	if (k === "website") return site(a) === site(b);
 	if (k.startsWith("ref:")) {
@@ -125,13 +135,28 @@ export interface TagOp extends ProposedTag {
 	was: string | null;
 }
 
+const CONTACT = ["phone", "website", "email", "fax", "mobile"];
+
+/**
+ * The key this object keeps `k` under: mappers write contact details as `contact:phone`
+ * as often as `phone`, and an object already using the `contact:` scheme gets the new
+ * detail in the same scheme rather than a second copy beside it.
+ */
+function keyOn(k: string, current: Record<string, string>): string {
+	if (current[k] !== undefined || !CONTACT.includes(k)) return k;
+	const scheme = `contact:${k}`;
+	if (current[scheme] !== undefined) return scheme;
+	return Object.keys(current).some((x) => x.startsWith("contact:")) ? scheme : k;
+}
+
 /** Tag operations that turn the element's tags into what the source says; nothing for what already agrees. */
 export function updateOps(proposed: ProposedTag[], current: Record<string, string>): TagOp[] {
 	const ops: TagOp[] = [];
 	for (const p of proposed) {
-		const had = current[p.k];
-		if (had === undefined) ops.push({ ...p, op: "add", was: null });
-		else if (!p.addOnly && !sameValue(p.k, p.v, had)) ops.push({ ...p, op: "mod", was: had });
+		const k = keyOn(p.k, current);
+		const had = current[k];
+		if (had === undefined) ops.push({ ...p, k, op: "add", was: null });
+		else if (!p.addOnly && !sameValue(p.k, p.v, had)) ops.push({ ...p, k, op: "mod", was: had });
 	}
 	return ops;
 }

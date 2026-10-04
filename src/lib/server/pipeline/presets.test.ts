@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { detectPreset, mergeSites, phoneFR, poolId, presetById, website } from "./presets";
+import {
+	detectPreset,
+	mergeSites,
+	phoneFR,
+	poolId,
+	presetById,
+	schoolName,
+	website,
+} from "./presets";
 import type { Row } from "./types";
 
 const irveRow = (over: Row = {}): Row => ({
@@ -212,7 +220,8 @@ describe("Annuaire de l'éducation preset", () => {
 		const tags = Object.fromEntries((x?.tags ?? []).map((t) => [t.k, t.v]));
 		expect(tags).toMatchObject({
 			amenity: "school",
-			name: "Ecole Jean Jaurès",
+			"school:FR": "primaire",
+			name: "École Jean Jaurès",
 			"ref:UAI": "0690001A",
 			"ref:FR:SIRET": "21690001000019",
 			phone: "+33 4 72 00 00 01",
@@ -222,10 +231,30 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(x?.closedBy).toBeUndefined();
 	});
 
-	it("maps a maternelle-only école to kindergarten and a lycée to school", () => {
-		const kind = (r: Row) => edu.extract([r], "u")?.tags.find((t) => t.k === "amenity")?.v;
-		expect(kind(row({ ecole_elementaire: "0" }))).toBe("kindergarten");
-		expect(kind(row({ type_etablissement: "Lycée" }))).toBe("school");
+	it("maps every level to amenity=school with its school:FR, post-bac to college", () => {
+		const kind = (r: Row) => {
+			const tags = edu.extract([r], "u")?.tags ?? [];
+			return [tags.find((t) => t.k === "amenity")?.v, tags.find((t) => t.k === "school:FR")?.v];
+		};
+		expect(kind(row({ ecole_elementaire: "0" }))).toEqual(["school", "maternelle"]);
+		expect(kind(row({ ecole_maternelle: "0" }))).toEqual(["school", "élémentaire"]);
+		expect(kind(row({ type_etablissement: "Collège" }))).toEqual(["school", "collège"]);
+		expect(kind(row({ type_etablissement: "Lycée" }))).toEqual(["school", "lycée"]);
+		expect(kind(row({ type_etablissement: "", code_nature: "400" }))).toEqual([
+			"college",
+			undefined,
+		]);
+	});
+
+	it("proposes nothing for an office that is not a school", () => {
+		expect(edu.extract([row({ type_etablissement: "Service Administratif" })], "u")).toBeNull();
+		expect(edu.extract([row({ type_etablissement: "" })], "u")).toBeNull();
+		expect(edu.extract([row({ code_nature: "809" })], "u")).toBeNull();
+	});
+
+	it("fills a missing name but never renames", () => {
+		const name = edu.extract([row()], "u")?.tags.find((t) => t.k === "name");
+		expect(name?.addOnly).toBe(true);
 	});
 
 	it("reads FERME as a closure, not an opening or a pending closure", () => {
@@ -238,6 +267,15 @@ describe("Annuaire de l'éducation preset", () => {
 
 	it("needs a position", () => {
 		expect(edu.extract([row({ latitude: "", longitude: "" })], "u")).toBeNull();
+	});
+});
+
+describe("schoolName", () => {
+	it("puts the accent back on École and quiets shouted words, not acronyms", () => {
+		expect(schoolName("Ecole élémentaire  Jules-Géraud SALIEGE")).toBe(
+			"École élémentaire Jules-Géraud Saliege",
+		);
+		expect(schoolName("Collège Rosa PARKS - SEGPA")).toBe("Collège Rosa Parks - SEGPA");
 	});
 });
 

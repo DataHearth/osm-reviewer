@@ -1,4 +1,5 @@
 import { fmtDate } from "$lib/format";
+import { normaliseName } from "./geo";
 import type { Extraction, ProposedTag, Row } from "./types";
 
 /** First non-empty value among the field names a dataset has used for the same thing. */
@@ -142,11 +143,16 @@ class Tags {
 	}
 }
 
+/** Proposed only where OSM has nothing: the source is too coarse to overrule a mapper. */
+const fill = (tag: ProposedTag | undefined) => {
+	if (tag) tag.addOnly = true;
+};
+
 const OPENING_HOURS = /^(24\/7|(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)[A-Za-z0-9:,;\-+ /]*)$/;
 
 function openingHours(raw: string): string | null {
 	const v = raw.trim();
-	if (/^24\/7$/i.test(v) || /^Mo-Su 00:00-24:00$/.test(v)) return "24/7";
+	if (/^24\/7$/i.test(v) || /^Mo-Su 00:00-(24:00|23:5\d)$/.test(v)) return "24/7";
 	return OPENING_HOURS.test(v) ? v : null;
 }
 
@@ -224,13 +230,13 @@ const irve: Preset = {
 		const capacity = points.length || Number.parseInt(str(first, "nbre_pdc"), 10) || 0;
 
 		t.add("amenity", "charging_station", 0.95, "id_station_itinerance");
-		t.add(
-			"operator",
-			str(first, "nom_operateur") || str(first, "nom_amenageur"),
-			0.85,
-			"nom_operateur",
-		);
-		t.add("network", str(first, "nom_enseigne"), 0.8, "nom_enseigne");
+		// Registry names are legal entities and shouting brands ("TotalEnergies Marketing
+		// France", "Reveo"), so they fill a gap but never replace what a mapper wrote.
+		const operator = str(first, "nom_operateur") || str(first, "nom_amenageur");
+		const network = str(first, "nom_enseigne");
+		fill(t.add("operator", operator, 0.85, "nom_operateur"));
+		if (normaliseName(network) !== normaliseName(operator))
+			fill(t.add("network", network, 0.8, "nom_enseigne"));
 		if (capacity)
 			t.add(
 				"capacity",
@@ -286,10 +292,8 @@ const irve: Preset = {
 		// subscribers alike (customers, private, no standard value), so it proposes nothing.
 		// "Accès libre" only fills a gap: it is too coarse to overrule a mapper's survey.
 		const access = str(first, "condition_acces");
-		const open = /libre/i.test(access)
-			? t.add("access", "yes", 0.8, "condition_acces", access, "derived")
-			: undefined;
-		if (open) open.addOnly = true;
+		if (/libre/i.test(access))
+			fill(t.add("access", "yes", 0.8, "condition_acces", access, "derived"));
 
 		const hours = openingHours(str(first, "horaires"));
 		if (hours) t.add("opening_hours", hours, 0.7, "horaires");
@@ -313,21 +317,58 @@ const irve: Preset = {
 	},
 };
 
-function schoolKind(r: Row): "school" | "kindergarten" {
-	const type = str(r, "type_etablissement");
-	if (
-		/^[ée]cole/i.test(type) &&
-		truthy(str(r, "ecole_maternelle")) &&
-		!truthy(str(r, "ecole_elementaire"))
-	)
-		return "kindergarten";
-	return "school";
-}
+/** Directory natures that are offices, not places anyone is taught. */
+const NOT_A_SCHOOL = /^(service administratif|information et orientation)$/i;
+const CIRCONSCRIPTION = "809";
+/** "Écoles composées uniquement de STS et/ou CPGE": post-bac only. */
+const POST_BAC_ONLY = "400";
 
 /**
- * Annuaire de l'éducation. Collèges and lycées are `amenity=school` here, as French OSM
- * maps them; `amenity=college` is higher education in OSM and would be wrong for them.
+ * French OSM maps every level from the maternelle up as `amenity=school`, with the level in
+ * `school:FR` (FR:Key:school:FR); `amenity=kindergarten` there is a crèche. Post-bac-only
+ * schools are `amenity=college`. Null for a row that is not a school at all.
  */
+function schoolKind(r: Row): { amenity: string; level: string | null } | null {
+	const type = str(r, "type_etablissement");
+	const nature = str(r, "code_nature");
+	if (nature === POST_BAC_ONLY) return { amenity: "college", level: null };
+	if (!type || NOT_A_SCHOOL.test(type) || nature === CIRCONSCRIPTION) return null;
+	if (/^[ée]cole/i.test(type)) {
+		const mat = truthy(str(r, "ecole_maternelle"));
+		const elem = truthy(str(r, "ecole_elementaire"));
+		const level = mat && elem ? "primaire" : mat ? "maternelle" : elem ? "élémentaire" : null;
+		return { amenity: "school", level };
+	}
+	if (/^coll[èe]ge/i.test(type)) return { amenity: "school", level: "collège" };
+	if (/^lyc[ée]e/i.test(type)) return { amenity: "school", level: "lycée" };
+	return { amenity: "school", level: null };
+}
+
+/** Initialisms a directory name keeps in capitals on purpose. */
+const ACRONYMS = new Set([
+	"EREA",
+	"SEGPA",
+	"ULIS",
+	"LEGTA",
+	"LEPA",
+	"ITEP",
+	"SESSAD",
+	"CMPP",
+	"IFSI",
+]);
+
+/**
+ * The directory drops the accent off "École" and shouts surnames ("Rosa PARKS"); OSM France
+ * writes neither.
+ */
+export function schoolName(raw: string): string {
+	return raw
+		.replace(/\s+/g, " ")
+		.replace(/\bEcole(s?)\b/g, "École$1")
+		.replace(/\p{Lu}{4,}/gu, (w) => (ACRONYMS.has(w) ? w : w[0] + w.slice(1).toLowerCase()));
+}
+
+/** Annuaire de l'éducation. */
 const education: Preset = {
 	id: "annuaire-education",
 	label: "Annuaire de l'éducation",
@@ -340,13 +381,19 @@ const education: Preset = {
 		const pos = education.position(r);
 		const key = education.key(r);
 		if (!pos || !key) return null;
+		const kind = schoolKind(r);
+		if (!kind) return null;
 		const t = new Tags(r);
-		const name = str(r, "nom_etablissement");
+		const name = schoolName(str(r, "nom_etablissement"));
 		const state = str(r, "etat", "etat_etablissement");
 		const siret = str(r, "siren_siret", "numero_siren_siret").replace(/\s/g, "");
 
-		t.add("amenity", schoolKind(r), 0.9, "type_etablissement");
-		t.add("name", name, 0.9, "nom_etablissement");
+		const nature = str(r, "libelle_nature");
+		t.add("amenity", kind.amenity, 0.9, "libelle_nature", nature, "derived");
+		if (kind.level) t.add("school:FR", kind.level, 0.9, "libelle_nature", nature, "derived");
+		// The directory's name is the administrative one, level words and all; a mapper's
+		// usual name stays, and the directory's is still on screen in the header.
+		fill(t.add("name", name, 0.9, "nom_etablissement"));
 		t.add("ref:UAI", key, 0.98, "identifiant_de_l_etablissement");
 		if (/^\d{14}$/.test(siret))
 			t.add(

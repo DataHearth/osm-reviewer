@@ -216,3 +216,33 @@ describe("context", () => {
 		]);
 	});
 });
+
+describe("updateOps regressions", () => {
+	it("leaves a name that only differs by accents, case or punctuation", () => {
+		expect(
+			updateOps([tag("name", "Ecole maternelle Charles Peguy")], {
+				name: "École maternelle Charles Péguy",
+			}),
+		).toEqual([]);
+		expect(
+			updateOps([tag("operator", "Bouygues Energies & Services")], {
+				operator: "Bouygues Énergies et Services",
+			}),
+		).toEqual([]);
+	});
+
+	it("reads 23:57 as all day", () => {
+		expect(
+			updateOps([tag("opening_hours", "Mo-Su 00:00-23:57")], { opening_hours: "24/7" }),
+		).toEqual([]);
+	});
+
+	it("keeps a contact detail in the scheme the object already uses", () => {
+		expect(
+			updateOps([tag("phone", "+33 5 61 21 83 64")], { "contact:phone": "+33 5 61 21 83 64" }),
+		).toEqual([]);
+		const added = updateOps([tag("website", "https://x.fr")], { "contact:email": "a@x.fr" });
+		expect(added.map((o) => [o.op, o.k])).toEqual([["add", "contact:website"]]);
+		expect(updateOps([tag("phone", "+33 5 61 00 00 00")], {}).map((o) => o.k)).toEqual(["phone"]);
+	});
+});
