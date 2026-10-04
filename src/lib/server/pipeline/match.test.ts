@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	closureOps,
+	contextTags,
 	findMatch,
 	indexRefs,
 	matchWarnings,
@@ -309,6 +310,13 @@ describe("updateOps", () => {
 			["del", "contact:housenumber", "20"],
 			["add", "addr:city", "Cugnaux"],
 		]);
+		expect(ops.map((o) => [o.k, o.pair, o.group])).toEqual([
+			["addr:street", "contact:street", "addr"],
+			["contact:street", "addr:street", "addr"],
+			["addr:housenumber", "contact:housenumber", "addr"],
+			["contact:housenumber", "addr:housenumber", "addr"],
+			["addr:city", undefined, "addr"],
+		]);
 		expect(updateOps(proposed, { "contact:street": "Rue du Nord" })).toEqual([]);
 	});
 
@@ -387,20 +395,29 @@ describe("context", () => {
 		expect(labels[0]).toMatch(/^22 m {2}shop=bakery$/);
 	});
 
-	it("shows what identifies the object before its address", () => {
-		const out = unchangedTags(
-			{
-				"addr:street": "Rue X",
-				"addr:city": "Lyon",
-				"addr:postcode": "69001",
-				"addr:housenumber": "1",
-				"contact:email": "ce.0690001A@ac-lyon.fr",
-				"ref:UAI": "0690001A",
-				"school:FR": "lycée",
-			},
-			new Set(),
+	it("shows what the object is and what identifies it before its address", () => {
+		const out = contextTags(
+			unchangedTags(
+				{
+					"addr:street": "Rue X",
+					"addr:city": "Lyon",
+					"addr:postcode": "69001",
+					"addr:housenumber": "1",
+					"contact:email": "ce.0690001A@ac-lyon.fr",
+					"ref:UAI": "0690001A",
+					"school:FR": "lycée",
+					amenity: "college",
+				},
+				new Set(),
+			),
 		);
-		expect(out.slice(0, 3).map((t) => t.k)).toEqual(["ref:UAI", "school:FR", "contact:email"]);
+		expect(out.slice(0, 4).map((t) => t.k)).toEqual([
+			"amenity",
+			"ref:UAI",
+			"school:FR",
+			"contact:email",
+		]);
+		expect(out).toHaveLength(6);
 	});
 
 	it("does not propose an operator line the object already has as its phone", () => {
@@ -409,7 +426,7 @@ describe("context", () => {
 		).toEqual([]);
 	});
 
-	it("keeps context tags the candidate did not touch", () => {
+	it("keeps every tag the candidate did not touch, and shows only those that give context", () => {
 		const out = unchangedTags(
 			{ name: "A", phone: "1", "addr:city": "Lyon", wheelchair: "yes" },
 			new Set(["phone"]),
@@ -417,7 +434,15 @@ describe("context", () => {
 		expect(out).toEqual([
 			{ k: "name", v: "A" },
 			{ k: "addr:city", v: "Lyon" },
+			{ k: "wheelchair", v: "yes" },
 		]);
+		expect(contextTags(out).map((t) => t.k)).toEqual(["name", "addr:city"]);
+	});
+
+	it("does not show a closed place's main tag as left alone", () => {
+		const current = { amenity: "pharmacy", name: "P" };
+		const ops = closureOps({ path: "p", kind: "k", parts: [] }, current, 0.8);
+		expect(unchangedTags(current, new Set(ops.map((o) => o.k)))).toEqual([{ k: "name", v: "P" }]);
 	});
 });
 

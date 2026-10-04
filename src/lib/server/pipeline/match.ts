@@ -253,6 +253,8 @@ export function sameValue(k: string, a: string, b: string): boolean {
 export interface TagOp extends ProposedTag {
 	op: "add" | "mod" | "del";
 	was: string | null;
+	/** The key of the other half of a move, which is only right taken together with this one. */
+	pair?: string;
 }
 
 const CONTACT = ["phone", "website", "email", "fax", "mobile"];
@@ -308,8 +310,8 @@ function addressOps(parts: ProposedTag[], current: Record<string, string>): TagO
 				{ text: v, mark: true },
 			],
 		};
-		ops.push({ ...ev, k: to, v, op: "add", was: null });
-		ops.push({ ...ev, k: from, v, op: "del", was: null });
+		ops.push({ ...ev, k: to, v, op: "add", was: null, pair: from });
+		ops.push({ ...ev, k: from, v, op: "del", was: null, pair: to });
 	}
 	for (const p of parts) if (held(p.k) === undefined) ops.push({ ...p, op: "add", was: null });
 	return ops;
@@ -458,10 +460,11 @@ export function nearbyLabels(
 }
 
 /**
- * What tells a reviewer this is the right object comes first: the identifiers and level it
- * already carries. The address, which rarely settles it, comes last.
+ * What tells a reviewer this is the right object comes first: what kind of object it is, and
+ * the identifiers and level it already carries. The address, which rarely settles it, comes last.
  */
 const CONTEXT_KEYS = [
+	...MAIN,
 	"name",
 	"ref:UAI",
 	"ref:EU:EVSE",
@@ -484,11 +487,20 @@ const contextRank = (k: string) => {
 	return k.startsWith("addr:") || ADDRESS_HELD.test(k) ? CONTEXT_KEYS.length : -1;
 };
 
-/** The element's tags the candidate leaves alone, the ones a reviewer looks at for context. */
+/**
+ * The element's tags the candidate leaves alone, all of them. A closure's `disused:amenity`
+ * replaces the bare `amenity`, which is therefore not left alone either.
+ */
 export function unchangedTags(current: Record<string, string>, touched: Set<string>) {
 	return Object.entries(current)
-		.filter(([k]) => !touched.has(k) && contextRank(k) >= 0)
-		.sort(([a], [b]) => contextRank(a) - contextRank(b))
-		.slice(0, 6)
+		.filter(([k]) => !touched.has(k) && !touched.has(`disused:${k}`))
 		.map(([k, v]) => ({ k, v }));
+}
+
+/** The few of them a reviewer looks at for context. */
+export function contextTags(unchanged: { k: string; v: string }[]) {
+	return unchanged
+		.filter((x) => contextRank(x.k) >= 0)
+		.sort((a, b) => contextRank(a.k) - contextRank(b.k))
+		.slice(0, 6);
 }

@@ -34,6 +34,8 @@ export interface Proposal {
 	was: string | null;
 	ev: boolean;
 	invalid: boolean;
+	group: string | null;
+	pair: string | null;
 }
 
 /** What the review screen posts: proposals taken as they are, by position, and the reviewer's own writes. */
@@ -102,7 +104,31 @@ export function decisionOps(
 		push({ tagId: fromProposal(k), op: "del", k, v: cur, was: null });
 	}
 	if (!out.length) throw new RefusedError("nothing selected — no tags would be written.");
+	refuseParts(proposals, new Set(out.map((o) => o.k)));
 	return out;
+}
+
+const groupName = (g: string) => (g === "addr" ? "the address" : `the ${g} group`);
+
+/**
+ * A move written half is a lost or doubled value, and half an address is a wrong one. A
+ * proposal counts as taken whether it was picked as is, typed over, or deleted by hand.
+ */
+function refuseParts(proposals: Proposal[], written: Set<string>) {
+	for (const p of proposals)
+		if (p.pair && written.has(p.k) !== written.has(p.pair)) {
+			const [from, to] = p.op === "del" ? [p.k, p.pair] : [p.pair, p.k];
+			throw new RefusedError(`${from} moves to ${to} — accept both or neither.`);
+		}
+	for (const g of new Set(proposals.flatMap((p) => (p.group ? [p.group] : [])))) {
+		const members = proposals.filter((p) => p.group === g);
+		const taken = members.find((p) => written.has(p.k));
+		const left = members.filter((p) => !written.has(p.k));
+		if (taken && left.length)
+			throw new RefusedError(
+				`${taken.k} is part of ${groupName(g)} — accept all of it or none (left out: ${left.map((p) => p.k).join(", ")}).`,
+			);
+	}
 }
 
 /**

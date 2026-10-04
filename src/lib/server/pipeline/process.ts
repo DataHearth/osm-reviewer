@@ -206,11 +206,14 @@ export async function processArea(
 		// model answer has to reach an undecided candidate as surely as a change in the data.
 		// The operations it makes against OSM are hashed apart: a fix to matching must reach
 		// the candidate too, but only while the element is where it was, since an element
-		// that moved is a conflict to flag, not a candidate to rebase quietly.
+		// that moved is a conflict to flag, not a candidate to rebase quietly. What an accept
+		// is checked against (the groups, the object's other tags) goes with the operations.
 		const proposal = hash(
 			JSON.stringify([x.name, x.addr, x.lat, x.lon, x.tags, x.closedBy ?? null]),
 		);
-		const h = `${proposal}:${hash(JSON.stringify(ops.map((o) => [o.op, o.k, o.v, o.was])))}`;
+		const kept = el ? unchangedTags(el.tags, new Set(ops.map((o) => o.k))) : [];
+		const written = ops.map((o) => [o.op, o.k, o.v, o.was, o.group ?? null, o.pair ?? null]);
+		const h = `${proposal}:${hash(JSON.stringify([written, kept]))}`;
 		const had = existing.get(x.key);
 		const moved = !!had && !!el && had.osmId === osmRef(el) && had.version !== el.version;
 		const same = had?.contentHash === h || (moved && had?.contentHash?.split(":")[0] === proposal);
@@ -262,7 +265,7 @@ export async function processArea(
 				licence: source.licence,
 				ops,
 				nearby: nearbyLabels(x, elements, el),
-				unchanged: el ? unchangedTags(el.tags, new Set(ops.map((o) => o.k))) : [],
+				unchanged: kept,
 				record: recordOf(rec),
 				warning,
 				seenAt: new Date(),

@@ -248,7 +248,10 @@ export const candidates = sqliteTable(
 		/** Set only when upstream moved on: `Candidate.conflict` is this being non-null. */
 		headVersion: integer(),
 		conflictWho: text(),
-		/** The object's tags the candidate leaves alone, shown for context. */
+		/**
+		 * Every tag of the object the candidate leaves alone: an accept reads a reviewer's own
+		 * write against them as an add or a mod. The screen shows only the few that give context.
+		 */
 		unchangedTags: text({ mode: "json" }).$type<{ k: string; v: string }[]>().notNull().default([]),
 		/** What the source said, as read: the record's rows, or a crawled page's text. Null until a run stores it. */
 		record: text({ mode: "json" }).$type<SourceRecord>(),
@@ -305,6 +308,10 @@ export const tags = sqliteTable(
 		invalid: integer({ mode: "boolean" }).notNull().default(false),
 		invalidMsg: text(),
 		invalidHint: text(),
+		/** Tags an accept takes all of or none of, like an address's parts. */
+		group: text(),
+		/** The key of the other half of a move (`contact:street` deleted for `addr:street`): an accept takes both or neither. */
+		pair: text(),
 	},
 	(t) => [uniqueIndex("candidate_tags_position_idx").on(t.candidateId, t.position)],
 );

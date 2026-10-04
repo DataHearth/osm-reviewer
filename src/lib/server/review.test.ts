@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { decisionOps, type Picks, type Proposal, RefusedError } from "./review";
+// @vitest-environment node
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { eq } from "drizzle-orm";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createDb, type Db } from "./db/client";
+import { runMigrations } from "./db/migrate";
+import * as t from "./db/schema";
+import { unchangedTags, updateOps } from "./pipeline/match";
+import { saveCandidate } from "./pipeline/store";
+import { accept, decisionOps, type Picks, type Proposal, RefusedError } from "./review";
 
 const P = (
 	position: number,
@@ -16,6 +26,8 @@ const P = (
 	was,
 	ev: true,
 	invalid: false,
+	group: null,
+	pair: null,
 });
 
 const proposals = [
@@ -79,5 +91,140 @@ describe("decisionOps", () => {
 		expect(() =>
 			decisionOps([{ ...P(0, "add", "phone", "x"), ev: false }], [], { ...none, tags: [0] }),
 		).toThrow(RefusedError);
+	});
+});
+
+describe("decisionOps on an address", () => {
+	const address = [
+		{ ...P(0, "add", "addr:street", "Rue X"), group: "addr", pair: "contact:street" },
+		{ ...P(1, "del", "contact:street", "Rue X"), group: "addr", pair: "addr:street" },
+		{ ...P(2, "add", "addr:postcode", "31000"), group: "addr" },
+		P(3, "add", "phone", "+33 1"),
+	];
+	const refused = (picks: Partial<Picks>) => {
+		try {
+			decisionOps(address, [], { ...none, ...picks });
+		} catch (e) {
+			if (e instanceof RefusedError) return e.message;
+			throw e;
+		}
+		return null;
+	};
+
+	it("takes all of it, or none of it", () => {
+		expect(refused({ tags: [0, 1, 2, 3] })).toBeNull();
+		expect(refused({ tags: [3] })).toBeNull();
+		expect(refused({ tags: [2, 3] })).toBe(
+			"addr:postcode is part of the address — accept all of it or none (left out: addr:street, contact:street).",
+		);
+	});
+
+	it("refuses one half of a move", () => {
+		expect(refused({ tags: [0, 2] })).toBe(
+			"contact:street moves to addr:street — accept both or neither.",
+		);
+		expect(refused({ tags: [1, 2] })).toBe(
+			"contact:street moves to addr:street — accept both or neither.",
+		);
+	});
+
+	it("counts a part typed over as taken", () => {
+		expect(refused({ tags: [1, 2], set: ["addr:street=Rue Y"] })).toBeNull();
+	});
+});
+
+describe("accept", () => {
+	let dir: string;
+	let db: Db;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "osm-reviewer-review-"));
+		db = createDb(join(dir, "test.db"));
+		runMigrations(db);
+		db.insert(t.users)
+			.values({ id: "u", name: "U", email: "u@example.test", role: "reviewer", initials: "U" })
+			.run();
+		db.insert(t.sources)
+			.values({ id: "s", name: "s", kind: "registry", health: "ok", floor: 0.5 })
+			.run();
+		db.insert(t.areas)
+			.values({ id: "a", name: "a", def: "radius", centerLat: 0, centerLon: 0, sqkm: 1 })
+			.run();
+	});
+
+	afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+	/** An object holding its address as `contact:*`, and many more tags than the screen shows. */
+	function candidate() {
+		const current: Record<string, string> = {
+			amenity: "school",
+			name: "École",
+			"contact:street": "Rue X",
+			"contact:housenumber": "2",
+			"ref:UAI": "0310001A",
+			"school:FR": "primaire",
+			operator: "Mairie",
+			phone: "+33 5 00 00 00 00",
+			website: "https://e.example",
+			wheelchair: "no",
+		};
+		const proposed = ["addr:street", "addr:postcode"].map((k) => ({
+			k,
+			v: k === "addr:street" ? "Rue X" : "31000",
+			conf: 0.9,
+			path: k,
+			parts: [{ text: "x", mark: true }],
+			kind: "row",
+			addOnly: true,
+			group: "addr",
+		}));
+		const ops = updateOps(proposed, current);
+		saveCandidate(
+			db,
+			{
+				sourceId: "s",
+				areaId: "a",
+				key: "k",
+				hash: "h",
+				type: "update",
+				osmId: "node/1",
+				version: 1,
+				name: "École",
+				addr: "",
+				lat: 0,
+				lon: 0,
+				conf: 0.9,
+				url: "",
+				licence: "",
+				ops,
+				nearby: [],
+				unchanged: unchangedTags(current, new Set(ops.map((o) => o.k))),
+				record: { rows: [] },
+				warning: null,
+				seenAt: new Date(),
+			},
+			undefined,
+		);
+		const id = db.select().from(t.candidates).get()?.id as string;
+		const tags = db.select().from(t.tags).where(eq(t.tags.candidateId, id)).all();
+		return { id, at: (k: string) => tags.find((x) => x.k === k)?.position as number };
+	}
+
+	it("refuses part of a stored address", () => {
+		const { id, at } = candidate();
+		expect(() =>
+			accept(db, "u", id, { ...none, tags: [at("addr:street"), at("contact:street")] }),
+		).toThrow(/is part of the address/);
+		expect(() => accept(db, "u", id, { ...none, tags: [at("addr:street")] })).toThrow(
+			"contact:street moves to addr:street — accept both or neither.",
+		);
+	});
+
+	it("reads a write to a key the screen does not show as a change of it", () => {
+		const { id } = candidate();
+		accept(db, "u", id, { ...none, set: ["wheelchair=yes"] });
+		expect(db.select().from(t.decisionTags).all()).toMatchObject([
+			{ op: "mod", k: "wheelchair", v: "yes", was: "no" },
+		]);
 	});
 });

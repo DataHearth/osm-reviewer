@@ -19,6 +19,7 @@ import type { QueueQuery, SortKey } from "$lib/schemas/queue";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import { contextTags } from "$lib/server/pipeline/match";
 import { claimFresh } from "$lib/server/pipeline/runner";
 import { configRows, KIND_LABEL, metricRows, runRow } from "$lib/server/source-display";
 import type {
@@ -383,7 +384,7 @@ function toCandidate(c: CandidateRow): Candidate {
 		theirs: side("theirs"),
 		ours: side("ours"),
 		nearby: c.nearby.map((n) => n.label),
-		unchanged: c.unchangedTags,
+		unchanged: contextTags(c.unchangedTags),
 		tags,
 		allQuarantined: tags.every((tag) => !tag.ev),
 		hasNoEv: tags.some((tag) => !tag.ev),
