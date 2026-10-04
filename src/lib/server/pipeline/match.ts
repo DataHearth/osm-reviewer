@@ -217,7 +217,7 @@ const fold = (s: string) => normaliseName(s.replace(/&/g, " et "));
 
 /** Registries write "open all day" as the last minute they bother to count to. */
 const allDay = (s: string) =>
-	/^(Mo-Su )?00:00-(24:00|23:5\d)$/.test(s.trim()) ? "24/7" : s.trim();
+	/^(Mo-Su )?00:00-(24:00|23:5\d|00:00)$/.test(s.trim()) ? "24/7" : s.trim();
 
 /**
  * Whether the proposed value `a` says what the object's `b` already does, so a re-spaced

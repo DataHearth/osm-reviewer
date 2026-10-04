@@ -111,11 +111,77 @@ describe("IRVE preset", () => {
 	it("reads a fee from what fired, never from an unknown tariff", () => {
 		const fee = (over: Row) =>
 			irve
-				.extract([irveRow({ paiement_acte: "false", paiement_cb: "false", ...over })], "u")
+				.extract(
+					[irveRow({ paiement_acte: "false", paiement_cb: "false", gratuit: "", ...over })],
+					"u",
+				)
 				?.tags.find((t) => t.k === "fee");
 		expect(fee({ tarification: "Inconnu" })).toBeUndefined();
 		expect(fee({ tarification: "49 cts/kWh" })).toMatchObject({ v: "yes", path: "tarification" });
 		expect(fee({ paiement_cb: "true" })).toMatchObject({ v: "yes", path: "paiement_cb" });
+		expect(fee({ gratuit: "False" })).toMatchObject({ v: "yes", path: "gratuit" });
+		expect(fee({ gratuit: "true" })).toMatchObject({ v: "no" });
+		expect(fee({ gratuit: "true", tarification: "0,40 € TTC / kWh" })).toBeUndefined();
+	});
+
+	it("counts a station declared as one row by its declared points, and trusts no mismatched count", () => {
+		const one = irve.extract([irveRow({ id_pdc_itinerance: "FRS63P0001", nbre_pdc: "6" })], "u");
+		expect(one?.tags.find((t) => t.k === "capacity")?.v).toBe("6");
+		expect(one?.tags.some((t) => t.k.startsWith("socket:"))).toBe(false);
+		const off = irve.extract([irveRow({ nbre_pdc: "6" })], "u");
+		expect(off?.tags.find((t) => t.k === "capacity")).toBeUndefined();
+		expect(off?.notes?.[0]).toMatch(/declares 6 charge points and lists 1/);
+	});
+
+	it("reads a site from its newest declaration whole", () => {
+		const old = (n: number) =>
+			irveRow({
+				id_station_itinerance: "FRPD1PITMRSA01",
+				id_pdc_itinerance: `FR*PD1*E01*${n}`,
+				datagouv_resource_id: "own",
+				date_maj: "2025-09-14",
+			});
+		const cur = (n: number) =>
+			irveRow({
+				id_station_itinerance: "FRPD1PITMRSA02",
+				id_pdc_itinerance: `FR*PD1*E02*${n}`,
+				datagouv_resource_id: "aggregated",
+				date_maj: "2025-10-20",
+				nbre_pdc: "2",
+			});
+		const x = irve.extract([old(1), old(2), old(3), cur(1), cur(2)], "u");
+		expect(x?.tags.find((t) => t.k === "capacity")?.v).toBe("2");
+	});
+
+	it("reads a station's accessibility and booking from all its points", () => {
+		const tags = (...over: Row[]) =>
+			Object.fromEntries(
+				(
+					irve.extract(
+						over.map((o, i) => irveRow({ id_pdc_itinerance: `FR*S63*E0001*${i}`, ...o })),
+						"u",
+					)?.tags ?? []
+				).map((t) => [t.k, t.v]),
+			);
+		const mixed = tags(
+			{ accessibilite_pmr: "Réservé PMR", reservation: "true" },
+			{ accessibilite_pmr: "Accessible mais non réservé PMR", reservation: "false" },
+		);
+		expect(mixed.wheelchair).toBe("yes");
+		expect(mixed.reservation).toBeUndefined();
+	});
+
+	it("leaves out a vehicle, an ad-hoc access or a phone the station itself contradicts", () => {
+		const tags = (over: Row) =>
+			Object.fromEntries((irve.extract([irveRow(over)], "u")?.tags ?? []).map((t) => [t.k, t.v]));
+		const scooters = tags({ nom_station: "Station Deux-Roues Lazare Carnot" });
+		expect(scooters.motorcar).toBeUndefined();
+		const app = tags({ observations: "Paiement via app Lidl Plus" });
+		expect(app["authentication:none"]).toBeUndefined();
+		expect(tags({ telephone_operateur: "06 22 53 03 38" })["operator:phone"]).toBeUndefined();
+		expect(tags({ date_mise_en_service: "2021-3-29", nbre_pdc: "1" }).start_date).toBe(
+			"2021-03-29",
+		);
 	});
 
 	it("fills in what the registry knows beyond the sockets, and nothing it does not", () => {
@@ -154,10 +220,12 @@ describe("IRVE preset", () => {
 	});
 
 	it("names the sockets it rules out, and a connector it cannot name", () => {
-		const x = irve.extract([irveRow()], "u");
+		const x = irve.extract([irveRow({ nbre_pdc: "1" })], "u");
 		expect(x?.absent).toEqual(expect.arrayContaining(["socket:chademo", "socket:type3"]));
 		expect(x?.notes).toEqual([]);
-		expect(irve.extract([irveRow({ prise_type_autre: "true" })], "u")?.notes).toHaveLength(1);
+		expect(
+			irve.extract([irveRow({ prise_type_autre: "true", nbre_pdc: "1" })], "u")?.notes,
+		).toHaveLength(1);
 	});
 
 	it("reads two same-day declarations of a point by their last change, and absence across both", () => {
@@ -510,6 +578,9 @@ describe("siteName", () => {
 		expect(siteName("Reveo", "Reveo Route d'Espagne")).toBe(false);
 		expect(siteName("TOULIBEO", "TOULOUSE - Marengo")).toBe(false);
 		expect(siteName("DRIVECO", "Airbus ADS - Toulouse - GEO - powered by DRIVECO")).toBe(false);
+		expect(siteName("CENTRAKOR", "CENTRAKOR - PARKING EXTERIEUR", "CENTRAKOR")).toBe(true);
+		expect(siteName("LPA Fosse aux Ours", "Parking FAO", "LPA")).toBe(true);
+		expect(siteName("Reveo", "Reveo Route d'Espagne", "Toulouse Métropole")).toBe(false);
 	});
 });
 
