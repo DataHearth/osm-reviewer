@@ -1,10 +1,9 @@
 import { loadEnvFiles } from "./env";
 
 /**
- * `process.env` rather than `$env/dynamic/private`: the seed script imports this and runs
- * outside SvelteKit, where that module does not exist. Loading the files here as well is
- * what makes the two agree — `loadEnvFile` sets nothing that is already set, so a second
- * call costs four `existsSync` and changes nothing.
+ * Read from `process.env` rather than `$env/dynamic/private`, so the `.env` files Vite would
+ * hand only to that module are loaded here first. `loadEnvFile` sets nothing that is
+ * already set, so a second call costs four `existsSync` and changes nothing.
  */
 loadEnvFiles();
 
@@ -25,9 +24,7 @@ export const sso = {
 };
 
 /**
- * The first admin. The seed applies these to the one fixture account a demo instance signs
- * in as — the other fixture users stay demo data, passwords and all. A production build has
- * no seed, so `bootstrapAdmin` creates this account at boot when the users table is empty.
+ * The first admin, which `bootstrapAdmin` creates at boot while the users table is empty.
  */
 export const seedAdmin = {
 	name: process.env.SEED_ADMIN_NAME,

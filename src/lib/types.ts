@@ -184,8 +184,6 @@ export interface User {
 	email: string;
 	role: Role;
 	initials: string;
-	/** Fixture only — the prototype validates in the browser, never over a wire. */
-	password?: string;
 	/** Provisioned through the identity provider: no local password to check. */
 	ssoOnly?: boolean;
 	osm?: string;

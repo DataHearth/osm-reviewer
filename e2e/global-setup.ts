@@ -1,8 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import { E2E_DATABASE_DIR, E2E_DATABASE_PATH } from "./db";
-import { E2E_ENV } from "./env";
+import { insertFixture } from "./fixture";
 
 /**
  * Chromium with no font installed measures every glyph as zero wide, so anything
@@ -36,21 +35,16 @@ async function requireAFont() {
 
 /**
  * Playwright runs its `webServer` plugin before this hook, so the app has already
- * created the file and applied its migrations by the time the seed runs. The
- * fixtures therefore go in by seeding and never by replacing the file: unlinking
- * it here would leave the running server writing to an inode nothing else can
- * see, and every assertion would read an empty database.
- *
- * `db:seed` deletes and reinserts every table, so a run always starts from the
- * same rows even though the server got there first.
+ * created the file, applied its migrations and bootstrapped the admin by the time
+ * the rows go in. They are therefore inserted and never swapped in as a file:
+ * unlinking it here would leave the running server writing to an inode nothing
+ * else can see, and every assertion would read an empty database. The directory
+ * is a fresh temporary one per run, so the inserts never meet earlier rows.
  */
 export default async function globalSetup() {
 	await requireAFont();
 
-	execFileSync("pnpm", ["db:seed"], {
-		env: { ...process.env, ...E2E_ENV, DATABASE_PATH: E2E_DATABASE_PATH },
-		stdio: "inherit",
-	});
+	await insertFixture(E2E_DATABASE_PATH);
 
 	return () => rmSync(E2E_DATABASE_DIR, { recursive: true, force: true });
 }

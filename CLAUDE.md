@@ -31,7 +31,7 @@ are considered settled: change where data and validation live, not how a screen 
   pipeline"). Server-only, started from `src/hooks.server.ts`.
 - `src/lib/components/**` — shared markup. `areas/`, `sources/` and `settings/` hold the
   pieces of those screens.
-- `src/lib/server/db/` — schema, client, migration runner, seed. Server-only: nothing
+- `src/lib/server/db/` — schema, client, migration runner, admin bootstrap. Server-only: nothing
   under `src/lib/server/` may be imported from a component.
 - `src/lib/server/auth/` — password hashing, sessions, and SSO: `oidc.ts` is the round trip
   to the provider, `sso-user.ts` maps the returned claims onto a row in `users`.
@@ -39,9 +39,6 @@ are considered settled: change where data and validation live, not how a screen 
   action and the client `superForm`.
 - `src/lib/stores/*.svelte.ts` — client view state (selection, filters, open sheets,
   optimistic updates). These are not the source of truth; the database is.
-- `src/lib/data.ts` — the original fixtures (candidates, history, users, defaults).
-  **Seed data only.** Nothing at runtime reads it; `src/lib/server/db/seed.ts` does, and
-  it also holds the demo sources and areas, which are real datasets and a real Lyon boundary.
 - `src/styles/tokens.css` — the palette, and the only place hex values live.
 - `nix/` — package, checks, source filtering and the two modules. `flake.nix` holds the
   inputs, the per-system wiring and the devShell itself.
@@ -106,11 +103,6 @@ deletes the account's sessions — and delete. Delete is refused for anyone with
 because `candidate_decisions.user_id` has no cascade and the audit trail needs the row;
 disable them instead. None of these actions accept the acting admin's own id, and that
 single rule is what guarantees an instance never loses its last admin.
-
-Demo affordances are gated behind `dev` and built server-side — the "clear lock" button on
-the login screen and the seeded-credentials hint. Neither exists in a production build, and
-the hint reads the address from the database so the fixture users, which carry cleartext
-passwords, never reach the client bundle.
 
 ## What the app fetches at runtime
 
@@ -271,7 +263,7 @@ the Nix-packaged Helm chart, and `release` to cut a release (see "Container and 
 | `pnpm lint` / `pnpm format` | Biome, check and write |
 | `pnpm test` | Vitest unit suite |
 | `pnpm test:e2e` | Playwright |
-| `pnpm db:generate` / `db:migrate` / `db:seed` / `db:studio` | Drizzle |
+| `pnpm db:generate` / `db:migrate` / `db:studio` | Drizzle |
 
 Dependencies are kept at latest; install with bare `pnpm add` rather than hand-written
 ranges. There is no pre-commit; the quality gates are the flake checks.
@@ -356,7 +348,7 @@ the operator: `OSM_REVIEWER_REV` (the commit, from the Nix package and the Docke
 `OSM_REVIEWER_IMAGE` (from the Nix image and the chart). SSO is off unless
 `SSO_ISSUER` is set, and `SSO_ENABLED=false` switches it off even then — which leaves an
 account with no local password no way in. `src/lib/server/config.ts` is where the
-identity-provider, seed, pipeline, OSM, LLM and backup values are read. SMTP is the
+identity-provider, first-admin, pipeline, OSM, LLM and backup values are read. SMTP is the
 exception: the relay is an operator-edited instance setting, not environment.
 
 Nothing the running app shows is fixture text. `src/lib/server/instance.ts` measures the
@@ -377,16 +369,21 @@ snapshot beside the database it protects survives nothing. The diagnostics bundl
 key named like a secret, token, key or password blanked and URL credentials stripped by
 `redact`: redaction is by name, so a new secret in `config.ts` is covered if it is named like one.
 Vite loads `.env*` for `pnpm dev`; the scripts
-that run outside it (drizzle-kit, `db:seed`) get the same files through `loadEnvFiles` in
+that run outside it (drizzle-kit) get the same files through `loadEnvFiles` in
 `src/lib/server/env.ts`. Precedence is shell over `.env.<mode>` over `.env`, and the e2e run
-leans on that: `e2e/env.ts` hands the server and the seed every variable the suite asserts
-on, because both run without `NODE_ENV` and would otherwise read a developer's
-`.env.development` — which renames the seeded admin and switches SSO off. `e2e/sso.spec.ts`
+leans on that: `e2e/env.ts` hands the server every variable the suite asserts on, because it
+runs without `NODE_ENV` and would otherwise read a developer's `.env.development` — which
+names a different admin and switches SSO off. `e2e/sso.spec.ts`
 runs a mock provider (`oauth2-mock-server`, in `e2e/idp.ts`) inside the test process, so
 each test sets the identity it hands back.
 
-A production build has no seed, so the first account comes from `bootstrapAdmin`
-(`src/lib/server/db/bootstrap.ts`): at boot, after migrations, it creates one admin from
+The suite's rows live in `e2e/fixture.ts` and nowhere else: the server boots on an empty
+temporary database and bootstraps the admin from `e2e/env.ts`, then `e2e/global-setup.ts`
+inserts the two other accounts, two sources, two areas, ten candidates and one failed
+changeset that the specs assert on. A spec that needs another row adds it there.
+
+There is no seed and no demo data, in dev or anywhere else. The first account comes from
+`bootstrapAdmin` (`src/lib/server/db/bootstrap.ts`): at boot, after migrations, it creates one admin from
 `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` — but only while the users table is empty, so leaving
 them set never resets a password changed in the app.
 

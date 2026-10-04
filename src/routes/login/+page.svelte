@@ -1,6 +1,5 @@
 <script lang="ts">
 import { superForm } from "sveltekit-superforms";
-import { dev } from "$app/environment";
 import { INPUT } from "$lib/format";
 import { LOCKOUT_MINUTES, MAX_TRIES, SESSION_DAYS } from "$lib/schemas/auth";
 
@@ -56,17 +55,6 @@ const facts = $derived([
 					<p class="mt-1 text-[11.5px] leading-relaxed text-muted">
 						{MAX_TRIES} failed attempts for this account. The lock clears after {LOCKOUT_MINUTES} minutes, or when the service restarts.
 					</p>
-					{#if dev}
-						<input type="hidden" name="email" value={$form.email} form="login" />
-						<button
-							type="submit"
-							form="login"
-							formaction="?/unlock"
-							formnovalidate
-							class="mt-2 cursor-pointer rounded-sm border border-edge bg-raised px-2.5 py-1 text-[11.5px] text-muted hover:text-ink"
-							>clear lock (dev)</button
-						>
-					{/if}
 				</div>
 			{/if}
 
@@ -139,13 +127,6 @@ const facts = $derived([
 					>
 					<span class="text-[11px] text-faint">{data.sso.host}{data.sso.group ? " · group " + data.sso.group : ""}</span>
 				</button>
-			{/if}
-
-			{#if data.adminEmail}
-				<p class="mt-6 text-[11px] leading-relaxed text-faint">
-					demo instance — seeded accounts sign in with the password <span class="text-faint">review</span>.
-					<span class="text-faint">{data.adminEmail}</span> is the admin.
-				</p>
 			{/if}
 		</div>
 	</div>

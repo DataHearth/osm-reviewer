@@ -5,7 +5,7 @@ import { join } from "node:path";
 /**
  * The Playwright config and the global setup are separate modules and either may
  * be loaded first, so the directory travels between them through the environment
- * instead of being recomputed: a second `mkdtemp` would hand the seed a database
+ * instead of being recomputed: a second `mkdtemp` would hand the fixture a database
  * the server never opened.
  */
 function provision(): string {

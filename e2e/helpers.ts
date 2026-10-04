@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
-/** Every seeded account that has a password hash shares this one. */
-export const SEED_PASSWORD = "review";
+/** Every account in the e2e data that has a password shares this one, the admin included. */
+export const PASSWORD = "review";
 
 /**
  * Lockout counts wrong passwords per email address in the server's own memory,
@@ -31,7 +31,7 @@ export async function submitCredentials(page: Page, email: string, password: str
 
 export async function signIn(page: Page, email = ADMIN.email, landing = "/") {
 	await page.goto(`/login?redirectTo=${encodeURIComponent(landing)}`);
-	await submitCredentials(page, email, SEED_PASSWORD);
+	await submitCredentials(page, email, PASSWORD);
 	await expect(page).toHaveURL(landing);
 }
 
@@ -53,7 +53,7 @@ export function postAction(page: Page, action: string, fields: Record<string, st
 }
 
 /**
- * Decisions outlive the test that took them and the suite seeds once per run, so
+ * Decisions outlive the test that took them and the data goes in once per run, so
  * a test that decides hands the queue back the way it found it. Undoing nothing
  * is a refusal rather than an error, which is why the result is not checked.
  */

@@ -13,8 +13,7 @@ export const initialsOf = (name: string) =>
 		.toUpperCase();
 
 /**
- * A production build carries no seed — that script loads fixtures and wipes every table —
- * so without this a fresh deployment has no account and nobody can sign in. It only fills
+ * Without this a fresh instance has no account and nobody can sign in. It only fills
  * an empty users table: once anyone exists the values are ignored, so leaving them set
  * cannot reset a password that was later changed in the app.
  */

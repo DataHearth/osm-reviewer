@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, onScreen, SEED_PASSWORD, submitCredentials, undoDecision } from "./helpers";
+import { ADMIN, onScreen, PASSWORD, submitCredentials, undoDecision } from "./helpers";
 
 /**
  * The forms are progressively enhanced, so every one of them has to survive
@@ -20,7 +20,7 @@ test("signing in and accepting a candidate work with JavaScript off", async ({ p
 	await page.goto("/settings");
 	await expect(page).toHaveURL("/login?redirectTo=%2Fsettings");
 
-	await submitCredentials(page, ADMIN.email, SEED_PASSWORD);
+	await submitCredentials(page, ADMIN.email, PASSWORD);
 	await expect(page).toHaveURL("/settings");
 	await expect(page.locator('input[name="email"]')).toHaveValue(ADMIN.email);
 

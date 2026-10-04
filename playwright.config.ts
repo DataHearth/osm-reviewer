@@ -37,7 +37,7 @@ export default defineConfig({
 		command: "pnpm build && node build/index.js",
 		url: ORIGIN,
 		// A server left over from an earlier run would be holding its own database,
-		// which is the one thing the seeded fixture cannot survive.
+		// which is the one thing the inserted e2e rows cannot survive.
 		reuseExistingServer: false,
 		timeout: 180_000,
 		env: {

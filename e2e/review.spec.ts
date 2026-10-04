@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { FAILED_CHANGESET } from "./fixture";
 import { onScreen, signIn, undoDecision } from "./helpers";
 
-/** Highest confidence of the seeded ten, so the queue sorts it first and `/review` opens it. */
+/** Highest confidence of the ten candidates, so the queue sorts it first and `/review` opens it. */
 const CANDIDATE = { id: "c8", name: "Fleuriste des Minimes", ageDays: 2 };
 
-/** The seed dates each candidate by its fixture age back from the moment it ran. */
+/** The fixture dates each candidate by its age back from the moment it went in. */
 const fetched = () =>
 	new Date(Date.now() - CANDIDATE.ageDays * 86_400_000)
 		.toLocaleDateString("fr-FR")
@@ -77,10 +78,8 @@ test("a candidate in conflict cannot be accepted", async ({ page }) => {
 
 test("a failed changeset opens with what went wrong", async ({ page }) => {
 	await page.goto("/history");
-	await page.getByText("Closures from SIRENE cessations").click();
-	await expect(page).toHaveURL("/history/154788019");
-	await expect(
-		page.getByText("409 Conflict — an object moved while the changeset was open"),
-	).toBeVisible();
+	await page.getByText(FAILED_CHANGESET.comment).click();
+	await expect(page).toHaveURL(`/history/${FAILED_CHANGESET.id}`);
+	await expect(page.getByText(FAILED_CHANGESET.error)).toBeVisible();
 	await expect(page.getByText("Nothing was written — its candidates stayed staged.")).toBeVisible();
 });

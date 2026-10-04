@@ -1,31 +1,21 @@
 import { expect, test } from "@playwright/test";
+import { CANDIDATES } from "./fixture";
 import { onScreen, signIn } from "./helpers";
 
-/** The ten candidates `db:seed` puts in Toulouse, in the order the queue sorts them. */
-const SEEDED = [
-	"Fleuriste des Minimes",
-	"Café Sept",
-	"Le Bibent",
-	"Ombres Blanches",
-	"Tabac des Carmes",
-	"Boulangerie Gaubert",
-	"Boucherie Cazes",
-	"Pharmacie du Capitole",
-	"Coiffure Saint-Cyprien",
-	"Épicerie Compans",
-];
+/** The ten candidates in Toulouse, in the order the queue sorts them. */
+const NAMES = CANDIDATES.map((c) => c.name);
 
 test.beforeEach(async ({ page }) => {
 	await signIn(page);
 });
 
-test("the queue lists every seeded candidate with the derived counts", async ({ page }) => {
+test("the queue lists every candidate with the derived counts", async ({ page }) => {
 	await expect(page.getByText("10 matching · 10 pending")).toBeVisible();
 	await expect(onScreen(page.getByText("Rows 1–10 of 10"))).toBeVisible();
 	// The same count again, in the top bar's scope button, which every screen shows.
 	await expect(page.getByRole("button", { name: "Area: Toulouse" })).toContainText("10 pending");
 
-	for (const name of SEEDED) {
+	for (const name of NAMES) {
 		await expect(onScreen(page.getByText(name, { exact: true }))).toHaveCount(1);
 	}
 });
@@ -97,9 +87,9 @@ test("a candidate opened from a filtered queue steps through that view and back 
 
 test("the list scrolls with the keyboard selection, two rows ahead", async ({ page }) => {
 	await page.setViewportSize({ width: 1280, height: 420 });
-	await expect(onScreen(page.getByText(SEEDED[0], { exact: true }))).toBeInViewport();
+	await expect(onScreen(page.getByText(NAMES[0], { exact: true }))).toBeInViewport();
 	for (let i = 0; i < 7; i++) await page.keyboard.press("j");
 	// Row 7 is selected; the one two below it is already on screen.
-	await expect(onScreen(page.getByText(SEEDED[9], { exact: true }))).toBeInViewport();
-	await expect(onScreen(page.getByText(SEEDED[0], { exact: true }))).not.toBeInViewport();
+	await expect(onScreen(page.getByText(NAMES[9], { exact: true }))).toBeInViewport();
+	await expect(onScreen(page.getByText(NAMES[0], { exact: true }))).not.toBeInViewport();
 });

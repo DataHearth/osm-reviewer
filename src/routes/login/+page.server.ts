@@ -2,7 +2,6 @@ import { error, fail, redirect } from "@sveltejs/kit";
 import { eq, sql } from "drizzle-orm";
 import { type Infer, message, type SuperValidated, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
-import { dev } from "$app/environment";
 import { LOCKOUT_MINUTES, type LoginMessage, loginSchema } from "$lib/schemas/auth";
 import {
 	clearFailures,
@@ -49,15 +48,6 @@ const lockedMessage = (form: Form) =>
 		{ status: 429 },
 	);
 
-// The seeded-credentials hint is a demo affordance: it names an account and states the
-// seed password, so it is built server-side and only in dev. Reading it from the database
-// also keeps `data.ts` — whose fixture users carry cleartext passwords — out of the bundle.
-const demoAdminEmail = () =>
-	dev
-		? (db.select({ email: users.email }).from(users).where(eq(users.role, "admin")).limit(1).get()
-				?.email ?? null)
-		: null;
-
 /** The callback bounces a refused sign-in back here with one of these as `?sso=`. */
 const ssoRefusals: Record<string, string> = {
 	expired: "That sign-in expired or was started in another tab. Try again.",
@@ -78,7 +68,6 @@ export const load: PageServerLoad = async ({ url }) => {
 	if (refusal) form.message = { text: refusal, tone: "bad" };
 
 	return {
-		adminEmail: demoAdminEmail(),
 		instance: release(url.host),
 		sso: { enabled: sso.enabled, provider: sso.provider, host: sso.host, group: sso.group },
 		form,
@@ -171,13 +160,5 @@ export const actions: Actions = {
 		if (token) deleteSession(token);
 		clearSessionCookie(cookies, url);
 		redirect(303, "/login");
-	},
-
-	// A lockout you can clear from the login screen is not a lockout, so this exists
-	// only in dev, where waiting out fifteen minutes is pure friction.
-	unlock: async ({ request }) => {
-		if (!dev) error(404);
-		const submitted = (await request.formData()).get("email");
-		if (typeof submitted === "string") clearFailures(normalizeEmail(submitted));
 	},
 };
