@@ -97,9 +97,22 @@ export interface Preset {
 	site?(row: Row): string | null;
 	/**
 	 * What names one thing in every declaration of it (a charge point's id), so records sharing
-	 * one within `LINK_M` are one site even where their declarations place it apart.
+	 * one close enough are one site even where their keys and positions differ. `record` is
+	 * every row of the record `row` belongs to.
 	 */
-	link?(row: Row): string | null;
+	link?(row: Row, record: Row[]): SiteLink[];
+}
+
+export interface SiteLink {
+	id: string;
+	/** How far apart two declarations of it can be placed. */
+	withinM: number;
+	/**
+	 * Set where the id names a place rather than a thing (a station's name): records sharing it
+	 * join only when one of them is a lone charge point, the way some operators declare each
+	 * point of a car park as a station, and two stations of one name otherwise stay two.
+	 */
+	lone?: boolean;
 }
 
 /**
@@ -143,27 +156,23 @@ export function mergeSites<R extends { key: string; rows: Row[] }>(
 		const up = root.get(r);
 		return up ? find(up) : r;
 	};
-	const at = new Map(out.map((r) => [r, r.rows[0] ? preset.position(r.rows[0]) : null]));
-	const near = (a: R, b: R) => {
-		const p = at.get(a);
-		const q = at.get(b);
-		return !!p && !!q && distance(p[0], p[1], q[0], q[1]) <= LINK_M;
-	};
-	const holder = new Map<string, R>();
+	const holders = new Map<string, { rec: R; at: [number, number]; lone?: boolean }[]>();
 	for (const rec of out)
 		for (const row of rec.rows) {
-			const id = link(row);
-			if (!id) continue;
-			const other = holder.get(id);
-			if (!other) {
-				holder.set(id, rec);
-				continue;
+			const at = preset.position(row);
+			if (!at) continue;
+			for (const { id, withinM, lone } of link(row, rec.rows)) {
+				const seen = holders.get(id) ?? [];
+				for (const other of seen) {
+					const a = find(other.rec);
+					const b = find(rec);
+					if (a === b || distance(at[0], at[1], other.at[0], other.at[1]) > withinM) continue;
+					if (lone === false && other.lone === false) continue;
+					if (out.indexOf(a) < out.indexOf(b)) root.set(b, a);
+					else root.set(a, b);
+				}
+				if (!seen.some((o) => o.rec === rec)) holders.set(id, [...seen, { rec, at, lone }]);
 			}
-			const a = find(other);
-			const b = find(rec);
-			if (a === b || !near(other, rec)) continue;
-			if (out.indexOf(a) < out.indexOf(b)) root.set(b, a);
-			else root.set(a, b);
 		}
 	for (const rec of out) {
 		const r = find(rec);
@@ -258,13 +267,13 @@ function serviceDate(rows: Row[]): string | null {
 	return dates[0] ?? null;
 }
 
-/** A filler number some operators declare when they have none to give. */
-const PLACEHOLDER_PHONE = "+33 1 23 45 67 89";
+/** Filler numbers some operators declare when they have none to give: `+33 1 23 45 67 89`, `+33 1 00 00 00 00`. */
+const PLACEHOLDER_PHONE = /^\+33 \d (23 45 67 89|(\d)\2 \2\2 \2\2 \2\2)$/;
 
 /** A mobile is usually somebody's own line, not the operator's. */
 function operatorPhone(raw: string): string | null {
 	const phone = phoneFR(raw.replace(/^tel:/i, ""));
-	return phone === PLACEHOLDER_PHONE || /^\+33 [67]/.test(phone ?? "") ? null : phone;
+	return !phone || PLACEHOLDER_PHONE.test(phone) || /^\+33 [67]/.test(phone) ? null : phone;
 }
 
 /** Only an answer the registry actually gives: "Accessibilité inconnue" proposes nothing. */
@@ -295,7 +304,7 @@ const isPrice = (v: string) => /\d\s*(€|eur|cts?\b)|€\s*\d/i.test(v) && !/gr
 const TWO_WHEEL_NAME = /deux[- ]roues|2[- ]roues|\bmotos?\b|scooter|v[ée]los?\b/i;
 
 /** An operator's note that per-session payment goes through its own app, badge or account. */
-const NEEDS_ACCOUNT = /\b(app|appli|application|badge|abonnement|compte|rfid|lidl plus)\b/i;
+const NEEDS_ACCOUNT = /\b(app|appli|application|badge|abonnement|compte|rfid|lidl plus|emsp)\b/i;
 
 const NOT_A_POINT = /^non concern/i;
 
@@ -345,13 +354,46 @@ function onePerPoint(rows: Row[]): Row[] {
 		});
 }
 
+/**
+ * Every declaration of each of `rows`' points, newest first: the same id, or the same number
+ * under another operator's prefix.
+ */
+function declarationsOf(rows: Row[], declared: Row[]): Map<Row, Row[]> {
+	const byNewest = [...declared].sort((a, b) => newest(b).localeCompare(newest(a)));
+	const same = (p: string) => {
+		const tail = TAIL.exec(p)?.[0];
+		return (h: Row) => {
+			const q = pointOf(h);
+			return !!q && (q === p || (!!tail && TAIL.exec(q)?.[0] === tail));
+		};
+	};
+	return new Map(
+		rows.map((r) => {
+			const p = pointOf(r);
+			return [r, p ? byNewest.filter(same(p)) : [r]];
+		}),
+	);
+}
+
 interface Station {
 	id: string;
+	file: string;
 	rows: Row[];
 	points: Set<string>;
 	latest: string;
 	name: string;
+	at: [number, number] | null;
+	/** The point count its newest declaration gives, when it gives one. */
+	n: number | null;
+	/** Declared as a single row under its own id, standing for `n` points whose connectors are unknown. */
+	oneRow: boolean;
 }
+
+/** A point's number without its operator's prefix, which a site moved to another operator's file keeps. */
+const TAIL = /\d{7,}$/;
+
+/** Within this, two declarations are on the same spot. */
+const SAME_SPOT_M = 2;
 
 /**
  * The consolidated file keeps every declaration a station has had: an operator's own file
@@ -360,32 +402,92 @@ interface Station {
  * and its aggregator's often share the day), rather than from a union that counts what no
  * longer exists.
  *
- * A station is gone when a newer one lists all its points (a pool taking in the stations an
- * operator declared one per point), or lists some under the same name: the site was declared
- * again under new ids, renumbering some points (Tisséo Balma-Gramont in 2023, 2024 and 2026).
- * Two stations sharing only some points otherwise both stay, and their points count once.
+ * A station is gone when newer ones list all its points (a pool taking in the stations an
+ * operator declared one per point), or a newer one in another file declares it again: some of
+ * its points under the same name or the same count (Tisséo Balma-Gramont in 2023, 2024 and
+ * 2026; Sowatt's EVBOX at MG Vénissieux), the same name and count on the same spot with none of
+ * its points (Caliceo Sainte-Foy), or, for a station declared as one row, as many points as
+ * it counted. A point the newer declaration left out was renumbered, so an older station still
+ * listing it does not count it again. Stations of one file are one snapshot and never replace
+ * each other; two sharing only some points otherwise both stay, and their points count once.
  */
 function currentStations(rows: Row[]): Station[] {
 	const file = (r: Row) => str(r, "datagouv_resource_id");
 	const byId = new Map<string, Row[]>();
 	for (const r of rows) {
-		const id = str(r, "id_station_itinerance");
+		const id = irve.key(r) ?? "";
 		byId.set(id, [...(byId.get(id) ?? []), r]);
 	}
 	const all = [...byId].map(([id, own]): Station => {
 		const latest = own.reduce((a, r) => (newest(r) > newest(a) ? r : a), own[0]);
 		const decl = onePerPoint(own.filter((r) => file(r) === file(latest)));
 		const points = new Set(decl.map(pointOf).filter((p) => p !== null));
-		const name = normaliseName(str(latest, "nom_station"));
-		return { id, rows: decl, points, latest: newest(latest), name };
+		const counts = new Set(decl.map((r) => Number.parseInt(str(r, "nbre_pdc"), 10)));
+		const n = counts.size === 1 ? [...counts][0] : Number.NaN;
+		return {
+			id,
+			file: file(latest),
+			rows: decl,
+			points,
+			latest: newest(latest),
+			name: normaliseName(str(latest, "nom_station")),
+			at: irve.position(latest),
+			n: n > 0 ? n : null,
+			oneRow: decl.length === 1 && points.size === 1 && [...points][0] === evseId(id) && n > 1,
+		};
 	});
-	const shared = (a: Station, b: Station) => [...a.points].filter((p) => b.points.has(p)).length;
-	const replaces = (t: Station, s: Station) =>
-		t.latest > s.latest &&
-		shared(t, s) > 0 &&
-		(shared(t, s) === s.points.size || (!!t.name && t.name === s.name));
-	return all.filter((s) => !all.some((t) => replaces(t, s)));
+	// Some operators declare every point of a site as a station of its own and repeat the
+	// site's total on each: as many one-row stations as each says there are, each one point.
+	for (const f of new Set(all.map((s) => s.file))) {
+		const ones = all.filter((s) => s.file === f && s.oneRow);
+		if (ones.length > 1 && ones.every((s) => s.n === ones.length))
+			for (const s of ones) {
+				s.oneRow = false;
+				s.n = 1;
+			}
+	}
+	const listed = (t: Station, p: string) => {
+		const tail = TAIL.exec(p)?.[0];
+		return t.points.has(p) || (!!tail && [...t.points].some((q) => TAIL.exec(q)?.[0] === tail));
+	};
+	const shared = (t: Station, s: Station) => [...s.points].filter((p) => listed(t, p)).length;
+	const sameSpot = (t: Station, s: Station) =>
+		!!t.at && !!s.at && distance(t.at[0], t.at[1], s.at[0], s.at[1]) <= SAME_SPOT_M;
+	const sameName = (t: Station, s: Station) => !!t.name && t.name === s.name;
+	const sameCount = (t: Station, s: Station) => !!t.n && t.n === s.n;
+	const redeclares = (t: Station, s: Station) =>
+		t.file !== s.file &&
+		(shared(t, s) > 0
+			? sameName(t, s) || sameCount(t, s) || ![...s.points].some((p) => t.points.has(p))
+			: sameName(t, s) && sameCount(t, s) && sameSpot(t, s));
+	const gone = new Map<string, string>();
+	const current = all.filter((s) => {
+		const newer = all.filter((t) => t.latest > s.latest);
+		const by = newer.find((t) => redeclares(t, s));
+		if (by) {
+			for (const p of s.points) if (!listed(by, p)) gone.set(p, by.latest);
+			return false;
+		}
+		if (s.points.size && [...s.points].every((p) => newer.some((t) => listed(t, p)))) return false;
+		if (!s.oneRow) return true;
+		const later = newer.filter((t) => t.file !== s.file && !t.oneRow);
+		return new Set(later.flatMap((t) => [...t.points])).size !== s.n;
+	});
+	for (const s of current) {
+		s.rows = s.rows.filter((r) => {
+			const p = pointOf(r);
+			return !p || (gone.get(p) ?? "") <= s.latest;
+		});
+		s.points = new Set(s.rows.map(pointOf).filter((p) => p !== null));
+	}
+	return current.filter((s) => s.rows.length > 0);
 }
+
+/** "Réseau de recharge Virta Public": what the network is, not its name. */
+const DESCRIBED_NETWORK = /^r[ée]seau de (re)?charge\b/i;
+
+/** Words any station's name may hold, which say nothing about whose site it is. */
+const GENERIC = new Set(["borne", "bornes", "recharge", "charge", "station", "stations", "irve"]);
 
 /**
  * `nom_enseigne` is meant to be the network's commercial name, but operators often put the
@@ -402,7 +504,7 @@ export function siteName(network: string, station: string, owner = ""): boolean 
 	const o = normaliseName(owner);
 	if (o && (n === o || n.startsWith(`${o} `) || o.startsWith(`${n} `))) return true;
 	if (gluedSiteName(n, `${station} ${owner}`)) return true;
-	const ours = tokens(network);
+	const ours = new Set([...tokens(network)].filter((w) => !GENERIC.has(w)));
 	const theirs = tokens(station);
 	const shared = [...ours].filter((w) => theirs.has(w)).length;
 	return shared > 0 && shared < ours.size;
@@ -430,9 +532,11 @@ const decimals = (v: string) => /\.(\d+)$/.exec(v)?.[1].length ?? 0;
  * `adresse_station` carries the postcode and commune or not, a country, sometimes another
  * postcode than the consolidated one ("…, 31000 Toulouse" at 31100): the street part is kept
  * and the consolidated postcode and commune are written once after it. Where the consolidation
- * has no postcode, the address's own postcode and commune stand.
+ * has no postcode, the address's own postcode and commune stand, and so they do where the
+ * address or its INSEE code is in another département than the consolidation put it ("363 Rte
+ * de Toulouse, 33140 Villenave-d'Ornon", INSEE 33550, consolidated as 31400 Toulouse).
  */
-export function stationAddress(raw: string, postcode: string, commune: string): string {
+export function stationAddress(raw: string, postcode: string, commune: string, insee = ""): string {
 	const place = normaliseName(commune);
 	let street = raw
 		.replace(/,\s*france\s*$/i, "")
@@ -456,10 +560,21 @@ export function stationAddress(raw: string, postcode: string, commune: string): 
 			street = street.slice(0, i).replace(/[\s,–-]+$/, "");
 			break;
 		}
+	const consolidated = departement(postcode);
+	const elsewhere =
+		!!consolidated &&
+		[code?.[0] ?? "", insee].some((c) => departement(c) && departement(c) !== consolidated);
+	if (elsewhere) return [street, [code?.[0], ownCity].filter(Boolean).join(" ")].join(", ");
 	const city = postcode || !ownCity || normaliseName(ownCity) === place ? commune : ownCity;
 	return [street, [postcode || code?.[0], city].filter(Boolean).join(" ")]
 		.filter(Boolean)
 		.join(", ");
+}
+
+/** A postcode's or an INSEE code's département: Corsica's 2A and 2B are 20, overseas ones three digits. */
+function departement(code: string): string | null {
+	if (!/^(\d{5}|2[AB]\d{3})$/i.test(code)) return null;
+	return code.startsWith("97") ? code.slice(0, 3) : code.slice(0, 2).replace(/2[AB]/i, "20");
 }
 
 /** The coordinates `position` reads, as the registry wrote them. */
@@ -493,17 +608,47 @@ const kinds = (r: Row) =>
 	new Set(SOCKETS.filter(([, f, only]) => has(r, f) && only(r)).map(([, f]) => f)).size +
 	(has(r, "prise_type_autre") ? 1 : 0);
 
+/** Legal forms and trade words an operator's files add to its name or not ("ZEENCO e-mobility"). */
+const COMPANY_NOISE =
+	/\b(sas|sasu|sarl|sa|eurl|france|e mobility|emobility|marketing|charging|services|partner network)\b/g;
+
+function company(name: string): string {
+	const n = normaliseName(name);
+	return n.replace(COMPANY_NOISE, " ").replace(/\s+/g, " ").trim() || n;
+}
+
+const operatorOf = (r: Row) => company(str(r, "nom_operateur") || str(r, "nom_amenageur"));
+
+/**
+ * A site moved to another operator's file keeps its points' numbers under the new operator's
+ * prefix (EV Cars' FREVCE9009501 is Allego's FRALLEGO9009501). Seven digits are no accident
+ * that close; under one operator they are its own numbering, and the site can have moved as far
+ * as any re-declaration.
+ */
+const TAIL_M = 100;
+
+/**
+ * One car park declared as a station and its points as stations of their own a few metres apart
+ * under its name or address (Bouygues spreads B612's eleven points along a line, 8 m apart).
+ */
+const SAME_SITE_M = 60;
+
 /** IRVE "statique" v2.3, consolidated: one row per charge point, grouped into one station. */
 const irve: Preset = {
 	id: "irve",
 	label: "IRVE charging stations",
 	keyField: "id_station_itinerance",
 	detect: (c) => c.includes("id_station_itinerance") && c.includes("id_pdc_itinerance"),
-	key: (r) => str(r, "id_station_itinerance") || null,
+	key(r) {
+		const id = str(r, "id_station_itinerance");
+		if (!NOT_A_POINT.test(id)) return id || null;
+		// "Non concerné" names no station, and every row of an area saying so would be one record.
+		const site = irve.site?.(r);
+		return site ? `${id} ${site}` : null;
+	},
 	site(r) {
 		const pos = irve.position(r);
-		const operator = (str(r, "nom_operateur") || str(r, "nom_amenageur")).toLowerCase();
-		return pos ? `${pos[0].toFixed(6)},${pos[1].toFixed(6)}|${operator}` : null;
+		return pos ? `${pos[0].toFixed(6)},${pos[1].toFixed(6)}|${operatorOf(r)}` : null;
 	},
 	position(r) {
 		const flag = str(r, "consolidated_is_lon_lat_correct");
@@ -511,7 +656,26 @@ const irve: Preset = {
 		const c = rawCoords(r);
 		return c ? coord(c[0], c[1]) : null;
 	},
-	link: pointOf,
+	link(r, record) {
+		const point = pointOf(r);
+		const who = operatorOf(r);
+		const tail = point ? TAIL.exec(point)?.[0] : undefined;
+		const name = normaliseName(str(r, "nom_station"));
+		const address = normaliseName(str(r, "adresse_station"));
+		const lone =
+			new Set(record.map(pointOf)).size === 1 &&
+			record.every((x) => !(Number.parseInt(str(x, "nbre_pdc"), 10) > 1));
+		const ids: SiteLink[] = [];
+		if (point) ids.push({ id: point, withinM: LINK_M });
+		if (tail)
+			ids.push(
+				{ id: `tail ${tail}`, withinM: TAIL_M },
+				{ id: `tail ${who} ${tail}`, withinM: LINK_M },
+			);
+		if (name) ids.push({ id: `name ${who} ${name}`, withinM: SAME_SITE_M, lone });
+		if (address) ids.push({ id: `address ${who} ${address}`, withinM: SAME_SITE_M, lone });
+		return ids;
+	},
 	extract(declared, url) {
 		const current = currentStations(declared);
 		const rows = onePerPoint(current.flatMap((s) => s.rows));
@@ -525,46 +689,37 @@ const irve: Preset = {
 		if (!pos || !key) return null;
 		const t = new Tags(first);
 
-		const points = [...new Set(rows.map(pointOf).filter((p) => p !== null))];
+		// A row is a charge point whether or not the operator gave it an id ("Non concerné").
+		const points = new Set(rows.map((r, i) => pointOf(r) ?? `row ${i}`)).size;
 		const stations = current.map((s) => s.id).filter(Boolean);
 		const counts = current.map(
 			(s) =>
 				new Set(s.rows.map((r) => Number.parseInt(str(r, "nbre_pdc"), 10)).filter((n) => n > 0)),
 		);
 		const declaredCount = counts.length === 1 && counts[0].size === 1 ? [...counts[0]][0] : 0;
-		// Some operators declare a whole station as one row with the station's own id, and only
-		// `nbre_pdc` says how many points it has; which connectors they carry is then unknown.
-		const oneRowCounts = current.map((s, i) =>
-			s.points.size === 1 &&
-			[...s.points][0] === evseId(s.id) &&
-			counts[i].size === 1 &&
-			[...counts[i]][0] > 1
-				? [...counts[i]][0]
-				: 0,
-		);
-		const oneRows = oneRowCounts.filter((n) => n > 0);
+		const oneRows = current.flatMap((s) => (s.oneRow && s.n ? [s.n] : []));
 		// A lone station whose rows disagree on its count, or whose count is not the points it
 		// lists, may list only some of them. On a site of several stations the listed points
 		// stand: operators fill `nbre_pdc` with 1 on every station of a car park.
 		const unsure =
 			current.length === 1 &&
 			!oneRows.length &&
-			(counts[0].size > 1 || (counts[0].size === 1 && !counts[0].has(current[0].points.size)));
+			(counts[0].size > 1 || (counts[0].size === 1 && !counts[0].has(current[0].rows.length)));
 		// A DC cabinet's type 2 outlet is declared as a point of its own at the cabinet's power
-		// (180 kW), and is not a bay of its own.
-		const acOnDc = rows.some((r) => DC.some((f) => has(r, f)))
-			? rows.filter(
-					(r) =>
-						pointOf(r) &&
-						has(r, "prise_type_2") &&
-						kinds(r) === 1 &&
-						Number(str(r, "puissance_nominale")) > MAX_KW["socket:type2"],
-				).length
-			: 0;
+		// (180 kW), and is not a bay of its own. A station of type 2 points alone at that power
+		// is an AC station declared at its feed's power, and its points are bays.
+		const withDc = new Set(rows.filter((r) => DC.some((f) => has(r, f))).map(irve.key));
+		const acOnDc = rows.filter(
+			(r) =>
+				withDc.has(irve.key(r)) &&
+				pointOf(r) &&
+				has(r, "prise_type_2") &&
+				kinds(r) === 1 &&
+				Number(str(r, "puissance_nominale")) > MAX_KW["socket:type2"],
+		).length;
 		const capacity = unsure
 			? 0
-			: points.length - oneRows.length + oneRows.reduce((a, n) => a + n, 0) - acOnDc ||
-				declaredCount;
+			: points - oneRows.length + oneRows.reduce((a, n) => a + n, 0) - acOnDc || declaredCount;
 		const oneRow = oneRows.length > 0;
 		const notes: string[] = [];
 		if (oneRow)
@@ -575,7 +730,7 @@ const irve: Preset = {
 			);
 		if (unsure)
 			notes.push(
-				`The registry declares ${[...counts[0]].sort((a, b) => a - b).join(" and ")} charge points and lists ${current[0].points.size}, so capacity and sockets are left out`,
+				`The registry declares ${[...counts[0]].sort((a, b) => a - b).join(" and ")} charge points and lists ${current[0].rows.length}, so capacity and sockets are left out`,
 			);
 
 		t.add("amenity", "charging_station", 0.95, "id_station_itinerance");
@@ -586,6 +741,7 @@ const irve: Preset = {
 		fill(t.add("operator", operator, 0.85, "nom_operateur"));
 		if (
 			normaliseName(network) !== normaliseName(operator) &&
+			!DESCRIBED_NETWORK.test(network) &&
 			!siteName(network, str(first, "nom_station"), str(first, "nom_amenageur"))
 		)
 			fill(t.add("network", network, 0.8, "nom_enseigne"));
@@ -600,7 +756,7 @@ const irve: Preset = {
 				0.8,
 				"id_pdc_itinerance",
 				acOnDc
-					? `${points.length} distinct, ${acOnDc} of them type 2 alone above 43.5 kW`
+					? `${points} distinct, ${acOnDc} of them type 2 alone above 43.5 kW`
 					: `${capacity} distinct`,
 				"derived",
 			);
@@ -666,11 +822,22 @@ const irve: Preset = {
 				"The registry lists connectors of another type on this station, which it does not name",
 			);
 
+		// A newer declaration often leaves out what an older one of the same points said (an
+		// aggregator's copy of an operator's file drops its notes and tariff).
+		const history = declarationsOf(rows, declared);
+		const said = (field: string) =>
+			rows.map((r) => str(history.get(r)?.find((h) => str(h, field)) ?? r, field)).filter(Boolean);
+		const ever = (field: string) =>
+			[...history.values()]
+				.flat()
+				.map((r) => str(r, field))
+				.filter(Boolean);
+
 		// `gratuit` is "free with no condition of use", so false means some users pay, which is
 		// `fee=yes` (FR:Tag:amenity=charging_station). Free beside a price contradicts itself.
-		const gratuit = rows.map((r) => str(r, "gratuit")).filter(Boolean);
-		const price = rows.map((r) => str(r, "tarification")).find(isPrice);
-		const tariff = rows.map((r) => str(r, "tarification")).find(isTariff);
+		const gratuit = said("gratuit");
+		const price = said("tarification").find(isPrice);
+		const tariff = said("tarification").find(isTariff);
 		const paidBy = ["paiement_acte", "paiement_cb"].find((f) =>
 			rows.some((r) => truthy(str(r, f))),
 		);
@@ -695,17 +862,26 @@ const irve: Preset = {
 		if (/libre/i.test(access))
 			fill(t.add("access", "yes", 0.8, "condition_acces", access, "derived"));
 
-		// Operators fill `horaires` with 24/7 by default and write the real hours in their notes.
-		const hours = openingHours(str(first, "horaires"));
-		if (hours && !rows.some((r) => STATED_HOURS.test(str(r, "observations"))))
-			t.add("opening_hours", hours, 0.7, "horaires");
+		// Operators fill `horaires` with 24/7 by default and write the real hours in their notes,
+		// and a site whose stations give different hours has no one value.
+		const hours = new Set(
+			current
+				.map((s) => str(s.rows[0], "horaires"))
+				.filter(Boolean)
+				.map(openingHours),
+		);
+		const hoursOk = hours.size === 1 && [...hours][0];
+		if (hoursOk && !rows.some((r) => STATED_HOURS.test(str(r, "observations"))))
+			t.add("opening_hours", hoursOk, 0.7, "horaires");
 
 		const anyRow = (f: string) => rows.some((r) => truthy(str(r, f)));
-		const twoWheel = anyRow("station_deux_roues");
-		// A flag the station's own name or its fast connectors contradict says nothing.
+		const twoWheels = new Set(ever("station_deux_roues").map(truthy));
+		const twoWheel = twoWheels.has(true);
+		// A flag the station's own name, its fast connectors or another declaration contradicts
+		// says nothing.
 		const named = TWO_WHEEL_NAME.test(str(first, "nom_station"));
 		const fast = anyRow("prise_type_combo_ccs") || anyRow("prise_type_chademo");
-		if (twoWheel ? !fast : !named)
+		if (twoWheels.size < 2 && (twoWheel ? !fast : !named))
 			fill(
 				t.add(
 					twoWheel ? "motorcycle" : "motorcar",
@@ -718,7 +894,7 @@ const irve: Preset = {
 			);
 		// Paying per session is "without identification or subscription" in the schema, which
 		// operators stretch to their own app or badge; their note then says so.
-		const notesText = rows.map((r) => `${str(r, "observations")} ${str(r, "tarification")}`);
+		const notesText = [...ever("observations"), ...ever("tarification")];
 		if (anyRow("paiement_acte") && !notesText.some((n) => NEEDS_ACCOUNT.test(n)))
 			fill(t.add("authentication:none", "yes", 0.7, "paiement_acte", "true", "derived"));
 		if (anyRow("paiement_cb"))
@@ -740,8 +916,13 @@ const irve: Preset = {
 					"derived",
 				),
 			);
-		// Every declaration: a newer one often leaves the commissioning date out.
-		const since = serviceDate(declared);
+		// Every declaration on this site: a newer one often leaves the commissioning date out.
+		const since = serviceDate(
+			declared.filter((r) => {
+				const at = irve.position(r);
+				return !!at && distance(at[0], at[1], pos[0], pos[1]) <= LINK_M;
+			}),
+		);
 		if (since) fill(t.add("start_date", since, 0.7, "date_mise_en_service", since));
 		const owner = str(first, "nom_amenageur");
 		if (normaliseName(owner) !== normaliseName(operator))
@@ -749,7 +930,12 @@ const irve: Preset = {
 		const phone = operatorPhone(str(first, "telephone_operateur"));
 		if (phone)
 			fill(t.add("operator:phone", phone, 0.7, "telephone_operateur", undefined, "normalised"));
-		const pmr = stationWheelchair(rows);
+		const agreed = rows.every(
+			(r) =>
+				new Set((history.get(r) ?? [r]).map((h) => wheelchair(str(h, "accessibilite_pmr"))))
+					.size === 1,
+		);
+		const pmr = agreed ? stationWheelchair(rows) : null;
 		if (pmr) fill(t.add("wheelchair", pmr, 0.7, "accessibilite_pmr", undefined, "derived"));
 		const height = str(first, "restriction_gabarit").replace(",", ".");
 		if (/^\d(\.\d+)?$/.test(height) && Number(height) >= 1.5)
@@ -778,6 +964,7 @@ const irve: Preset = {
 			str(first, "adresse_station"),
 			str(first, "consolidated_code_postal"),
 			str(first, "consolidated_commune"),
+			str(first, "code_insee_commune"),
 		);
 		return {
 			key,
@@ -1140,7 +1327,7 @@ const publicBody = (siret: string) => (/^\d{14}$/.test(siret) ? /^[12]/.test(sir
 const SEGPA = "390";
 
 /** Addresses this close to the point are one site as far as the point can tell. */
-const SAME_SITE_M = 100;
+const ONE_ADDRESS_M = 100;
 
 /**
  * One UAI over several sites comes as several rows, each at the one point the directory has
@@ -1152,7 +1339,7 @@ function mainSite(rows: Row[], gaps?: Map<Row, number>): Row {
 	const gap = (r: Row) => gaps?.get(r) ?? Number.POSITIVE_INFINITY;
 	const nearest = Math.min(...rows.map(gap));
 	return rows
-		.filter((r) => gap(r) <= nearest + SAME_SITE_M || nearest === Number.POSITIVE_INFINITY)
+		.filter((r) => gap(r) <= nearest + ONE_ADDRESS_M || nearest === Number.POSITIVE_INFINITY)
 		.sort((a, b) => str(a, "nom_etablissement").length - str(b, "nom_etablissement").length)[0];
 }
 

@@ -43,6 +43,8 @@ const irveRow = (over: Row = {}): Row => ({
 describe("IRVE preset", () => {
 	const irve = presetById("irve");
 	if (!irve) throw new Error("irve preset missing");
+	const capacityOf = (rows: Row[]) =>
+		irve.extract(rows, "u")?.tags.find((t) => t.k === "capacity")?.v;
 
 	it("is detected from its columns", () => {
 		expect(detectPreset(Object.keys(irveRow()))?.id).toBe("irve");
@@ -138,6 +140,96 @@ describe("IRVE preset", () => {
 		]);
 	});
 
+	it("makes one record of a site another operator's file declares under its own prefix", () => {
+		const rec = (key: string, point: string, lat: string, over: Row = {}) => ({
+			key,
+			rows: [
+				irveRow({
+					id_station_itinerance: key,
+					id_pdc_itinerance: point,
+					consolidated_latitude: lat,
+					...over,
+				}),
+			],
+		});
+		const keys = (...recs: ReturnType<typeof rec>[]) => mergeSites(recs, irve).map((r) => r.key);
+		const allego = { nom_operateur: "Allego" };
+		expect(
+			keys(
+				rec("FREVCP000300", "FREVCE9009501", "45.78900", { nom_operateur: "EV Cars" }),
+				rec("FRALLPEVCARSECLLY", "FRALLEGO9009501", "45.78910", allego),
+			),
+		).toEqual(["FRALLPEVCARSECLLY"]);
+		expect(
+			keys(
+				rec("FREVCP000300", "FREVCE9009501", "45.78900", { nom_operateur: "EV Cars" }),
+				rec("FRALLPEVCARSECLLY", "FRALLEGO9009501", "45.79000", allego),
+			),
+		).toHaveLength(2);
+		expect(
+			keys(
+				rec("FREVCP000406", "FREVCE7001161", "43.64750", allego),
+				rec("FRALLPEVCARSKLPBL", "FRALLEGO7001161", "43.64655", allego),
+			),
+		).toEqual(["FRALLPEVCARSKLPBL"]);
+		const zeenco = (name: string, key: string, point: string) =>
+			rec(key, point, "43.543351", { nom_operateur: name });
+		expect(
+			keys(
+				zeenco("ZEENCO", "FRLMSE1000101739", "FRLMSE1000101739"),
+				zeenco("ZEENCO e-mobility", "FRZEEP89304836", "FRZEEE10001017391"),
+			),
+		).toHaveLength(1);
+	});
+
+	it("makes one record of a car park whose points are declared as stations a few metres apart", () => {
+		const station = (key: string, lon: string, points: string[]) => ({
+			key,
+			rows: points.map((p) =>
+				irveRow({
+					id_station_itinerance: key,
+					id_pdc_itinerance: p,
+					nom_station: "TOULOUSE - B612 - 3 Rue Tarfaya",
+					consolidated_longitude: lon,
+					nbre_pdc: String(points.length),
+				}),
+			),
+		});
+		const merged = mergeSites(
+			[
+				station("FRBE3P31555003", "1.488652", ["FRBE3E315550031", "FRBE3E315550032"]),
+				station("FRBE3P315550035", "1.488752", ["FRBE3E3155500351"]),
+				station("FRBE3P315550036", "1.488852", ["FRBE3E3155500361"]),
+			],
+			irve,
+		);
+		expect(merged.map((r) => r.key)).toEqual(["FRBE3P31555003"]);
+		expect(capacityOf(merged[0].rows)).toBe("4");
+		const twoStations = mergeSites(
+			[
+				station("FRM31P31555029", "1.3720", ["FRM31E315550291", "FRM31E315550292"]),
+				station("FRM31P31555030A2", "1.3719", ["FRM31E315550303", "FRM31E315550304"]),
+			],
+			irve,
+		);
+		expect(twoStations).toHaveLength(2);
+	});
+
+	it("keys a row that names no station by its place and operator", () => {
+		const none = (lat: string, nom_operateur: string) =>
+			irveRow({
+				id_station_itinerance: "Non concerné",
+				id_pdc_itinerance: "Non concerné",
+				consolidated_latitude: lat,
+				nom_operateur,
+				nbre_pdc: "1",
+			});
+		const here = irve.key(none("45.79", "Pascal Chene"));
+		expect(here).not.toBe(irve.key(none("45.80", "Pascal Chene")));
+		expect(here).not.toBe(irve.key(none("45.79", "INOUID")));
+		expect(capacityOf([none("45.79", "Pascal Chene")])).toBe("1");
+	});
+
 	it("reads a fee from what fired, never from an unknown tariff", () => {
 		const fee = (over: Row) =>
 			irve
@@ -196,6 +288,33 @@ describe("IRVE preset", () => {
 		);
 	});
 
+	it("counts one point per one-row station when each repeats the site's total", () => {
+		const site = (n: number, ids: string[], file = "f", date = "2025-01-28") =>
+			ids.map((id, i) =>
+				irveRow({
+					id_station_itinerance: id,
+					id_pdc_itinerance: id,
+					nbre_pdc: String(n),
+					prise_type_2: String(i > 0),
+					prise_type_combo_ccs: String(i === 0),
+					puissance_nominale: i === 0 ? "60" : "22",
+					datagouv_resource_id: file,
+					date_maj: date,
+				}),
+			);
+		const brasserie = site(3, ["DKMONE41", "DKMONE42", "DKMONE43"]);
+		const tags = Object.fromEntries(
+			(irve.extract(brasserie, "u")?.tags ?? []).map((t) => [t.k, t.v]),
+		);
+		expect(tags).toMatchObject({ capacity: "3", "socket:type2": "2", "socket:type2_combo": "1" });
+		expect(capacityOf(site(2, ["FRLIBE01", "FRLIBE02", "FRLIBE03"]))).toBe("6");
+		const renumbered = [
+			...site(3, ["FRQPKEP1", "FRQPKEP2", "FRQPKEP3"], "old", "2025-11-15"),
+			...declared("FRQPKPPRK", "new", "2026-10-03", ["FRQPKEP1", "FRQPKEP2"]),
+		];
+		expect(capacityOf(renumbered)).toBe("3");
+	});
+
 	const declared = (station: string, file: string, date: string, points: string[]) =>
 		points.map((p) =>
 			irveRow({
@@ -238,6 +357,56 @@ describe("IRVE preset", () => {
 		expect(capacity([...pool, ...part])?.v).toBe("4");
 		const whole = declared("FRSWSP1321486", "agg", "2026-10-03", ["FRSWSE3", "FRSWSE4", "FRSWSE5"]);
 		expect(capacity([...pool, ...part, ...whole])?.v).toBe("5");
+	});
+
+	it("drops a station declared again elsewhere, and its renumbered points with it", () => {
+		const named = (rows: Row[], nom_station: string) => rows.map((r) => ({ ...r, nom_station }));
+		const alfen = named(
+			declared("FRSWSP90234529", "agg", "2026-04-27", ["E1", "E2", "E7", "E8"]),
+			"MG VENISSIEUX",
+		);
+		const evbox = named(
+			declared("FRSWSE1234651154", "own", "2026-09-29", ["E7", "E8", "E9"]),
+			"EVBOX 120 MG VENISSIEUX",
+		);
+		const again = named(
+			declared("FRSWSP1321486", "agg", "2026-10-03", ["E9", "E10", "E11"]),
+			"MG VENISSIEUX",
+		);
+		expect(capacity([...alfen, ...evbox, ...again])?.v).toBe("5");
+		const caliceo = (station: string, file: string, date: string, point: string) =>
+			declared(station, file, date, [point]).map((r) => ({
+				...r,
+				nom_station: "Caliceo Ste Foy",
+				nbre_pdc: "4",
+			}));
+		const x = irve.extract(
+			[
+				...caliceo("FRISEPINOUIDCALICEO", "a", "2023-10-10", "FRISEEINOUIDCALICEO1"),
+				...caliceo("FRISEEINOUIDCALICEOSTEFOY", "b", "2023-12-08", "FRISEEINOUIDCALICEOSTEFOY1"),
+			],
+			"u",
+		);
+		expect(x?.notes?.[0]).toMatch(/declares 4 charge points and lists 1/);
+		const oneRow = [
+			irveRow({
+				id_station_itinerance: "FRLMSE1000101739",
+				id_pdc_itinerance: "FRLMSE1000101739",
+				nbre_pdc: "3",
+				datagouv_resource_id: "old",
+				date_maj: "2024-01-26",
+			}),
+			...declared("FRZEEP89304836", "new", "2026-10-02", ["FRZEEE1", "FRZEEE2", "FRZEEE3"]),
+		];
+		expect(capacity(oneRow)?.v).toBe("3");
+		const moved = [
+			...declared("FRALLPEVCARSTLSPU", "allego", "2026-03-05", [
+				"FRALLEGO9002631",
+				"FRALLEGO9005411",
+			]),
+			...declared("FREVCP000133", "evcars", "2026-10-03", ["FREVCE9002631", "FREVCE9990971"]),
+		];
+		expect(capacity(moved)?.v).toBe("2");
 	});
 
 	it("trusts no count its rows disagree on, and then proposes no socket count", () => {
@@ -283,6 +452,8 @@ describe("IRVE preset", () => {
 		const tag = capacity([cabinet(1, false), cabinet(2, true), cabinet(3, true)]);
 		expect(tag?.v).toBe("2");
 		expect(tag?.parts[1].text).toMatch(/3 distinct, 1 of them type 2 alone/);
+		const acStation = { ...cabinet(1, false), id_station_itinerance: "FRLMSE1234718177" };
+		expect(capacity([acStation, cabinet(2, true), cabinet(3, true)])?.v).toBe("3");
 	});
 
 	it("says when the registry gives a position to two decimals", () => {
@@ -303,6 +474,18 @@ describe("IRVE preset", () => {
 				?.tags.find((t) => t.k === "opening_hours")?.v;
 		expect(hours("Situé en centre ville/ accessible de 9h à 18h uniquement")).toBeUndefined();
 		expect(hours("Recharge rapide 24/7 - 1h maximum de stationnement autorisé")).toBe("24/7");
+		const site = irve.extract(
+			[
+				irveRow({ id_station_itinerance: "FRAIRP1", id_pdc_itinerance: "FRAIRE1" }),
+				irveRow({
+					id_station_itinerance: "FRAIRP2",
+					id_pdc_itinerance: "FRAIRE2",
+					horaires: "Mo-Fr 07:00-20:00",
+				}),
+			],
+			"u",
+		);
+		expect(site?.tags.find((t) => t.k === "opening_hours")).toBeUndefined();
 	});
 
 	it("writes the address's postcode and commune once", () => {
@@ -342,6 +525,47 @@ describe("IRVE preset", () => {
 		expect(addr("15 Av. Yves Brunaud, 31770 Colomiers, Toulouse", "", "Toulouse")).toBe(
 			"15 Av. Yves Brunaud, 31770 Colomiers",
 		);
+		const elsewhere = irve.extract(
+			[
+				irveRow({
+					adresse_station: "363 Rte de Toulouse, 33140 Villenave-d'Ornon",
+					consolidated_code_postal: "31400",
+					consolidated_commune: "Toulouse",
+					code_insee_commune: "33550",
+				}),
+			],
+			"u",
+		);
+		expect(elsewhere?.addr).toBe("363 Rte de Toulouse, 33140 Villenave-d'Ornon");
+		expect(elsewhere?.geocode?.q).toBe("363 Route de Toulouse, 33140 Villenave-d'Ornon");
+	});
+
+	it("reads notes, fee, two-wheelers and accessibility over every declaration of the points", () => {
+		const both = (older: Row, newer: Row) =>
+			Object.fromEntries(
+				(
+					irve.extract(
+						[
+							irveRow({ datagouv_resource_id: "own", date_maj: "2025-12-11", ...older }),
+							irveRow({ datagouv_resource_id: "agg", date_maj: "2026-05-19", ...newer }),
+						],
+						"u",
+					)?.tags ?? []
+				).map((t) => [t.k, t.v]),
+			);
+		const blank = { observations: "", tarification: "", gratuit: "" };
+		expect(
+			both({ observations: "Paiement via app Lidl Plus" }, blank)["authentication:none"],
+		).toBeUndefined();
+		expect(
+			both({ observations: "formules de votre EMSP" }, blank)["authentication:none"],
+		).toBeUndefined();
+		expect(both({ gratuit: "FALSE" }, { ...blank, paiement_acte: "false" }).fee).toBe("yes");
+		const engie = both(
+			{ station_deux_roues: "FALSE", accessibilite_pmr: "Accessibilité inconnue" },
+			{ station_deux_roues: "True", accessibilite_pmr: "Réservé PMR" },
+		);
+		for (const k of ["motorcycle", "motorcar", "wheelchair"]) expect(engie[k]).toBeUndefined();
 	});
 
 	it("reads a station's accessibility and booking from all its points", () => {
@@ -370,9 +594,20 @@ describe("IRVE preset", () => {
 		const app = tags({ observations: "Paiement via app Lidl Plus" });
 		expect(app["authentication:none"]).toBeUndefined();
 		expect(tags({ telephone_operateur: "06 22 53 03 38" })["operator:phone"]).toBeUndefined();
+		expect(
+			tags({ telephone_operateur: "tel:+33-1-00-00-00-00" })["operator:phone"],
+		).toBeUndefined();
 		expect(tags({ date_mise_en_service: "2021-3-29", nbre_pdc: "1" }).start_date).toBe(
 			"2021-03-29",
 		);
+		const farAway = irveRow({
+			id_station_itinerance: "FRFARP1",
+			id_pdc_itinerance: "FRFARE1",
+			date_mise_en_service: "2019-05-02",
+			consolidated_latitude: "45.80",
+		});
+		const site = irve.extract([irveRow({ date_mise_en_service: "2023-01-08" }), farAway], "u");
+		expect(site?.tags.find((t) => t.k === "start_date")?.v).not.toBe("2019-05-02");
 	});
 
 	it("fills in what the registry knows beyond the sockets, and nothing it does not", () => {
@@ -417,6 +652,13 @@ describe("IRVE preset", () => {
 		expect(
 			irve.extract([irveRow({ prise_type_autre: "true", nbre_pdc: "1" })], "u")?.notes,
 		).toHaveLength(1);
+	});
+
+	it("proposes no network the registry describes rather than names", () => {
+		const network = (nom_enseigne: string) =>
+			irve.extract([irveRow({ nom_enseigne })], "u")?.tags.find((t) => t.k === "network")?.v;
+		expect(network("Réseau de recharge Virta Public")).toBeUndefined();
+		expect(network("Réseau e-Totem")).toBe("Réseau e-Totem");
 	});
 
 	it("reads two same-day declarations of a point by their last change, and absence across both", () => {
@@ -785,6 +1027,9 @@ describe("openingHours", () => {
 				`${week("07:30-12:30", ["Mo", "Tu"])}, ${week("13:30-19:00", ["Mo", "Tu"])}, Sa 09:00-12:00`,
 			),
 		).toBe("Mo-Tu 07:30-12:30,13:30-19:00; Sa 09:00-12:00");
+		expect(openingHours("Mo-Fr 08:00-12:00,Mo-Fr 14:00-18:00,Th 08:00-18:00")).toBe(
+			"Mo-We 08:00-12:00,14:00-18:00; Th 08:00-18:00; Fr 08:00-12:00,14:00-18:00",
+		);
 	});
 
 	it("repairs what OSM's parser can read and refuses the rest", () => {
@@ -868,6 +1113,7 @@ describe("siteName", () => {
 		expect(siteName("CENTRAKOR", "CENTRAKOR - PARKING EXTERIEUR", "CENTRAKOR")).toBe(true);
 		expect(siteName("LPA Fosse aux Ours", "Parking FAO", "LPA")).toBe(true);
 		expect(siteName("Reveo", "Reveo Route d'Espagne", "Toulouse Métropole")).toBe(false);
+		expect(siteName("Partage Ma Borne", "Borne 1 DC 120 AMARYLIS", "SA AMARYLIS")).toBe(false);
 	});
 
 	it("tells a site's words run together, and the owner's short name, from a brand", () => {

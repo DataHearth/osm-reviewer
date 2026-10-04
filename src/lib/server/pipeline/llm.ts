@@ -200,6 +200,20 @@ const WEEK = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const DAY_RULE =
 	/^(Mo|Tu|We|Th|Fr|Sa|Su)(?:-(Mo|Tu|We|Th|Fr|Sa|Su))? (\d\d:\d\d-\d\d:\d\d(?:,\d\d:\d\d-\d\d:\d\d)*)$/;
 
+/** A day's spans in order, overlapping or touching ones joined: `08:00-12:00,08:00-18:00` is `08:00-18:00`. */
+function joinSpans(spans: Iterable<string>): string {
+	const out: [string, string][] = [];
+	for (const span of [...spans].sort()) {
+		const [from, to] = span.split("-");
+		const last = out.at(-1);
+		// A span past midnight (22:00-02:00) is left as written.
+		if (last && last[0] <= last[1] && from <= to && from <= last[1]) {
+			if (to > last[1]) last[1] = to;
+		} else out.push([from, to]);
+	}
+	return out.map(([from, to]) => `${from}-${to}`).join(",");
+}
+
 /**
  * Days spelled out one by one (`Mo 09:30-19:45, Tu 09:30-19:45, …`, a split day as two rules)
  * folded into ranges of days with the same spans, which OSM's prettifier does not do. Anything
@@ -221,7 +235,7 @@ export function foldDays(v: string): string {
 		}
 	}
 	if (repeated && v.includes(";")) return v;
-	const day = (d: number) => [...(spans.get(d) ?? [])].sort().join(",");
+	const day = (d: number) => joinSpans(spans.get(d) ?? []);
 	if (WEEK.every((_, d) => day(d) === "00:00-24:00")) return "24/7";
 	const out: string[] = [];
 	for (let d = 0; d < 7; d++) {

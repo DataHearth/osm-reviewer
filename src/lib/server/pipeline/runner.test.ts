@@ -16,7 +16,7 @@ const FILE = "https://static.data.gouv.fr/irve-20260901.csv";
 const HEADER =
 	"id_station_itinerance,id_pdc_itinerance,nom_station,nom_operateur,adresse_station,consolidated_longitude,consolidated_latitude,consolidated_is_lon_lat_correct,nbre_pdc,puissance_nominale,prise_type_2,gratuit,horaires";
 const row = (station: string, pdc: string, lon: number, lat: number, extra = "") =>
-	`${station},${pdc},Station ${station},Operateur,1 rue X,${lon},${lat},true,1,22,true,true,24/7${extra}`;
+	`${station},${pdc},Station ${station},Operateur,1 rue ${station},${lon},${lat},true,1,22,true,true,24/7${extra}`;
 
 let csv = "";
 let osm: { elements: unknown[] } = { elements: [] };
