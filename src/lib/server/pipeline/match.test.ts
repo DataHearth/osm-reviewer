@@ -3,6 +3,7 @@ import {
 	closureOps,
 	contextTags,
 	disputedOps,
+	findAtAddress,
 	findMatch,
 	indexRefs,
 	matchWarnings,
@@ -16,6 +17,7 @@ import {
 	twinWarnings,
 	unchangedTags,
 	updateOps,
+	yieldToFit,
 	yieldToIds,
 } from "./match";
 import type { Extraction, OsmElement, ProposedTag } from "./types";
@@ -891,14 +893,66 @@ describe("far from the record's address", () => {
 		refs: {},
 	};
 
-	it("leaves out the address and contacts, and says why", () => {
+	it("leaves out the address, contacts and SIRET, and says why", () => {
 		const far = el(1, 45.735, 4.8, { amenity: "school", "contact:website": "https://a.fr" });
-		expect(planUpdate(x, far, [far]).ops.map((o) => o.k)).toEqual(["ref:FR:SIRET"]);
+		const plan = planUpdate(x, far, [far]);
+		expect(plan.ops).toEqual([]);
+		expect(plan.far).toBeCloseTo(3892, -1);
 		expect(matchWarnings(x, far, [far])[0]).toMatch(
-			/^Matched to node\/1, 3.9 km from the source's address: .* so its address and contacts are left out$/,
+			/^Matched to node\/1, 3.9 km from where the source and the address base place it: .* so its address, contacts and SIRET are left out$/,
 		);
 		const near = el(2, 45.703, 4.8, { amenity: "school" });
 		expect(planUpdate(x, near, [near]).ops).toHaveLength(3);
+	});
+
+	it("is near when either the source's point or the base's housenumber or street is", () => {
+		const school = el(1, 45.735, 4.8, { amenity: "school" });
+		const at = { lat: 45.734, lon: 4.8, label: "Chemin X" };
+		expect(planUpdate({ ...x, lat: 45.734 }, school, [school]).ops).toHaveLength(3);
+		expect(planUpdate({ ...x, atAddress: undefined, onStreet: at }, school, [school]).far).toBe(
+			undefined,
+		);
+	});
+
+	it("writes nothing that says what the place is onto a far object mapped as no place", () => {
+		const building = el(1, 45.735, 4.8, { building: "yes", "ref:UAI": "0694161Y" });
+		const y = {
+			...x,
+			tags: [...x.tags, tag("name", "Enfants Précoces"), tag("start_date", "2010")],
+		};
+		expect(planUpdate(y, building, [building]).ops).toEqual([]);
+	});
+});
+
+describe("new records whose point stayed put", () => {
+	const x = {
+		key: "a",
+		lat: 43.61665,
+		lon: 1.352185,
+		name: "Airbus M51",
+		tags: [tag("amenity", "charging_station")],
+		refs: {},
+		atAddress: { lat: 43.618261, lon: 1.356936, label: "15 Avenue Yves Brunaud 31770 Colomiers" },
+	};
+
+	it("say how far their address is, once that is past what the preset would move them for", () => {
+		const never = { ...x, geocode: { q: "", farM: Number.POSITIVE_INFINITY } };
+		expect(matchWarnings(never, null, [])).toEqual([
+			"Its address, 15 Avenue Yves Brunaud 31770 Colomiers, is 422 m away",
+		]);
+		expect(matchWarnings({ ...x, geocode: { q: "", farM: 1000 } }, null, [])).toEqual([]);
+	});
+
+	it("are matched at their address when nothing stands at their point, unless the counts say otherwise", () => {
+		const never = { ...x, geocode: { q: "", farM: Number.POSITIVE_INFINITY } };
+		const there = el(1, 43.61826, 1.35694, { amenity: "charging_station", operator: "Airbus" });
+		const y = { ...never, tags: [...x.tags, tag("operator", "Airbus"), tag("capacity", "4")] };
+		expect(findAtAddress(y, [there], new Map(), new Set())?.id).toBe(1);
+		const small = { ...there, tags: { ...there.tags, capacity: "2" } };
+		expect(findAtAddress(y, [small], new Map(), new Set())).toBeNull();
+		expect(
+			findAtAddress({ ...y, geocode: { q: "", farM: 100 } }, [there], new Map(), new Set()),
+		).toBeNull();
 	});
 });
 
@@ -1058,6 +1112,17 @@ describe("twins of one operator", () => {
 		]);
 		expect(twins.has("c")).toBe(false);
 	});
+
+	it("pairs records of one name, address and operator however far apart", () => {
+		const at = (key: string, lat: number) => ({
+			...rec(key, lat, "Edenauto"),
+			name: "Edenauto Espace Toy Toulouse",
+			addr: "159 Route de Labège, 31400 Toulouse",
+		});
+		expect(twinWarnings([at("a", 43.5746), at("b", 43.5691)]).get("a")).toEqual([
+			"Another new candidate, “Edenauto Espace Toy Toulouse” (b), has the same name, address and operator: the two may be one place",
+		]);
+	});
 });
 
 describe("records sharing an object", () => {
@@ -1098,6 +1163,177 @@ describe("records sharing an object", () => {
 		expect(planUpdate(x, group, [group]).ops).toEqual([]);
 		const own = el(2, 45.7, 4.8, { amenity: "school", "ref:UAI": "0693486P" });
 		expect(planUpdate(x, own, [own]).ops).toHaveLength(1);
+	});
+});
+
+describe("one object, several establishments", () => {
+	const x = {
+		lat: 45.7,
+		lon: 4.8,
+		name: "École privée multilingue Ombrosa",
+		tags: [tag("start_date", "1981-09-01")],
+		refs: {},
+	};
+
+	it("dates no campus mapped as one object", () => {
+		const named = el(1, 45.7, 4.8, { amenity: "school", name: "Ombrosa (École, Collège, Lycée)" });
+		const cite = el(2, 45.7, 4.8, { amenity: "school", name: "Cité scolaire Ampère" });
+		const levels = el(3, 45.7, 4.8, { amenity: "school", "school:FR": "primaire;secondaire" });
+		for (const e of [named, cite, levels]) expect(planUpdate(x, e, [e]).ops).toEqual([]);
+		const one = el(4, 45.7, 4.8, { amenity: "school", name: "École maternelle Ombrosa" });
+		expect(planUpdate(x, one, [one]).ops).toHaveLength(1);
+	});
+
+	it("takes a site's root and a page of it from two records for two values", () => {
+		const ops = updateOps([tag("website", "https://www.la-favorite.org/college/")], {});
+		const root = { tags: [tag("website", "https://la-favorite.org")] };
+		expect(disputedOps(ops, [root], {})).toHaveLength(1);
+		const same = { tags: [tag("website", "http://www.la-favorite.org/college")] };
+		expect(disputedOps(ops, [same], {})).toEqual([]);
+	});
+});
+
+describe("a duplicate of the matched object", () => {
+	const x = {
+		lat: 43.5505,
+		lon: 1.4868,
+		name: "École technique privée ISPRA Institut",
+		tags: [tag("amenity", "college")],
+		refs: {},
+	};
+	const ispra = el(1, 43.5505, 1.4868, { amenity: "university", name: "ISPRA" });
+
+	it("is named when it carries the matched object's name, a little off it", () => {
+		const twin = el(2, 43.5511, 1.4868, { amenity: "college", name: "ISPRA" });
+		expect(matchWarnings(x, ispra, [ispra, twin])).toEqual([
+			"Possible duplicate of this object: amenity=college is also mapped at node/2 “ISPRA”, 67 m away",
+		]);
+		const group = el(3, 43.5511, 1.4868, { amenity: "school", name: "Groupe scolaire ISPRA" });
+		expect(matchWarnings(x, ispra, [ispra, group])).toEqual([]);
+	});
+});
+
+describe("stations told apart by what they hold", () => {
+	const station = (key: string, capacity: string, operator = "Bouygues Energies & Services") => ({
+		key,
+		lat: 43.604,
+		lon: 1.4503,
+		name: key,
+		tags: [
+			tag("amenity", "charging_station"),
+			tag("operator", operator),
+			tag("capacity", capacity),
+		],
+		refs: {},
+	});
+
+	it("leaves an object to the record it fits, and makes the other new", () => {
+		const node = el(1, 43.604, 1.4503, { amenity: "charging_station", capacity: "2" });
+		const out = yieldToFit(
+			[
+				{ x: station("two-wheels", "3"), el: node },
+				{ x: station("cars", "2"), el: node },
+			],
+			new Map(),
+			new Set(),
+		);
+		expect(out.map((m) => m.el?.id ?? null)).toEqual([null, 1]);
+		expect((out[0].x as { notes?: string[] }).notes).toEqual([
+			"node/1 fits “cars” (cars) better, which keeps it",
+		]);
+	});
+
+	it("does not take a fast DC unit for an AC station on the operator's word, and names the bays instead", () => {
+		const ac = {
+			...station("IKEA 2", "24", "IZIVIA"),
+			tags: [
+				tag("amenity", "charging_station"),
+				tag("operator", "IZIVIA"),
+				tag("capacity", "24"),
+				tag("socket:type2", "24"),
+			],
+		};
+		const dc = el(1, 43.6043, 1.4503, {
+			amenity: "charging_station",
+			network: "Izivia Grand Lyon",
+			"socket:type2_combo": "2",
+		});
+		const bays = el(2, 43.6051, 1.4503, {
+			amenity: "charging_station",
+			capacity: "24",
+			"socket:type2": "24",
+		});
+		expect(findMatch(ac, [dc, bays], new Map())).toBeNull();
+		expect(matchWarnings(ac, null, [dc, bays])).toEqual([
+			"Possible duplicate: amenity=charging_station already mapped at node/2, 122 m away",
+		]);
+	});
+
+	it("matches the network's station a few metres off under a lost name or a renumbered pool id", () => {
+		const x = {
+			lat: 43.637548,
+			lon: 1.375103,
+			name: "Electra Blagnac - BYD & Quick",
+			tags: [
+				tag("amenity", "charging_station"),
+				tag("operator", "Electra"),
+				tag("socket:type2_combo:output", "150 kW"),
+			],
+			refs: { "ref:EU:EVSE": "FRELCP12953885;FRELCE7TTK" },
+		};
+		const at = (id: number, tags: Record<string, string>) =>
+			el(id, 43.6377, 1.375103, {
+				amenity: "charging_station",
+				name: "Electra - Smart Lyon",
+				"socket:type2_combo:output": "150 kW",
+				...tags,
+			});
+		const renamed = at(1, { operator: "Electra" });
+		expect(findMatch(x, [renamed], new Map())?.id).toBe(1);
+		const renumbered = at(2, { "ref:EU:EVSE": "FR*ELC*PBLAPC" });
+		expect(findMatch(x, [renumbered], new Map())?.id).toBe(2);
+		expect(matchWarnings(x, renumbered, [renumbered])).toEqual([
+			"OSM carries the operator's other id ref:EU:EVSE=FR*ELC*PBLAPC",
+		]);
+		const another = at(3, { "ref:EU:EVSE": "FR*TLS*P1" });
+		expect(findMatch(x, [another], new Map())).toBeNull();
+	});
+});
+
+describe("plain refs on stations", () => {
+	const x = {
+		key: "FRTLSP31555059",
+		lat: 43.61227,
+		lon: 1.47655,
+		name: "TOULOUSE - 70-74 rue de soupetard",
+		tags: [tag("amenity", "charging_station"), tag("capacity", "4"), tag("socket:type2", "4")],
+		refs: {
+			"ref:EU:EVSE":
+				"FRTLSP31555059;FRTLSE315550591;FRTLSE315550592;FRTLSE315550593;FRTLSE315550594",
+		},
+	};
+
+	it("leave a borne's counts alone when its ref names one of the station's points", () => {
+		const borne = el(1, 43.61227, 1.47655, {
+			amenity: "charging_station",
+			capacity: "2",
+			ref: "FR*TLS*E31555*059*3*1",
+		});
+		const plan = planUpdate(x, borne, [borne]);
+		expect(plan.ops).toEqual([]);
+		expect(plan.notes[0]).toMatch(
+			/ref=FR\*TLS\*E31555\*059\*3\*1 names 1 of the station's 4 points/,
+		);
+	});
+
+	it("tell one station's bornes from another's", () => {
+		const y = { ...x, refs: {} };
+		const own = (id: number, ref: string, lat: number) =>
+			el(id, lat, 1.47655, { amenity: "charging_station", ref });
+		const a = own(1, "BRN06A", 43.61227);
+		const b = own(2, "BRN06B", 43.61231);
+		const c = own(3, "BRN07A", 43.61235);
+		expect(splitParts(y, a, [a, b, c]).map((k) => k.e.id)).toEqual([2]);
 	});
 });
 

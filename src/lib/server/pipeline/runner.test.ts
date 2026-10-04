@@ -346,6 +346,22 @@ describe("runSource (registry)", () => {
 		);
 	});
 
+	it("counts and lists a match left with nothing to write, far from where the record is", async () => {
+		osm = {
+			elements: [
+				{ type: "node", id: 100, lat: 45.77, lon: 4.83, tags: { "ref:EU:EVSE": "FR*S1*E1" } },
+			],
+		};
+		await runSource(db, "irve");
+		expect(cands().map((c) => c.sourceRecordKey)).toEqual(["FRS2"]);
+		expect(db.select().from(t.runs).get()?.message).toBe(
+			"1 match far from its address left out: the place may have moved or its id may be stale",
+		);
+		expect(source()?.syncState?.farFromAddress).toEqual([
+			{ area: "lyo", record: "FRS1", object: "node/100", metres: 1112 },
+		]);
+	});
+
 	it("writes a failed run, retries soon, and holds the source after three in a row", async () => {
 		fileStatus = 500;
 		await runSource(db, "irve");

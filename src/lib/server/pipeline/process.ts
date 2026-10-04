@@ -9,6 +9,7 @@ import { inArea } from "./geo";
 import { askModel, modelLabel, vetTags } from "./llm";
 import {
 	closureOps,
+	findAtAddress,
 	findMatch,
 	indexRefs,
 	type MatchedBy,
@@ -21,6 +22,7 @@ import {
 	type TagOp,
 	twinWarnings,
 	unchangedTags,
+	yieldToFit,
 	yieldToIds,
 } from "./match";
 import { countPois, fetchElements } from "./overpass";
@@ -58,6 +60,15 @@ export interface AreaOutcome {
 	outside: number;
 	/** Contact details left out as a person's own. */
 	withheld: number;
+	/** Matches left with nothing to write, lying too far from where the record is. */
+	far: FarMatch[];
+}
+
+/** Named for the diagnostics bundle, which blanks any field named like a key. */
+export interface FarMatch {
+	record: string;
+	object: string;
+	metres: number;
 }
 
 /** After this many model calls in a row fail the model is down, not the pages odd. */
@@ -131,6 +142,7 @@ export async function processArea(
 	const read: { x: Extraction; rec: RawRecord }[] = [];
 	let outside = 0;
 	let withheld = 0;
+	const far: FarMatch[] = [];
 
 	let failedInARow = 0;
 	for (const rec of mergeSites(input.records, input.reader?.preset)) {
@@ -189,11 +201,18 @@ export async function processArea(
 		return [{ ...e, x }];
 	});
 	const shared = sharedRefs(extracted.map((e) => e.x));
-	const matched = yieldToIds(
-		extracted.map((e) => ({
-			...e,
-			el: e.rec.element ?? findMatch(e.x, elements, refIndex, shared),
-		})),
+	const matched = yieldToFit(
+		yieldToIds(
+			extracted.map((e) => ({
+				...e,
+				el:
+					e.rec.element ??
+					findMatch(e.x, elements, refIndex, shared) ??
+					findAtAddress(e.x, elements, refIndex, shared),
+			})),
+			refIndex,
+			shared,
+		),
 		refIndex,
 		shared,
 	);
@@ -218,6 +237,8 @@ export async function processArea(
 			const plan = planUpdate(x, el, fetched, refIndex, shared, byElement);
 			ops = plan.ops;
 			notes.push(...plan.notes);
+			if (!ops.length && plan.far)
+				far.push({ record: x.key, object: osmRef(el), metres: Math.round(plan.far) });
 		} else {
 			type = "new";
 			ops = newOps(x.tags);
@@ -318,5 +339,5 @@ export async function processArea(
 	}
 	db.update(t.areas).set({ lastRunAt: new Date(), pois }).where(eq(t.areas.id, area.id)).run();
 
-	return { cands, errors, failedKeys, outside, withheld };
+	return { cands, errors, failedKeys, outside, withheld, far };
 }

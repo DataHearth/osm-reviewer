@@ -1,5 +1,5 @@
 import { ban } from "$lib/server/config";
-import { distance, houseNumber, normaliseName, tokens } from "./geo";
+import { distance, houseNumber, tokens } from "./geo";
 import { getJson } from "./http";
 import { findMatch } from "./match";
 import type { Preset } from "./presets";
@@ -152,7 +152,8 @@ function spelled(parts: ProposedTag[], hit: Feature): ProposedTag[] {
  * One lookup per record, for two things. The address parts it proposes take the base's
  * spelling, or are dropped. And where the base places the housenumber, on the street the
  * source names, is kept for `settlePoints` to move the point to. A street-level hit says
- * nothing about where on the street, so it places nothing.
+ * nothing about where on the street, so it moves nothing, though it says roughly where the
+ * place is.
  */
 export async function placeAddress(x: Extraction): Promise<Extraction> {
 	if (!x.geocode) return x;
@@ -166,10 +167,12 @@ export async function placeAddress(x: Extraction): Promise<Extraction> {
 			? spelled(address, hit)
 			: []),
 	];
-	if (hit?.properties.type !== "housenumber" || !sameStreet(hit.properties, x.geocode.q))
-		return { ...x, tags };
+	if (!hit || !sameStreet(hit.properties, x.geocode.q)) return { ...x, tags };
 	const [lon, lat] = hit.geometry.coordinates;
-	return { ...x, tags, atAddress: { lat, lon, label: hit.properties.label } };
+	const at = { lat, lon, label: hit.properties.label };
+	return hit.properties.type === "housenumber"
+		? { ...x, tags, atAddress: at }
+		: { ...x, tags, onStreet: at };
 }
 
 /**
@@ -196,28 +199,12 @@ export async function addressGaps(
 	return gaps;
 }
 
-/** Points of one operator this far apart at one address are a campus's or a mall's car parks. */
-const OWN_POINT_M = 10;
-
-const operatorOf = (x: Extraction) =>
-	normaliseName(x.tags.find((t) => t.k === "operator")?.v ?? "");
-
-function sharesAddress(x: Extraction, o: Extraction): boolean {
-	if (o === x || !x.geocode || !o.geocode || !operatorOf(x)) return false;
-	return (
-		normaliseName(o.geocode.q) === normaliseName(x.geocode.q) &&
-		operatorOf(o) === operatorOf(x) &&
-		distance(x.lat, x.lon, o.lat, o.lon) > OWN_POINT_M
-	);
-}
-
 /**
  * A source point farther from its own housenumber than the record allows moves there: a
- * directory geocoded on a CEDEX's sorting office, or a station placed at its operator's head
- * office, would otherwise match whatever stands at the wrong spot, or nothing. Unless the
- * point is borne out where it stands: an object there matches it (and is not the same object
- * found from the address, standing nearer it), or other records of the operator give the
- * same address at points of their own, which makes it a campus's or a mall's address.
+ * directory geocoded on a CEDEX's sorting office, or a station placed to a couple of decimals,
+ * would otherwise match whatever stands at the wrong spot, or nothing. Unless the point is
+ * borne out where it stands: an object there matches it, and is not the same object found
+ * from the address, standing nearer it.
  */
 export function settlePoints(
 	xs: Extraction[],
@@ -238,7 +225,7 @@ export function settlePoints(
 				distance(to.lat, to.lon, here.lat, here.lon) >= distance(x.lat, x.lon, here.lat, here.lon)
 			)
 				return x;
-		} else if (xs.some((o) => sharesAddress(x, o))) return x;
+		}
 		return {
 			...x,
 			lat: to.lat,

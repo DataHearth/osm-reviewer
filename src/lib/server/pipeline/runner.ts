@@ -14,6 +14,7 @@ import {
 	type AreaInput,
 	type AreaOutcome,
 	type AreaRow,
+	type FarMatch,
 	processArea,
 	type SourceRow,
 } from "./process";
@@ -40,23 +41,32 @@ interface Exec {
 	licence?: string;
 	outside?: number;
 	withheld?: number;
+	/** Undefined when nothing was read, which leaves the last read's list standing. */
+	far?: (FarMatch & { area: string })[];
 }
 
 const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-function absorb(out: Exec, p: AreaOutcome) {
+function absorb(out: Exec, p: AreaOutcome, area: AreaRow) {
 	out.cands += p.cands;
 	out.errors.push(...p.errors);
 	out.outside = (out.outside ?? 0) + p.outside;
 	out.withheld = (out.withheld ?? 0) + p.withheld;
+	out.far = [...(out.far ?? []), ...p.far.map((f) => ({ area: area.id, ...f }))];
 }
 
+const FAR_ASIDE = "the place may have moved or its id may be stale";
+
 /** What a run set aside on purpose, which the run's line says whether or not it also failed somewhere. */
-const asides = ({ outside = 0, withheld = 0 }: Exec) => [
+const asides = ({ outside = 0, withheld = 0, far = [] }: Exec) => [
 	...(outside === 1 ? ["1 record placed outside the area by its own address"] : []),
 	...(outside > 1 ? [`${outside} records placed outside the area by their own address`] : []),
 	...(withheld === 1 ? ["1 personal contact detail left out"] : []),
 	...(withheld > 1 ? [`${withheld} personal contact details left out`] : []),
+	...(far.length === 1 ? [`1 match far from its address left out: ${FAR_ASIDE}`] : []),
+	...(far.length > 1
+		? [`${far.length} matches far from their address left out: ${FAR_ASIDE}`]
+		: []),
 ];
 export const claimFresh = (s: { runningSince: Date | null }) =>
 	s.runningSince !== null && Date.now() - s.runningSince.getTime() < STALE_CLAIM_MS;
@@ -111,12 +121,13 @@ async function readRegistrySource(
 				{ records, reader: reg.reader, complete: !reg.unchanged },
 				at,
 			);
-			absorb(out, r);
+			absorb(out, r, area);
 			out.areasOk += 1;
 		} catch (err) {
 			out.errors.push(`${area.name}: ${msg(err)}`);
 		}
 	}
+	if (reg.unchanged) out.far = undefined;
 	return out;
 }
 
@@ -151,7 +162,7 @@ async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Da
 				{ records, reader: r.reader, complete: true },
 				at,
 			);
-			absorb(out, p);
+			absorb(out, p, area);
 			out.areasOk += 1;
 		} catch (err) {
 			out.errors.push(`${area.name}: ${msg(err)}`);
@@ -236,7 +247,7 @@ async function readCrawlSource(
 			// Unread pages are not gone pages, so a crawl never sweeps what it did not see.
 			const input: AreaInput = { records, reader: null, elements, complete: false };
 			const p = await processArea(db, source, area, input, at);
-			absorb(out, p);
+			absorb(out, p, area);
 			for (const r of records)
 				if (r.text && !p.failedKeys.includes(r.key)) pages[r.key] = hash(r.text);
 			out.areasOk += 1;
@@ -366,7 +377,10 @@ export async function runSource(db: Db, id: string): Promise<void> {
 					result === "failed"
 						? new Date(Date.now() + RETRY_AFTER_MS)
 						: nextRunAt(source.schedule, startedAt),
-				syncState: result === "failed" ? source.syncState : exec.state,
+				syncState:
+					result === "failed"
+						? source.syncState
+						: { ...exec.state, ...(exec.far ? { farFromAddress: exec.far } : {}) },
 				...(exec.licence && !source.licence ? { licence: exec.licence } : {}),
 			})
 			.where(eq(t.sources.id, id))

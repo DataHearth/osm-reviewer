@@ -159,7 +159,9 @@ describe("placeAddress", () => {
 		const x = await placeAddress(school("far", 43.628, 1.4346));
 		expect(x).toMatchObject({ lat: 43.628, lon: 1.4346 });
 		expect(x.atAddress).toMatchObject({ lat: 43.529141, lon: 1.48942 });
-		expect((await placeAddress(school("street"))).atAddress).toBeUndefined();
+		const street = await placeAddress(school("street"));
+		expect(street.atAddress).toBeUndefined();
+		expect(street.onStreet).toBeDefined();
 		const at = async (q: string) =>
 			(await placeAddress({ ...school(q), geocode: { q, farM: 100 } })).atAddress;
 		expect(await at("5 Boulevard de Matabiau 31000 Toulouse")).toBeUndefined();
@@ -252,16 +254,6 @@ describe("settlePoints", () => {
 		const [x] = settle([station("a", 43.550283, 1.50233)], [node(1, 43.55031, 1.50235)]);
 		expect(x).toMatchObject({ lat: 43.550283, lon: 1.50233 });
 		expect(x.from).toBeUndefined();
-	});
-
-	it("keeps the points of one operator's stations at one address, a mall's or a campus's", () => {
-		const one = settle([station("a", 43.550283, 1.50233), station("b", 43.548046, 1.509322)]);
-		expect(one.every((x) => !x.from)).toBe(true);
-		const two = settle([
-			station("a", 43.550283, 1.50233),
-			station("b", 43.548046, 1.509322, "Allego"),
-		]);
-		expect(two.every((x) => x.from)).toBe(true);
 	});
 
 	it("leaves a point within reach of its address", () => {

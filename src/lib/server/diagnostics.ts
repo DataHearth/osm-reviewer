@@ -1,5 +1,6 @@
 import * as config from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
+import * as t from "$lib/server/db/schema";
 import { health, instanceFacts } from "$lib/server/instance";
 import { loadNotif } from "$lib/server/settings";
 
@@ -25,6 +26,14 @@ export async function diagnosticsBundle(db: Db) {
 		generatedAt: new Date().toISOString(),
 		instance: instanceFacts(db),
 		health: await health(db),
+		// Matches the last run of each source left out whole as lying too far from the record.
+		farFromAddress: Object.fromEntries(
+			db
+				.select({ id: t.sources.id, state: t.sources.syncState })
+				.from(t.sources)
+				.all()
+				.map((s) => [s.id, s.state?.farFromAddress ?? []]),
+		),
 		config: {
 			sso: config.sso,
 			seedAdmin: config.seedAdmin,

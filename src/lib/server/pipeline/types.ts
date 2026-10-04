@@ -65,6 +65,8 @@ export interface Extraction {
 	 * the source's own point has had its say (`settlePoints`).
 	 */
 	atAddress?: { lat: number; lon: number; label: string };
+	/** Where the base places the street, when it knows no more than the street: never a move. */
+	onStreet?: { lat: number; lon: number; label: string };
 	/** The source's own point, when the record was moved off it to its address. */
 	from?: { lat: number; lon: number };
 	/** Contact details the source gave that read as a person's own, and were left out. */
