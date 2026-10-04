@@ -159,3 +159,20 @@ export const INPUT =
 	"w-full rounded-sm border border-edge bg-bg px-2.5 py-1.5 text-[13px] text-ink";
 export const INPUT_SM =
 	"w-full rounded-sm border border-edge bg-bg px-2.5 py-1.5 text-[12.5px] text-ink";
+
+/**
+ * A source record's rows as blocks to print: first the fields every row agrees on, then
+ * each row with only the fields that differ. An IRVE station is one row per charge
+ * point, nearly identical, and printing each in full buries what sets them apart.
+ */
+export function recordBlocks(rows: Record<string, unknown>[]): [string, unknown][][] {
+	const keys = [...new Set(rows.flatMap(Object.keys))];
+	const same = (k: string) =>
+		rows.every((r) => JSON.stringify(r[k]) === JSON.stringify(rows[0][k]));
+	const shared = keys.filter(same);
+	const varying = keys.filter((k) => !same(k));
+	return [
+		shared.map((k) => [k, rows[0][k]]),
+		...(varying.length ? rows.map((r) => varying.map((k): [string, unknown] => [k, r[k]])) : []),
+	];
+}

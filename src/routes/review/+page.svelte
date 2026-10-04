@@ -13,6 +13,7 @@ import {
 	KBD_ACCENT,
 	osmUrl,
 	pct,
+	recordBlocks,
 	TEXT_BTN,
 	typeDot,
 	typeLabel,
@@ -440,9 +441,13 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 						{:else if "text" in record.record}
 							<pre class="max-h-[480px] overflow-y-auto font-mono text-[11.5px] whitespace-pre-wrap text-ink-2 [overflow-wrap:anywhere]">{record.record.text}</pre>
 						{:else}
-							{#each record.record.rows as row, r (r)}
-								<div class="grid grid-cols-[minmax(0,40%)_minmax(0,1fr)] gap-x-2 font-mono text-[11.5px] {r ? 'mt-2 border-t border-line-soft pt-2' : ''}">
-									{#each Object.entries(row) as [k, v] (k)}
+							{@const rows = record.record.rows}
+							{#each recordBlocks(rows) as block, r (r)}
+								{#if r === 1}
+									<div class="mt-3 {label}">{rows.length} rows — only what differs</div>
+								{/if}
+								<div class="grid grid-cols-[minmax(0,40%)_minmax(0,1fr)] gap-x-2 font-mono text-[11.5px] {r > 1 ? 'mt-2 border-t border-line-soft pt-2' : ''}">
+									{#each block as [k, v] (k)}
 										<span class="truncate text-key" title={k}>{k}</span>
 										<span class="text-ink-2 [overflow-wrap:anywhere]">{v === null || v === "" ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
 									{/each}

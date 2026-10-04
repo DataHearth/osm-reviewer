@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysSince, fmtCount, fmtDuration, osmUrl } from "./format";
+import { daysSince, fmtCount, fmtDuration, osmUrl, recordBlocks } from "./format";
 
 describe("fmtDuration", () => {
 	it("picks the longest unit that keeps the number small", () => {
@@ -32,5 +32,30 @@ describe("osmUrl", () => {
 	it("opens nodes, ways and relations on the configured instance", () => {
 		expect(osmUrl(base, "node/1")).toBe(`${base}/node/1`);
 		expect(osmUrl(base, "way/2")).toBe(`${base}/way/2`);
+	});
+});
+
+describe("recordBlocks", () => {
+	it("prints what every row shares once, then only what differs per row", () => {
+		const rows = [
+			{ station: "S1", pdc: "P1", kw: 300 },
+			{ station: "S1", pdc: "P2", kw: 300 },
+		];
+		expect(recordBlocks(rows)).toEqual([
+			[
+				["station", "S1"],
+				["kw", 300],
+			],
+			[["pdc", "P1"]],
+			[["pdc", "P2"]],
+		]);
+	});
+	it("leaves a single row whole", () => {
+		expect(recordBlocks([{ a: 1, b: null }])).toEqual([
+			[
+				["a", 1],
+				["b", null],
+			],
+		]);
 	});
 });
