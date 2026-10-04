@@ -158,6 +158,31 @@ describe("IRVE preset", () => {
 		expect(irve.extract([irveRow({ prise_type_autre: "true" })], "u")?.notes).toHaveLength(1);
 	});
 
+	it("reads two same-day declarations of a point by their last change, and absence across both", () => {
+		const point = { id_pdc_itinerance: "FR*S63*E0001*1", date_maj: "2026-10-03" };
+		const old = irveRow({
+			...point,
+			nom_enseigne: "Stale",
+			prise_type_chademo: "true",
+			last_modified: "2026-10-02T06:00:00",
+		});
+		const fresh = irveRow({ ...point, last_modified: "2026-10-03T06:00:00" });
+		for (const rows of [
+			[old, fresh],
+			[fresh, old],
+		]) {
+			const x = irve.extract(rows, "u");
+			expect(x?.tags.find((t) => t.k === "network")?.v).toBe("ReseauCharge");
+			expect(x?.absent).not.toContain("socket:chademo");
+		}
+	});
+
+	it("says a socket is not there when every type 2 point has its cable attached", () => {
+		const x = irve.extract([irveRow({ cable_t2_attache: "true" })], "u");
+		expect(x?.absent).toContain("socket:type2");
+		expect(x?.absent).not.toContain("socket:type2_cable");
+	});
+
 	it("proposes access=yes only to fill a gap, and nothing for reserved access", () => {
 		const access = (condition: string) =>
 			irve

@@ -236,12 +236,15 @@ export const OSM_MAX = 255;
  * The consolidated file keeps every declaration a station has had, so a charge point can
  * come back once per declaration, the older ones carrying stale counts and operators.
  * Only the newest row of each point counts, and the newest comes first so the station's
- * single values are read from it.
+ * single values are read from it. Two declarations of one point often share a `date_maj`
+ * day (an operator's own file and its aggregator's); `last_modified` breaks the tie, where
+ * row order would pick either.
  */
 function newestPerPoint(rows: Row[]): Row[] {
 	const seen = new Set<string>();
+	const newest = (r: Row) => `${str(r, "date_maj")}|${str(r, "last_modified")}`;
 	return [...rows]
-		.sort((a, b) => str(b, "date_maj").localeCompare(str(a, "date_maj")))
+		.sort((a, b) => newest(b).localeCompare(newest(a)))
 		.filter((r) => {
 			const id = str(r, "id_pdc_itinerance");
 			if (!id || NOT_A_POINT.test(id)) return true;
@@ -332,10 +335,12 @@ const irve: Preset = {
 		// DC unit: the type 2 cable on a 300 kW unit is AC, 22–43 kW, and CHAdeMO beside CCS
 		// tops out near 50–100 kW. One point where the power cannot be pinned on this type and
 		// the type gets no output, rather than a guess.
+		// Absence is read over every declaration: two of one point can disagree on its
+		// connectors, and only what none of them lists is known to be missing.
 		for (const [k, field, only] of sockets) {
 			const carrying = rows.filter((r) => has(r, field) && only(r));
 			if (carrying.length === 0) {
-				if (!rows.some((r) => has(r, field))) absent.push(k);
+				if (!declared.some((r) => has(r, field) && only(r))) absent.push(k);
 				continue;
 			}
 			t.add(
@@ -359,7 +364,7 @@ const irve: Preset = {
 				"derived",
 			);
 		}
-		if (!rows.some((r) => has(r, "prise_type_autre"))) absent.push(...OTHER_SOCKETS);
+		if (!declared.some((r) => has(r, "prise_type_autre"))) absent.push(...OTHER_SOCKETS);
 		const notes = rows.some((r) => has(r, "prise_type_autre"))
 			? ["The registry lists connectors of another type on this station, which it does not name"]
 			: [];
