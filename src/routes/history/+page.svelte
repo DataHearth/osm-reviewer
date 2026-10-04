@@ -16,15 +16,16 @@ const cols = "md:grid md:grid-cols-[130px_96px_1fr_130px_92px] md:items-baseline
 		</div>
 
 		{#each rows as h (h.url)}
-			<div
-				class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-line-row px-[14px] py-[11px] text-[12.5px] md:gap-0 md:px-4 md:py-2.5 {cols}"
+			<a
+				href={h.href}
+				class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-line-row px-[14px] py-[11px] text-[12.5px] hover:bg-line-soft hover:no-underline md:gap-0 md:px-4 md:py-2.5 {cols}"
 			>
-				<a href={h.url} target="_blank" rel="noreferrer">{h.id}</a>
+				<span class="text-link">{h.id}</span>
 				<span class="text-faint max-md:order-1">{h.when}</span>
 				<span class="text-ink max-md:order-3 max-md:basis-full md:truncate md:pr-[14px]">{h.comment}</span>
 				<span class="text-faint max-md:order-4">{h.objects}</span>
 				<span class="{h.result === 'ok' ? 'text-ok' : 'text-bad'} max-md:order-2 max-md:ml-auto">{h.result}</span>
-			</div>
+			</a>
 		{/each}
 	</div>
 	<footer class="shrink-0 border-t border-line-soft px-4 py-[9px] text-[11px] text-faint">read-only · {rows.length} changesets</footer>

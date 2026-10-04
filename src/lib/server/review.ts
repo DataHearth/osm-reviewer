@@ -186,7 +186,7 @@ function stagedRows(db: Db): StagedRow[] {
 		.innerJoin(t.candidates, eq(t.candidates.id, t.decisions.candidateId))
 		.innerJoin(t.sources, eq(t.sources.id, t.candidates.sourceId))
 		.where(and(eq(t.decisions.kind, "accepted"), isNull(t.decisions.changesetId)))
-		.orderBy(asc(t.decisions.decidedAt))
+		.orderBy(asc(t.decisions.decidedAt), asc(t.decisions.candidateId))
 		.all();
 	const picked = db
 		.select({

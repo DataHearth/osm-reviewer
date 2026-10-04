@@ -6,7 +6,7 @@ import { review } from "$lib/stores/review.svelte";
 // Phone-only primary navigation: the four session tabs under the thumb.
 // Server settings (sources, areas and the rest) sit behind the gear in the
 // title bar, and your own settings in the account menu beside it, at every tier.
-const path = $derived(page.url.pathname);
+const path = $derived(`/${page.url.pathname.split("/")[1]}`);
 
 const tabs = $derived([
 	{ href: "/", to: review.href("/"), label: "Queue", count: review.pendingCount },

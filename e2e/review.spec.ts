@@ -74,3 +74,13 @@ test("a candidate in conflict cannot be accepted", async ({ page }) => {
 	await expect(page.getByRole("button", { name: /^Accept/ })).toBeDisabled();
 	await expect(page.getByText("accept blocked — version conflict unresolved")).toBeVisible();
 });
+
+test("a failed changeset opens with what went wrong", async ({ page }) => {
+	await page.goto("/history");
+	await page.getByText("Closures from SIRENE cessations").click();
+	await expect(page).toHaveURL("/history/154788019");
+	await expect(
+		page.getByText("409 Conflict — an object moved while the changeset was open"),
+	).toBeVisible();
+	await expect(page.getByText("Nothing was written — its candidates stayed staged.")).toBeVisible();
+});

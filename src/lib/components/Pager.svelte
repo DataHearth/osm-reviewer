@@ -1,13 +1,11 @@
 <script lang="ts">
-import { ghost, INERT_BTN } from "$lib/format";
+import { pageStep } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 
 let { class: cls = "" }: { class?: string } = $props();
 
 const shown = $derived(review.candidates.length);
-const step = (on: boolean) =>
-	(on ? ghost(false) : INERT_BTN) +
-	" inline-flex items-center justify-center !px-2 !py-0 leading-[20px] max-md:min-h-[40px] max-md:min-w-[44px] max-md:text-[15px]";
+const step = (on: boolean) => `${pageStep(on)} max-md:text-[15px]`;
 </script>
 
 <span class="flex items-center gap-2 {cls}">

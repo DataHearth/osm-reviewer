@@ -10,7 +10,7 @@ import {
 	type SortKey,
 } from "$lib/schemas/queue";
 import type { SourceDraft } from "$lib/schemas/source";
-import type { Area, Candidate, Counts, ScopeArea, Source, Staged } from "$lib/types";
+import type { Area, Candidate, Counts, ScopeArea, Source } from "$lib/types";
 
 /** Which form a rail opened. The fields themselves live in the form's own store. */
 export interface DraftMark {
@@ -97,10 +97,6 @@ class ReviewState {
 
 	get areas(): Area[] {
 		return page.data.areas ?? [];
-	}
-
-	get staged(): Staged[] {
-		return page.data.staged ?? [];
 	}
 
 	/** The queue's view: filters, sort and page, as the URL carries them. */
@@ -526,7 +522,7 @@ class ReviewState {
 	}
 
 	doUpload() {
-		if (!this.staged.length) return;
+		if (!this.stagedCount) return;
 		this.submitUpload?.();
 	}
 

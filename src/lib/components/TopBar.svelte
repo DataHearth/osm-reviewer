@@ -6,7 +6,7 @@ import { review } from "$lib/stores/review.svelte";
 import { settings } from "$lib/stores/settings.svelte";
 import ScopePicker from "./ScopePicker.svelte";
 
-const path = $derived(page.url.pathname);
+const path = $derived(`/${page.url.pathname.split("/")[1]}`);
 let menu = $state(false);
 let closing = $state(false);
 let picker = $state(false);
@@ -24,7 +24,7 @@ function close() {
 
 // Menus are chrome, not screens: navigating anywhere closes them.
 $effect(() => {
-	path;
+	page.url.pathname;
 	menu = false;
 	closing = false;
 	picker = false;

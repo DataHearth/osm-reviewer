@@ -1,6 +1,7 @@
 import { fail } from "@sveltejs/kit";
 import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
+import { z } from "zod";
 import { uploadSchema } from "$lib/schemas/review";
 import { osm } from "$lib/server/config";
 import { db } from "$lib/server/db";
@@ -11,10 +12,11 @@ import { loadSettings } from "$lib/server/settings";
 import { requireUser } from "$lib/server/user";
 import type { Actions, PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const settings = await loadSettings(db, requireUser(locals).id);
+	const cs = z.coerce.number().int().min(1).catch(1).parse(url.searchParams.get("cs"));
 	const [staged, form] = await Promise.all([
-		loadStaged(db),
+		loadStaged(db, cs, settings.osm.perChangeset),
 		superValidate(
 			{
 				comment: settings.osm.comment,
@@ -27,7 +29,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 		staged,
 		form,
 		createdBy: CREATED_BY,
-		perChangeset: settings.osm.perChangeset,
 		osmHost: new URL(osm.url).host,
 	};
 };

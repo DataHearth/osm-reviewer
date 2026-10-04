@@ -355,24 +355,67 @@ export async function loadQueue(
 	return { candidates, total, page, pages, offset, query: { ...query, page } };
 }
 
-export async function loadStaged(db: Db): Promise<Staged[]> {
+const STAGED = and(eq(t.decisions.kind, "accepted"), isNull(t.decisions.changesetId));
+
+const WITH_TAGS = {
+	candidate: { with: { source: true } },
+	tags: { orderBy: (x, { asc }) => asc(x.position) },
+} satisfies NonNullable<Parameters<Db["query"]["decisions"]["findMany"]>[0]>["with"];
+
+type DecisionRow = {
+	candidateId: string;
+	candidate: {
+		osmId: string | null;
+		name: string;
+		type: Staged["type"];
+		source: { name: string; licence: string | null };
+	};
+	tags: { op: Staged["tags"][number]["op"]; k: string; v: string }[];
+};
+
+const toStaged = (d: DecisionRow): Staged => ({
+	id: d.candidateId,
+	osmId: d.candidate.osmId,
+	name: d.candidate.name,
+	type: d.candidate.type,
+	source: sourceLabel(d.candidate.source.name, d.candidate.source.licence),
+	tags: d.tags.map((x) => ({ op: x.op, k: x.k, v: x.v })),
+});
+
+/**
+ * One changeset's worth of the staged rows — the `cs`th batch of `size`, in upload
+ * order — and the totals across all of them. A batch past the end clamps to the last,
+ * so removing the last row of the last batch never strands the page.
+ */
+export async function loadStaged(db: Db, cs: number, size: number) {
+	const [[{ n }], [{ w }]] = await Promise.all([
+		db
+			.select({ n: sql<number>`count(*)`.mapWith(Number) })
+			.from(t.decisions)
+			.where(STAGED),
+		db
+			.select({ w: sql<number>`count(*)`.mapWith(Number) })
+			.from(t.decisionTags)
+			.innerJoin(t.decisions, eq(t.decisions.candidateId, t.decisionTags.candidateId))
+			.where(STAGED),
+	]);
+	const changesets = Math.max(1, Math.ceil(n / size));
+	const page = Math.min(cs, changesets);
 	const rows = await db.query.decisions.findMany({
 		where: (d) => and(eq(d.kind, "accepted"), isNull(d.changesetId)),
-		with: {
-			candidate: { with: { source: true } },
-			tags: { orderBy: (x) => asc(x.position) },
-		},
-		orderBy: (d) => asc(d.decidedAt),
+		with: WITH_TAGS,
+		orderBy: (d) => [asc(d.decidedAt), asc(d.candidateId)],
+		limit: size,
+		offset: (page - 1) * size,
 	});
 
-	return rows.map((d) => ({
-		id: d.candidateId,
-		osmId: d.candidate.osmId,
-		name: d.candidate.name,
-		type: d.candidate.type,
-		source: sourceLabel(d.candidate.source.name, d.candidate.source.licence),
-		tags: d.tags.map((x) => ({ op: x.op, k: x.k, v: x.v })),
-	}));
+	return {
+		rows: rows.map(toStaged),
+		candidates: n,
+		writes: w,
+		changesets: n ? changesets : 0,
+		cs: page,
+	};
 }
 
 /** Every area the top bar's picker offers, most waiting first. */
@@ -422,14 +465,36 @@ export async function loadCounts(db: Db, wanted: string | undefined): Promise<Co
 	};
 }
 
-export async function loadChangesets(db: Db): Promise<Changeset[]> {
+export async function loadChangesets(db: Db): Promise<(Changeset & { href: string })[]> {
 	const rows = await db.query.changesets.findMany({ orderBy: (x) => desc(x.uploadedAt) });
 	return rows.map((h) => ({
 		id: h.osmId ?? "—",
+		href: `/history/${h.id}`,
 		url: h.url,
 		when: stamp(h.uploadedAt),
 		comment: h.comment,
 		objects: h.objects,
 		result: h.result,
 	}));
+}
+
+/** One uploaded changeset and the objects it carried; a failed one carried none. */
+export async function loadChangeset(db: Db, id: string) {
+	const h = await db.query.changesets.findFirst({ where: (x) => eq(x.id, id) });
+	if (!h) return null;
+	const rows = await db.query.decisions.findMany({
+		where: (d) => eq(d.changesetId, id),
+		with: WITH_TAGS,
+		orderBy: (d) => [asc(d.decidedAt), asc(d.candidateId)],
+	});
+	return {
+		id: h.osmId ?? "—",
+		url: h.url,
+		when: stamp(h.uploadedAt),
+		comment: h.comment,
+		objects: h.objects,
+		result: h.result,
+		error: h.error,
+		rows: rows.map(toStaged),
+	};
 }
