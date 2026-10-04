@@ -2,14 +2,15 @@
 // One saved source: what it is configured to fetch, which areas use it, and
 // what its last four runs did.
 
+import Bar from "$lib/components/Bar.svelte";
 import MetricTiles from "$lib/components/MetricTiles.svelte";
-import { boxBtn, ghost, num } from "$lib/format";
+import { ghost, num } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
 
 const s = $derived(review.source(review.srcId));
 const en = $derived(!!review.enabled[s.id]);
-const floor = $derived(review.floors[s.id] ?? s.floor);
+const floor = $derived(s.floor);
 
 const tiles = $derived(
 	s.metrics.map((m) => ({ label: m[0], value: m[1], sub: m[2], tone: (m[3] ?? null) as Tone })),
@@ -87,16 +88,7 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 				{/each}
 				<span class="text-[11px] text-muted">confidence floor</span>
 				<span class="flex flex-wrap items-center gap-2.5">
-					<input
-						type="range"
-						min="0"
-						max="0.9"
-						step="0.05"
-						value={floor}
-						class="w-[130px] accent-accent"
-						oninput={(e) => review.setFloor(s.id, parseFloat(e.currentTarget.value))}
-						onchange={() => review.saveFloor(s.id)}
-					/>
+					<Bar value={floor} max={0.9} label="confidence floor" class="w-[130px]" />
 					<span class="text-ink">{floor.toFixed(2)}</span>
 					<span class="text-[11px] text-faint">
 						auto-discards {floor >= 0.7 ? "aggressively" : floor >= 0.55 ? "moderately" : "little"}
@@ -109,10 +101,6 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 					{#each s.allow as k (k)}
 						<span class="rounded-xs border border-line bg-bar px-[7px] py-0.5 text-[11.5px] text-ink-2">{k}</span>
 					{/each}
-					<button
-						class="cursor-pointer rounded-xs border border-dashed border-edge bg-transparent px-[7px] py-0.5 text-[11.5px] text-faint hover:text-ink"
-						onclick={() => review.editSource(s)}>+ key</button
-					>
 				</div>
 				<div class="mt-[7px] text-[11px] leading-normal text-faint">
 					Anything outside the allowlist is dropped at extraction, before it reaches the queue.
@@ -128,7 +116,7 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 				{@const on = !!review.links[s.id + ":" + a.id]}
 				{@const y = review.yieldFor(s.id, a.id)}
 				<div class="grid grid-cols-[26px_minmax(0,1fr)_96px_74px] items-center gap-2 border-b border-line-faint px-4 py-2 text-[12.5px]">
-					<button class={boxBtn(on)} onclick={() => review.toggleLink(s.id, a.id)}>{on ? "[x]" : "[ ]"}</button>
+					<span class="text-[12.5px] {on ? 'text-accent' : 'text-faint'}">{on ? "[x]" : "[ ]"}</span>
 					<span class="truncate {on ? 'text-ink' : 'text-faint'}">{a.name}</span>
 					<span class="text-[11.5px] text-faint">{on && y ? y[0] + " cand" : on ? "no runs yet" : "—"}</span>
 					<span

@@ -147,24 +147,8 @@ export function setSourceEnabled(db: Db, id: string, enabled: boolean) {
 	db.update(t.sources).set({ enabled }).where(eq(t.sources.id, id)).run();
 }
 
-export function setSourceFloor(db: Db, id: string, floor: number) {
-	db.update(t.sources).set({ floor }).where(eq(t.sources.id, id)).run();
-}
-
-export function setLink(db: Db, sourceId: string, areaId: string, on: boolean) {
-	syncAreaLinks(db, sourceId, { [areaId]: on });
-}
-
 export function setAreaPaused(db: Db, id: string, paused: boolean) {
 	db.update(t.areas).set({ paused }).where(eq(t.areas.id, id)).run();
-}
-
-export function setAreaRadius(db: Db, id: string, radius: number) {
-	const sqkm = (Math.PI * radius * radius) / 1e6;
-	db.update(t.areas)
-		.set({ radius, sqkm })
-		.where(and(eq(t.areas.id, id), eq(t.areas.def, "radius")))
-		.run();
 }
 
 export function removeArea(db: Db, id: string) {

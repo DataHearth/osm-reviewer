@@ -73,11 +73,6 @@ class ReviewState {
 	draft = $state<DraftMark | null>(null);
 	areaCard = $state<{ id: string; x: number; top: number } | null>(null);
 
-	// A range input fires while it is being dragged and again when it is let go.
-	// Only the release writes, so the value in between lives here.
-	private floorDrag = $state<Record<string, number>>({});
-	private radiusDrag = $state<Record<string, number>>({});
-
 	/** A candidate another screen asked for, opened once the review load carries it. */
 	private wanted = $state<string | null>(null);
 
@@ -192,10 +187,6 @@ class ReviewState {
 
 	get enabled(): Record<string, boolean> {
 		return Object.fromEntries(this.sources.map((s) => [s.id, s.enabled]));
-	}
-
-	get floors(): Record<string, number> {
-		return Object.fromEntries(this.sources.map((s) => [s.id, this.floorDrag[s.id] ?? s.floor]));
 	}
 
 	get radii(): Record<string, number> {
@@ -332,7 +323,7 @@ class ReviewState {
 	}
 
 	radiusOf(a: Area) {
-		return this.radiusDrag[a.id] ?? a.radius ?? 2500;
+		return a.radius ?? 2500;
 	}
 
 	sqkmOf(a: Area) {
@@ -532,22 +523,6 @@ class ReviewState {
 	}
 
 	// ── sources & areas ─────────────────────────────────────────────────────
-	async toggleLink(srcId: string, areaId: string) {
-		await post("?/link", { sourceId: srcId, areaId, on: !this.links[`${srcId}:${areaId}`] });
-	}
-
-	setFloor(srcId: string, v: number) {
-		this.floorDrag = { ...this.floorDrag, [srcId]: v };
-	}
-
-	async saveFloor(srcId: string) {
-		const v = this.floorDrag[srcId];
-		if (v === undefined) return;
-		await post("?/floor", { id: srcId, floor: v });
-		const { [srcId]: _saved, ...rest } = this.floorDrag;
-		this.floorDrag = rest;
-	}
-
 	async toggleEnabled(s: Source) {
 		await post("?/enabled", { id: s.id, enabled: !this.enabled[s.id] });
 	}
@@ -562,18 +537,6 @@ class ReviewState {
 
 	async togglePaused(a: Area) {
 		await post("?/paused", { id: a.id, paused: a.status !== "paused" });
-	}
-
-	setRadius(a: Area, v: number) {
-		this.radiusDrag = { ...this.radiusDrag, [a.id]: v };
-	}
-
-	async saveRadius(a: Area) {
-		const v = this.radiusDrag[a.id];
-		if (v === undefined) return;
-		await post("?/radius", { id: a.id, radius: v });
-		const { [a.id]: _saved, ...rest } = this.radiusDrag;
-		this.radiusDrag = rest;
 	}
 
 	async removeArea(a: Area) {
@@ -625,7 +588,7 @@ class ReviewState {
 			endpoint: s.endpoint,
 			key: "",
 			schedule: s.schedule,
-			floor: this.floors[s.id] ?? s.floor,
+			floor: s.floor,
 			allow: s.allow.slice(),
 			matching: s.matching,
 			budget: s.budget,

@@ -2,8 +2,9 @@
 // One saved area: the boundary it watches, what the last 30 days produced,
 // and which global sources are switched on inside it.
 import AreaMap from "$lib/components/AreaMap.svelte";
+import Bar from "$lib/components/Bar.svelte";
 import MetricTiles from "$lib/components/MetricTiles.svelte";
-import { boxBtn, ghost, healthTone, statusPill } from "$lib/format";
+import { ghost, healthTone, statusPill } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
 
@@ -84,7 +85,7 @@ const defRows = $derived(
 				{@const y = review.yieldFor(s.id, a.id)}
 				{@const tone = !en ? "off" : healthTone(s.health)}
 				<div class="grid grid-cols-[26px_minmax(0,1fr)_104px_86px] items-center gap-2 border-b border-line-faint px-4 py-[9px] text-[12.5px]">
-					<button class={boxBtn(on)} onclick={() => review.toggleLink(s.id, a.id)}>{on ? "[x]" : "[ ]"}</button>
+					<span class="text-[12.5px] {on ? 'text-accent' : 'text-faint'}">{on ? "[x]" : "[ ]"}</span>
 					<span class="truncate {on ? 'text-ink' : 'text-faint'}">{s.name}</span>
 					<span class="text-[11.5px] text-faint">{on && y ? y[0] + " cand" : on ? "no runs yet" : "—"}</span>
 					<span
@@ -103,7 +104,7 @@ const defRows = $derived(
 				</div>
 			{/each}
 			<div class="px-4 py-[9px] text-[11px] leading-normal text-faint">
-				Sources are global. Switching one off here stops it for {a.name} only — its config and other areas are untouched.
+				Sources are global. Switching one off for {a.name}, in edit, leaves its config and other areas untouched.
 			</div>
 		</div>
 
@@ -118,16 +119,7 @@ const defRows = $derived(
 
 			{#if a.def === "radius"}
 				<div class="flex flex-wrap items-center gap-3 px-4 pb-[14px]">
-					<input
-						type="range"
-						min="250"
-						max="8000"
-						step="250"
-						value={radius}
-						class="w-[200px] accent-accent"
-						oninput={(e) => review.setRadius(a, parseInt(e.currentTarget.value, 10))}
-						onchange={() => review.saveRadius(a)}
-					/>
+					<Bar value={radius} max={8000} label="radius" class="w-[200px]" />
 					<span class="text-[12.5px] text-ink">{(radius / 1000).toFixed(2)} km · {sqkm.toFixed(0)} km²</span>
 				</div>
 			{/if}

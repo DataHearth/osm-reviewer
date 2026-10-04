@@ -41,8 +41,3 @@ export const areaPausedSchema = z.object({
 	id: z.string().min(1),
 	paused: z.boolean(),
 });
-
-export const areaRadiusSchema = z.object({
-	id: z.string().min(1),
-	radius: z.number().int().min(250).max(8000),
-});

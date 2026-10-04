@@ -1,12 +1,7 @@
 import { fail } from "@sveltejs/kit";
 import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
-import {
-	areaDraftSchema,
-	areaIdSchema,
-	areaPausedSchema,
-	areaRadiusSchema,
-} from "$lib/schemas/area";
+import { areaDraftSchema, areaIdSchema, areaPausedSchema } from "$lib/schemas/area";
 import {
 	newUserSchema,
 	notifSchema,
@@ -14,13 +9,7 @@ import {
 	userIdSchema,
 	userRoleSchema,
 } from "$lib/schemas/settings";
-import {
-	sourceDraftSchema,
-	sourceEnabledSchema,
-	sourceFloorSchema,
-	sourceIdSchema,
-	sourceLinkSchema,
-} from "$lib/schemas/source";
+import { sourceDraftSchema, sourceEnabledSchema, sourceIdSchema } from "$lib/schemas/source";
 import { pipeline, sso } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { health, instanceFacts, release } from "$lib/server/instance";
@@ -29,10 +18,7 @@ import {
 	applySourceDraft,
 	removeArea,
 	setAreaPaused,
-	setAreaRadius,
-	setLink,
 	setSourceEnabled,
-	setSourceFloor,
 } from "$lib/server/mutations";
 import { sendTest } from "$lib/server/notify";
 import { kick, requestRuns, sourcesOfArea } from "$lib/server/pipeline/runner";
@@ -124,22 +110,6 @@ export const actions: Actions = {
 		return { form };
 	},
 
-	floor: async ({ request, locals }) => {
-		requireAdmin(locals);
-		const form = await superValidate(request, zod4(sourceFloorSchema));
-		if (!form.valid) return fail(400, { form });
-		setSourceFloor(db, form.data.id, form.data.floor);
-		return { form };
-	},
-
-	link: async ({ request, locals }) => {
-		requireAdmin(locals);
-		const form = await superValidate(request, zod4(sourceLinkSchema));
-		if (!form.valid) return fail(400, { form });
-		setLink(db, form.data.sourceId, form.data.areaId, form.data.on);
-		return { form };
-	},
-
 	areaSave: async ({ request, locals }) => {
 		requireAdmin(locals);
 		const form = await superValidate(request, zod4(areaDraftSchema));
@@ -153,14 +123,6 @@ export const actions: Actions = {
 		const form = await superValidate(request, zod4(areaPausedSchema));
 		if (!form.valid) return fail(400, { form });
 		setAreaPaused(db, form.data.id, form.data.paused);
-		return { form };
-	},
-
-	radius: async ({ request, locals }) => {
-		requireAdmin(locals);
-		const form = await superValidate(request, zod4(areaRadiusSchema));
-		if (!form.valid) return fail(400, { form });
-		setAreaRadius(db, form.data.id, form.data.radius);
 		return { form };
 	},
 

@@ -34,15 +34,4 @@ export const sourceEnabledSchema = z.object({
 	enabled: z.boolean(),
 });
 
-export const sourceFloorSchema = z.object({
-	id: z.string().min(1),
-	floor: z.number().min(0).max(0.9),
-});
-
-export const sourceLinkSchema = z.object({
-	sourceId: z.string().min(1),
-	areaId: z.string().min(1),
-	on: z.boolean(),
-});
-
 export const sourceIdSchema = z.object({ id: z.string().min(1) });
