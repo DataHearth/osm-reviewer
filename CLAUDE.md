@@ -187,7 +187,12 @@ match and all come out as duplicate "new" POIs. Only the "POIs watched" count us
 
 The **deterministic** extractor is a preset (`presets.ts`): `irve` and `annuaire-education`,
 named on the source or detected from the columns, and a source that fits none fails its run
-rather than guessing. The **model** extractor sends one record or page per call
+rather than guessing. Where the source is not sure, the preset proposes nothing rather than a
+guess: no socket output above what the connector can deliver, no `network` that is the site's
+own name, no school `start_date` from the register's bulk entries or a merged primaire. The
+directory's medico-social institutes become `amenity=social_facility` (the main tag of one
+already mapped is left alone), its sections housed in a parent establishment are skipped, and
+"hors contrat" is dropped from school names, since OSM has no key for it and mappers drop it. The **model** extractor sends one record or page per call
 (`llm.ts`; OpenAI-compatible `/chat/completions` with a JSON schema, or the Anthropic Messages
 API with structured output, both by plain `fetch`) and treats the answer as a witness: a tag
 survives only if its quote is really on the page, its key matches the source's allowed
@@ -196,8 +201,12 @@ patterns and its confidence clears the floor, which is also capped.
 Matching asks Overpass once per area for the source's `matching` selector plus whatever main
 tag the records carry (a filter written for `amenity=school` still finds a post-bac `amenity=college`), then
 matches by shared ref (`ref:EU:EVSE`, `ref:UAI`, `ref:FR:SIRET`) before distance and name.
-Refs compare without `*`, spaces or case, and an object carrying another `ref:UAI` is never
-the match. What matching cannot settle is not guessed: a "new" POI with an object of its kind
+Refs compare without `*`, spaces or case; a ref several records carry (one organisation's
+SIRET) decides nothing; an object carrying another `ref:UAI` (or another school's `ce.<UAI>@`
+mailbox) is never the match, nor by name or distance is a station carrying only another
+operator's EVSE ids. An unnamed object matches within 15 m, or within 50 m when its
+operator, network or brand agrees. The fetch adds anything carrying a `ref:UAI`, a school's
+kin (`college`, `university`), and a ~220 m margin round the box. What matching cannot settle is not guessed: a "new" POI with an object of its kind
 within 150 m, a match whose site is mapped as several objects, and an object several records
 matched each get a line in the candidate's `warning`, which the review screen shows as a
 "Check" banner.
