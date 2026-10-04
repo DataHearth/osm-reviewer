@@ -21,6 +21,7 @@ const row = (station: string, pdc: string, lon: number, lat: number, extra = "")
 let csv = "";
 let osm: { elements: unknown[] } = { elements: [] };
 let fileStatus = 200;
+let addresses: Record<string, unknown> = {};
 const calls: string[] = [];
 
 function fakeFetch(input: string | URL | Request) {
@@ -40,6 +41,10 @@ function fakeFetch(input: string | URL | Request) {
 			statusText: "Err",
 		});
 	if (url.includes("overpass")) return Response.json(osm);
+	if (url.includes("api-adresse")) {
+		const hit = addresses[new URL(url).searchParams.get("q") ?? ""];
+		return Response.json({ features: hit ? [hit] : [] });
+	}
 	return new Response("not found", { status: 404, statusText: "Not Found" });
 }
 
@@ -56,6 +61,7 @@ beforeEach(() => {
 	);
 	calls.length = 0;
 	fileStatus = 200;
+	addresses = {};
 
 	db.insert(t.areas)
 		.values({
@@ -313,6 +319,31 @@ describe("runSource (registry)", () => {
 		expect(c).toMatchObject({ headVersion: 7, conflictWho: "alice", baseVersion: 5 });
 		const side = db.select().from(t.candidateConflictTags).all();
 		expect(side.some((r) => r.side === "ours")).toBe(true);
+	});
+
+	it("moves a station to its own address, and drops one that lands outside the area", async () => {
+		const at = (q: string, lon: number, lat: number) => {
+			addresses[q] = {
+				geometry: { coordinates: [lon, lat] },
+				properties: { label: q, name: q, postcode: "", city: "", score: 0.95, type: "housenumber" },
+			};
+		};
+		at("2 rue Proche", 4.8355, 45.762);
+		at("3 rue Lointaine", 2.35, 48.85);
+		csv = [
+			HEADER,
+			"FRNEAR,FR*N*E1,Station N,Operateur,2 rue Proche,4.83,45.76,true,1,22,true,true,24/7",
+			"FRAWAY,FR*A*E1,Station A,Operateur,3 rue Lointaine,4.84,45.77,true,1,22,true,true,24/7",
+		].join("\n");
+		await runSource(db, "irve");
+
+		const all = cands();
+		expect(all.map((c) => c.sourceRecordKey)).toEqual(["FRNEAR"]);
+		expect(all[0]).toMatchObject({ lat: 45.762, lon: 4.8355 });
+		expect(all[0].warning).toMatch(/^Moved \d+ m to its address, 2 rue Proche/);
+		expect(db.select().from(t.runs).get()?.message).toBe(
+			"1 record placed outside the area by its own address",
+		);
 	});
 
 	it("writes a failed run, retries soon, and holds the source after three in a row", async () => {

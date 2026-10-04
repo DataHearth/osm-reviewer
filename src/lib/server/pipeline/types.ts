@@ -49,6 +49,13 @@ export interface Extraction {
 	absent?: string[];
 	/** What the source says that no tag can carry, for the reviewer to weigh. */
 	notes?: string[];
+	/**
+	 * The address to ask the national address base for, and how far the source's point may
+	 * sit from its housenumber before the point is the one taken to be wrong.
+	 */
+	geocode?: { q: string; farM: number };
+	/** Contact details the source gave that read as a person's own, and were left out. */
+	withheld?: number;
 }
 
 export interface OsmElement {

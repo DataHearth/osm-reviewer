@@ -10,7 +10,13 @@ import { userAgent } from "./http";
 import { modelLabel } from "./llm";
 import { readApiArea } from "./opendata";
 import { fetchElements } from "./overpass";
-import { type AreaInput, type AreaRow, processArea, type SourceRow } from "./process";
+import {
+	type AreaInput,
+	type AreaOutcome,
+	type AreaRow,
+	processArea,
+	type SourceRow,
+} from "./process";
 import { hash } from "./reader";
 import { type RegistryState, readRegistry } from "./registry";
 import { HOLD_AFTER_FAILURES, nextRunAt, RETRY_AFTER_MS } from "./schedule";
@@ -32,9 +38,26 @@ interface Exec {
 	note: string | null;
 	state: Record<string, unknown>;
 	licence?: string;
+	outside?: number;
+	withheld?: number;
 }
 
 const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+function absorb(out: Exec, p: AreaOutcome) {
+	out.cands += p.cands;
+	out.errors.push(...p.errors);
+	out.outside = (out.outside ?? 0) + p.outside;
+	out.withheld = (out.withheld ?? 0) + p.withheld;
+}
+
+/** What a run set aside on purpose, which the run's line says whether or not it also failed somewhere. */
+const asides = ({ outside = 0, withheld = 0 }: Exec) => [
+	...(outside === 1 ? ["1 record placed outside the area by its own address"] : []),
+	...(outside > 1 ? [`${outside} records placed outside the area by their own address`] : []),
+	...(withheld === 1 ? ["1 personal contact detail left out"] : []),
+	...(withheld > 1 ? [`${withheld} personal contact details left out`] : []),
+];
 export const claimFresh = (s: { runningSince: Date | null }) =>
 	s.runningSince !== null && Date.now() - s.runningSince.getTime() < STALE_CLAIM_MS;
 
@@ -88,8 +111,7 @@ async function readRegistrySource(
 				{ records, reader: reg.reader, complete: !reg.unchanged },
 				at,
 			);
-			out.cands += r.cands;
-			out.errors.push(...r.errors);
+			absorb(out, r);
 			out.areasOk += 1;
 		} catch (err) {
 			out.errors.push(`${area.name}: ${msg(err)}`);
@@ -129,8 +151,7 @@ async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Da
 				{ records, reader: r.reader, complete: true },
 				at,
 			);
-			out.cands += p.cands;
-			out.errors.push(...p.errors);
+			absorb(out, p);
 			out.areasOk += 1;
 		} catch (err) {
 			out.errors.push(`${area.name}: ${msg(err)}`);
@@ -215,8 +236,7 @@ async function readCrawlSource(
 			// Unread pages are not gone pages, so a crawl never sweeps what it did not see.
 			const input: AreaInput = { records, reader: null, elements, complete: false };
 			const p = await processArea(db, source, area, input, at);
-			out.cands += p.cands;
-			out.errors.push(...p.errors);
+			absorb(out, p);
 			for (const r of records)
 				if (r.text && !p.failedKeys.includes(r.key)) pages[r.key] = hash(r.text);
 			out.areasOk += 1;
@@ -304,10 +324,15 @@ export async function runSource(db: Db, id: string): Promise<void> {
 		fatal || exec.areasOk === 0 ? "failed" : exec.errors.length ? "partial" : "ok";
 	const shown = [...new Set(fatal ? [fatal] : exec.errors)];
 	const message =
-		result === "ok"
-			? exec.note
-			: shown.slice(0, MESSAGES_SHOWN).join("; ") +
-				(shown.length > MESSAGES_SHOWN ? ` (+${shown.length - MESSAGES_SHOWN} more)` : "");
+		[
+			result === "ok"
+				? exec.note
+				: shown.slice(0, MESSAGES_SHOWN).join("; ") +
+					(shown.length > MESSAGES_SHOWN ? ` (+${shown.length - MESSAGES_SHOWN} more)` : ""),
+			...asides(exec),
+		]
+			.filter(Boolean)
+			.join("; ") || null;
 	const errorCount = fatal ? 1 : exec.errors.length;
 
 	db.transaction((tx) => {

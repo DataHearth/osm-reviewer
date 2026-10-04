@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+	addressQuery,
 	detectPreset,
+	expandStreet,
 	mergeSites,
 	openedForSure,
 	openingHours,
+	personalMailbox,
 	phoneFR,
 	poolId,
 	presetById,
@@ -495,6 +498,35 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(tags).toMatchObject({ email: "ce.0690001A@ac-lyon.fr", start_date: "2023-09-01" });
 	});
 
+	it("leaves out a person's own mailbox and a mobile, and counts them", () => {
+		const x = edu.extract(
+			[row({ mail: "audrey.lagane@lespetitesfamilles.fr", telephone: "06 70 75 01 33" })],
+			"u",
+		);
+		const keys = x?.tags.map((t) => t.k);
+		expect(keys).not.toContain("email");
+		expect(keys).not.toContain("phone");
+		expect(x?.withheld).toBe(2);
+		expect(edu.extract([row({ mail: "contact@ecole-jaures.fr" })], "u")?.withheld).toBe(0);
+	});
+
+	it("proposes no operator:type where the SIREN and the directory's status disagree", () => {
+		const type = (over: Row) =>
+			edu.extract([row(over)], "u")?.tags.find((t) => t.k === "operator:type")?.v;
+		expect(type({ statut_public_prive: "Privé", siren_siret: "26690008300012" })).toBeUndefined();
+		expect(type({ statut_public_prive: "Public", siren_siret: "77564661500564" })).toBeUndefined();
+		expect(type({ statut_public_prive: "Privé", siren_siret: "77564661500564" })).toBe("private");
+		expect(type({ statut_public_prive: "Privé", siren_siret: "" })).toBe("private");
+	});
+
+	it("asks the address base for its address, a kilometre off before its point moves", () => {
+		expect(edu.extract([row()], "u")?.geocode).toEqual({
+			q: "2 rue Jaurès 69003 Lyon",
+			farM: 1000,
+		});
+		expect(edu.extract([row({ adresse_1: "Lieu-dit Les Prés" })], "u")?.geocode).toBeUndefined();
+	});
+
 	it("fills a missing name but never renames", () => {
 		const name = edu.extract([row()], "u")?.tags.find((t) => t.k === "name");
 		expect(name?.addOnly).toBe(true);
@@ -549,12 +581,26 @@ describe("schoolAddress", () => {
 			street: "Boulevard de Strasbourg",
 			postcode: "69006",
 			city: "Lyon",
+			query: "68 boulevard de Strasbourg 69006 Lyon",
 		});
 	});
-	it("drops a CEDEX postcode and refuses a street in capitals or no street at all", () => {
+	it("drops a CEDEX postcode and refuses no street at all", () => {
 		expect(at({ adresse_3: "31076 TOULOUSE CEDEX 3" })?.postcode).toBe("");
-		expect(at({ adresse_1: "75 rue SAINT ROCH" })).toBeNull();
 		expect(at({ adresse_1: "BP 41023" })).toBeNull();
+	});
+	it("asks for a street in capitals or abbreviated as written out", () => {
+		expect(at({ adresse_1: "31 rue DES TUILLIERS" })?.query).toBe(
+			"31 rue DES TUILLIERS 31000 Toulouse",
+		);
+		expect(at({ adresse_1: "95  bd PINEL" })?.query).toBe("95 boulevard PINEL 31000 Toulouse");
+		expect(at({ adresse_1: "373 r L'Occitane" })?.street).toBe("Rue L'Occitane");
+	});
+	it("keeps a housenumber range whole and asks for its first number", () => {
+		const range = at({ adresse_1: "20-28 rue Louis Auguste Blanqui", code_postal: "69921" });
+		expect(range).toMatchObject({
+			number: "20-28",
+			query: "20 rue Louis Auguste Blanqui Toulouse",
+		});
 	});
 	it("keeps a note out of the street and a mail route out of the postcode", () => {
 		expect(at({ adresse_1: "12 rue de la Solidarité (site Ariane)" })?.street).toBe(
@@ -613,6 +659,81 @@ describe("schoolName", () => {
 		);
 		expect(schoolName("Lycée Pierre de FERMAT")).toBe("Lycée Pierre de Fermat");
 		expect(schoolName("Ecole privée hors-contrat Rose Carmin")).toBe("École privée Rose Carmin");
+	});
+
+	it("puts accents back on the words the directory drops them from", () => {
+		expect(schoolName("Institut Médico-Educatif Le Bouquet")).toBe(
+			"Institut Médico-Éducatif Le Bouquet",
+		);
+		expect(schoolName("Centre de Référence pour l'Evaluation")).toBe(
+			"Centre de Référence pour l'Évaluation",
+		);
+		expect(schoolName("DITEP Elise Rivet")).toBe("DITEP Élise Rivet");
+		expect(schoolName("Ecole technique prive Lumière")).toBe("École technique privé Lumière");
+		expect(schoolName("SESSAD A VISEE PROFESSIONNELLE")).toBe("SESSAD à Visée Professionnelle");
+		expect(schoolName("Lycée A Rimbaud")).toBe("Lycée A Rimbaud");
+	});
+
+	it("quiets a run of shouted words but keeps initialisms and a lone word in capitals", () => {
+		expect(schoolName("Ecole technique prive hors contrat CAMAS ACADEMY")).toBe(
+			"École technique privé Camas Academy",
+		);
+		expect(schoolName("Lycée professionnel ORT LYON")).toBe("Lycée professionnel ORT LYON");
+		expect(schoolName("Ecole Technique Privée ISSEC PIGIER")).toBe(
+			"École Technique Privée ISSEC Pigier",
+		);
+		expect(schoolName("Ecole secondaire privée IPESS")).toBe("École secondaire privée IPESS");
+		expect(schoolName("Ecole technique privée hors contrat ADONIS")).toBe(
+			"École technique privée ADONIS",
+		);
+	});
+});
+
+describe("expandStreet", () => {
+	it("writes out a street type where it stands and a title anywhere", () => {
+		expect(expandStreet("49 Bd Lucien Sampaix, 69190 Saint-Fons")).toBe(
+			"49 Boulevard Lucien Sampaix, 69190 Saint-Fons",
+		);
+		expect(expandStreet("112 Av. Gén. Leclerc")).toBe("112 Avenue Général Leclerc");
+		expect(expandStreet("11 ter Imp. Ste Anne")).toBe("11 ter Impasse Sainte Anne");
+		expect(expandStreet("Pl. St-Jean")).toBe("Place Saint-Jean");
+		expect(expandStreet("2 rue Générale")).toBe("2 rue Générale");
+	});
+});
+
+describe("addressQuery", () => {
+	it("adds the postcode and commune only when the line lacks them", () => {
+		expect(addressQuery("49 Bd Lucien Sampaix, 69190 Saint-Fons", "69190", "Saint-Fons")).toBe(
+			"49 Boulevard Lucien Sampaix, 69190 Saint-Fons",
+		);
+		expect(addressQuery("1 place de la Mairie", "69001", "Lyon")).toBe(
+			"1 place de la Mairie 69001 Lyon",
+		);
+	});
+
+	it("is what a station asks with, 100 m off before its point moves", () => {
+		expect(presetById("irve")?.extract([irveRow()], "u")?.geocode).toEqual({
+			q: "1 place de la Mairie 69001 Lyon",
+			farM: 100,
+		});
+	});
+});
+
+describe("personalMailbox", () => {
+	it("tells somebody's own address from the establishment's", () => {
+		const own = (mail: string, name = "École Declic", city = "Lyon") =>
+			personalMailbox(mail, name, city);
+		expect(own("jean-armand.barone@college-declic.fr")).toBe(true);
+		expect(own("l.gruer@espaceforma.com")).toBe(true);
+		expect(own("audrey.lagane@lespetitesfamilles.fr")).toBe(true);
+		expect(own("contact@college-declic.fr")).toBe(false);
+		expect(own("secretariat.college@x.fr")).toBe(false);
+		expect(own("vie-scolaire@x.fr")).toBe(false);
+		expect(own("seguin.direction@ccass-sbe.org")).toBe(false);
+		expect(own("ce.0690001A@ac-lyon.fr")).toBe(false);
+		expect(own("immaculee.conception@immaculee.net")).toBe(false);
+		expect(own("campus.lyon@x.fr")).toBe(false);
+		expect(own("lycee.neyret@x.fr", "Lycée Neyret")).toBe(false);
 	});
 });
 

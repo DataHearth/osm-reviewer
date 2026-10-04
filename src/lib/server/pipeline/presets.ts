@@ -570,6 +570,7 @@ const irve: Preset = {
 			tags: t.list,
 			absent,
 			notes,
+			geocode: street ? { q: addressQuery(street, cp, commune), farM: STATION_FAR_M } : undefined,
 		};
 	},
 };
@@ -627,14 +628,65 @@ const ACRONYMS = new Set([
 	"CAMSP",
 	"CMPP",
 	"IFSI",
+	"ISSEC",
 ]);
 
 /** Small words a name written all in capitals has in capitals too. */
 const PARTICLES = new Set(["DE", "DES", "DU", "LA", "LE", "LES", "ET", "AU", "AUX", "EN", "SUR"]);
 
+/** Words the directory, or a name quieted from capitals, writes without their accents. */
+const ACCENTED = [
+	"École",
+	"Écoles",
+	"Établissement",
+	"Établissements",
+	"Éducation",
+	"Éducatif",
+	"Éducative",
+	"Éducatifs",
+	"Éducatives",
+	"Évaluation",
+	"Élise",
+	"Émile",
+	"Étude",
+	"Études",
+	"Élémentaire",
+	"Étienne",
+	"Épée",
+	"Médico",
+	"Pédagogique",
+	"Thérapeutique",
+	"Spécialisé",
+	"Spécialisée",
+	"Supérieur",
+	"Supérieure",
+	"Privé",
+	"Privée",
+	"Visée",
+	"Collège",
+	"Lycée",
+];
+const bare = (w: string) => w.normalize("NFD").replace(/[̀-ͯ]/g, "");
+const UNACCENTED = new Map(
+	ACCENTED.flatMap((w) => [
+		[bare(w), w],
+		[bare(w).toLowerCase(), w.toLowerCase()],
+	]),
+);
+const UNACCENTED_WORD = new RegExp(
+	`(?<![\\p{L}\\d])(${[...UNACCENTED.keys()].join("|")})(?![\\p{L}\\d])`,
+	"gu",
+);
+
+const capitals = (word: string) => /\p{Lu}{2}/u.test(word) && !/\p{Ll}/u.test(word);
+/** Short or vowelless capitals are an organisation's letters ("ORT", "CHU"); longer ones are words. */
+const initialism = (w: string) => ACRONYMS.has(w) || w.length <= 4 || !/[AEIOUY]/.test(w);
+
 /**
  * The directory drops the accent off "École" and shouts surnames ("Rosa PARKS"), sometimes
- * the whole name; OSM France writes neither.
+ * a brand ("CAMAS ACADEMY") or the whole name; OSM France writes neither. A single word in
+ * capitals anywhere else is left as written: it is an initialism as often as a brand
+ * ("IPESS", "CESDDA", "ADONIS"), and only the school can say which.
  *
  * "hors contrat" goes: it is the private school's legal status (no contract with the state),
  * which the directory writes into the name on 29 of its 111 such schools in Toulouse and Lyon.
@@ -644,27 +696,110 @@ const PARTICLES = new Set(["DE", "DES", "DU", "LA", "LE", "LES", "ET", "AU", "AU
 export function schoolName(raw: string): string {
 	const shouting = raw === raw.toUpperCase();
 	const quiet = (w: string) => w[0] + w.slice(1).toLowerCase();
-	const out = raw
+	let out = raw
 		.replace(/\s+/g, " ")
 		.replace(/ hors[- ]contrat\b/i, "")
 		.replace(/\p{Lu}{2,}/gu, (w, at: number, all: string) => {
 			if (ACRONYMS.has(w)) return w;
 			if (shouting) return PARTICLES.has(w) ? w.toLowerCase() : quiet(w);
+			const start = all.lastIndexOf(" ", at) + 1;
+			const end = all.indexOf(" ", at) < 0 ? all.length : all.indexOf(" ", at);
+			const before = all.slice(0, start).trimEnd().split(" ").pop() ?? "";
+			const after = all.slice(end).trimStart().split(" ")[0];
+			if (capitals(before) || capitals(after)) {
+				if (PARTICLES.has(w)) return w.toLowerCase();
+				return initialism(w) ? w : quiet(w);
+			}
 			// In a name written in mixed case, capitals after a first name or a particle are a
 			// surname ("Rosa PARKS", "Pierre de FERMAT"); anywhere else an initialism ("ESTM").
-			const before = all.slice(0, at).trimEnd().split(" ").pop() ?? "";
 			return SURNAME_AFTER.test(before) ? quiet(w) : w;
 		})
-		.replace(/\bEcole(s?)\b/g, "École$1")
-		.replace(/\bEtablissement(s?)\b/g, "Établissement$1")
-		.replace(/\bEducation\b/g, "Éducation");
+		.replace(UNACCENTED_WORD, (w) => UNACCENTED.get(w) ?? w);
+	if (shouting) out = out.replace(/ A (?=\p{L})/gu, " à ");
 	return out[0].toUpperCase() + out.slice(1);
 }
 
 const SURNAME_AFTER = /^(\p{Lu}\p{Ll}+([-'’]\p{Lu}\p{Ll}+)*|de|du|des|d'|la|le)$/u;
 
 const STREET =
-	/^(rue|avenue|boulevard|chemin|place|allée|allées|impasse|route|quai|cours|square|voie|passage|esplanade|rond-point|montée|chaussée|parvis|promenade|sentier|faubourg|clos|cité|grande? rue|petite rue)\b/i;
+	/^(rue|avenue|boulevard|cheminement|chemin|place|allée|allées|impasse|route|quai|cours|square|voie|passage|esplanade|rond-point|montée|chaussée|parvis|promenade|sentier|faubourg|clos|cité|grande? rue|petite rue)\b/i;
+
+/** Street types as an address line abbreviates them, read only where the type stands. */
+const STREET_TYPES: Record<string, string> = {
+	bd: "boulevard",
+	bld: "boulevard",
+	bvd: "boulevard",
+	blvd: "boulevard",
+	av: "avenue",
+	ave: "avenue",
+	pl: "place",
+	rte: "route",
+	chem: "chemin",
+	ch: "chemin",
+	imp: "impasse",
+	fbg: "faubourg",
+	fg: "faubourg",
+	all: "allée",
+	crs: "cours",
+	sq: "square",
+	r: "rue",
+	prom: "promenade",
+	mte: "montée",
+};
+/** Abbreviations no street name uses as a word of its own. */
+const NAME_WORDS: Record<string, string> = {
+	st: "saint",
+	ste: "sainte",
+	gal: "général",
+	gén: "général",
+	mal: "maréchal",
+	pdt: "président",
+};
+const STREET_TYPE = new RegExp(
+	`^((?:\\d+\\S*\\s+(?:(?:bis|ter|quater)\\s+)?)?)(${Object.keys(STREET_TYPES).join("|")})\\.?(?=\\s)`,
+	"iu",
+);
+const NAME_WORD = new RegExp(
+	`(?<![\\p{L}\\d])(${Object.keys(NAME_WORDS).join("|")})\\.?(?=[\\s-])`,
+	"giu",
+);
+
+/** The expansion in the abbreviation's own case: "Bd" is "Boulevard", "ST" is "SAINT". */
+function cased(abbr: string, word: string): string {
+	if (abbr.length > 1 && abbr === abbr.toUpperCase()) return word.toUpperCase();
+	return abbr[0] === abbr[0].toUpperCase() ? word[0].toUpperCase() + word.slice(1) : word;
+}
+
+/**
+ * An address line with its abbreviations written out. The address base scores "49 Bd Lucien
+ * Sampaix" 0.67 and "49 Boulevard Lucien Sampaix" 0.96, so an abbreviation alone can make
+ * an address a miss.
+ */
+export function expandStreet(line: string): string {
+	return line
+		.replace(
+			STREET_TYPE,
+			(_, lead: string, abbr: string) => lead + cased(abbr, STREET_TYPES[abbr.toLowerCase()]),
+		)
+		.replace(NAME_WORD, (_, abbr: string) => cased(abbr, NAME_WORDS[abbr.toLowerCase()]));
+}
+
+/**
+ * How far a source's point may sit from its own housenumber before the address is taken
+ * over the point. A school's grounds can stretch a few hundred metres from its gate; a
+ * charging station stands at its address.
+ */
+const SCHOOL_FAR_M = 1000;
+const STATION_FAR_M = 100;
+
+/**
+ * What to ask the address base for a line: with its postcode and commune, unless the line
+ * already carries them. Naming the commune twice costs the match a third of its score.
+ */
+export function addressQuery(line: string, postcode: string, city: string): string {
+	const q = expandStreet(line);
+	return postcode && q.includes(postcode) ? q : [q, postcode, city].filter(Boolean).join(" ");
+}
 
 /**
  * Whether a postcode is a place's rather than a CEDEX mail route, which the address lines do
@@ -677,28 +812,35 @@ export const placePostcode = (cp: string) =>
 /**
  * `adresse_1` split into number and street, with the commune the address uses: Lyon, not
  * "Lyon 6e Arrondissement", and no CEDEX postcode, which routes mail, not places. Null when
- * the line is not a plain street address or is written in capitals.
+ * the line is not a plain street address. A range ("20-28") stays the housenumber, as OSM
+ * writes it, and the address base is asked for its first number. The spelling here is the
+ * directory's; the address base's replaces it before anything is proposed.
  */
 export function schoolAddress(r: Row) {
-	const line = str(r, "adresse_1")
-		.replace(/\s*\([^)]*\)/g, "")
-		.replace(/\s+/g, " ")
-		.trim();
-	const m = /^(\d+(?: ?(?:bis|ter|quater|[a-z]))?) (.+)$/i.exec(line);
+	const line = expandStreet(
+		str(r, "adresse_1")
+			.replace(/\s*\([^)]*\)/g, "")
+			.replace(/\s+/g, " ")
+			.trim(),
+	);
+	const m = /^(\d+(?: ?- ?\d+)?(?: ?(?:bis|ter|quater|[a-z]))?) (.+)$/i.exec(line);
 	const number = m ? m[1].replace(/ /g, "") : "";
 	const street = m ? m[2] : line;
-	if (!STREET.test(street) || /\p{Lu}{3,}/u.test(street)) return null;
+	if (!STREET.test(street)) return null;
 	const mail = `${str(r, "adresse_2")} ${str(r, "adresse_3")}`;
+	const postcode =
+		/cedex|\bbp\b|\bcs ?\d/i.test(mail) || !placePostcode(str(r, "code_postal"))
+			? ""
+			: str(r, "code_postal");
+	const city = str(r, "nom_commune")
+		.replace(/\s+/g, " ")
+		.replace(/ \d+(?:er|e|ème)? arrondissement$/i, "");
 	return {
 		number,
 		street: street[0].toUpperCase() + street.slice(1),
-		postcode:
-			/cedex|\bbp\b|\bcs ?\d/i.test(mail) || !placePostcode(str(r, "code_postal"))
-				? ""
-				: str(r, "code_postal"),
-		city: str(r, "nom_commune")
-			.replace(/\s+/g, " ")
-			.replace(/ \d+(?:er|e|ème)? arrondissement$/i, ""),
+		postcode,
+		city,
+		query: addressQuery(`${number.replace(/-.*/, "")} ${street}`.trim(), postcode, city),
 	};
 }
 
@@ -719,6 +861,44 @@ const EXACT = /^(parfaite|num[ée]ro de rue)$/i;
 /** A school's address at a webmail provider is often a person's, which does not belong on the map. */
 const WEBMAIL =
 	/@(gmail|hotmail|outlook|live|yahoo|icloud|wanadoo|orange|free|laposte|sfr|neuf)\.[a-z.]+$/i;
+
+/** first.last, initial.last, first-last, compound first names included. */
+const PERSON_MAILBOX = /^[a-z]+(?:-[a-z]+)?[._-][a-z]+(?:-[a-z]+)?$/;
+/** Mailbox words that name a role, a level or a place rather than someone. */
+const ROLE_WORDS = new Set(
+	(
+		"contact contacts info infos infocontact accueil dir direction directeur directrice " +
+		"secretariat secretaire admin adm administration ce scolarite vie scolaire ecole college " +
+		"clg lycee lyc lp primaire maternelle campus centre institut institution etablissement ime " +
+		"itep sessad legta compta comptabilite inscription inscriptions communication standard " +
+		"gestion intendance cpe proviseur principal rh bureau service pole superieur formation " +
+		"formations saint sainte st ste association asso groupe education projet site"
+	).split(" "),
+);
+
+/**
+ * A mailbox that reads as somebody's own: a staff member's address is personal data, and
+ * one that leaves with them. A part that is a role word, or is in the domain, the school's
+ * name or its commune ("immaculee.conception@immaculee.net", "campus.toulouse@…") is the
+ * establishment's.
+ */
+export function personalMailbox(mail: string, name: string, city: string): boolean {
+	const [local, domain = ""] = bare(mail).toLowerCase().split("@");
+	if (!PERSON_MAILBOX.test(local)) return false;
+	const own = new Set([...tokens(name), ...tokens(city)]);
+	return !local
+		.split(/[._-]/)
+		.some((p) => ROLE_WORDS.has(p) || own.has(p) || (p.length >= 3 && domain.includes(p)));
+}
+
+const isMobile = (phone: string) => /^\+33 [67] /.test(phone);
+
+/**
+ * The first digit of a SIREN says whose legal person it is: 1 the State, 2 a local authority
+ * or public body (hospitals included). Where it disagrees with the directory's status (a
+ * public hospital's school listed as private), neither is taken.
+ */
+const publicBody = (siret: string) => (/^\d{14}$/.test(siret) ? /^[12]/.test(siret) : null);
 
 /** Annuaire de l'éducation. */
 const education: Preset = {
@@ -780,21 +960,27 @@ const education: Preset = {
 				"siren_siret",
 				str(r, "siren_siret", "numero_siren_siret"),
 			);
+		const at = schoolAddress(r);
+		let withheld = 0;
 		const phone = phoneFR(str(r, "telephone"));
-		if (phone) t.add("phone", phone, 0.85, "telephone", undefined, "normalised");
+		if (phone && isMobile(phone)) withheld += 1;
+		else if (phone) t.add("phone", phone, 0.85, "telephone", undefined, "normalised");
 		const site = website(str(r, "web", "site_web"));
 		if (site) t.add("website", site, 0.8, "web");
 		const mail = str(r, "mail");
-		if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail) && !WEBMAIL.test(mail))
-			fill(t.add("email", mail, 0.8, "mail"));
+		if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail) && !WEBMAIL.test(mail)) {
+			if (personalMailbox(mail, name, at?.city ?? str(r, "nom_commune"))) withheld += 1;
+			else fill(t.add("email", mail, 0.8, "mail"));
+		}
 		const opened = str(r, "date_ouverture");
 		if (openedForSure(opened, kind.level)) fill(t.add("start_date", opened, 0.7, "date_ouverture"));
 		const status = str(r, "statut_public_prive");
-		if (/^public/i.test(status)) t.add("operator:type", "public", 0.9, "statut_public_prive");
-		else if (/priv/i.test(status)) t.add("operator:type", "private", 0.9, "statut_public_prive");
+		const said = /^public/i.test(status) ? true : /priv/i.test(status) ? false : null;
+		const bySiren = publicBody(siret);
+		if (said !== null && (bySiren === null || bySiren === said))
+			t.add("operator:type", said ? "public" : "private", 0.9, "statut_public_prive");
 		// An address fills gaps only, and only whole: a postcode and city on an object with no
-		// street is half an address, and the directory's street is sometimes in capitals.
-		const at = schoolAddress(r);
+		// street is half an address.
 		if (at)
 			for (const tag of [
 				t.add("addr:housenumber", at.number, 0.8, "adresse_1"),
@@ -843,6 +1029,8 @@ const education: Preset = {
 					? [`The directory places it only to the precision of: ${precision}`]
 					: []),
 			],
+			geocode: at ? { q: at.query, farM: SCHOOL_FAR_M } : undefined,
+			withheld,
 		};
 	},
 };

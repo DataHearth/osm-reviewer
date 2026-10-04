@@ -3,8 +3,9 @@ import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import type { SourceRecord } from "$lib/types";
-import { checkAddress } from "./ban";
+import { placeAddress } from "./ban";
 import { refreshConflicts } from "./conflicts";
+import { inArea } from "./geo";
 import { askModel, modelLabel, vetTags } from "./llm";
 import {
 	closureOps,
@@ -54,6 +55,10 @@ export interface AreaOutcome {
 	errors: string[];
 	/** Records whose extraction failed, so a crawl does not remember their pages as read. */
 	failedKeys: string[];
+	/** Records their own address placed outside the area once their point moved there. */
+	outside: number;
+	/** Contact details left out as a person's own. */
+	withheld: number;
 }
 
 /** After this many model calls in a row fail the model is down, not the pages odd. */
@@ -128,6 +133,8 @@ export async function processArea(
 	const failedKeys: string[] = [];
 	const unchanged: string[] = [];
 	const extracted: { x: Extraction; rec: RawRecord }[] = [];
+	let outside = 0;
+	let withheld = 0;
 
 	let failedInARow = 0;
 	for (const rec of mergeSites(input.records, input.reader?.preset)) {
@@ -139,7 +146,12 @@ export async function processArea(
 			const raw = await extract(source, rec, input.reader, allow);
 			failedInARow = 0;
 			if (!raw) continue;
-			const x = await checkAddress(raw);
+			const x = await placeAddress(raw);
+			withheld += x.withheld ?? 0;
+			if ((x.lat !== raw.lat || x.lon !== raw.lon) && !inArea(area, x.lat, x.lon)) {
+				outside += 1;
+				continue;
+			}
 			const tags = x.tags.filter((tag) => allowedBy(allow, tag.k) && tag.conf >= source.floor);
 			if (tags.length) extracted.push({ x: { ...x, tags }, rec });
 		} catch (err) {
@@ -314,5 +326,5 @@ export async function processArea(
 	}
 	db.update(t.areas).set({ lastRunAt: new Date(), pois }).where(eq(t.areas.id, area.id)).run();
 
-	return { cands, errors, failedKeys };
+	return { cands, errors, failedKeys, outside, withheld };
 }

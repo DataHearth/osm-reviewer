@@ -134,8 +134,10 @@ server calls is configuration rather than code:
   logged — and the `queue` event fires once per crossing of the ceiling (the latch is in
   memory). Webhook bodies carry `X-Signature: sha256=<HMAC-SHA256 of the raw body>`.
 - **The pipeline's hosts are configuration, not code**: `OVERPASS_URL`, `NOMINATIM_URL`,
-  `BAN_URL` (the national address base, asked once per proposed address for its postcode
-  and to check the source's point against it),
+  `BAN_URL` (the national address base, asked once per school or station address: a
+  proposed address takes its spelling or is dropped whole, and a source point more than 1 km
+  (school) or 100 m (station) from its housenumber moves there before matching, a record
+  moved out of the area being dropped and counted in the run's message),
   `OSM_URL` (default the dev sandbox, so an unconfigured instance cannot write to the live
   map), the model at `LLM_URL`, and each source's own endpoint. All are read in
   `src/lib/server/config.ts`, and `PIPELINE_ENABLED=false` switches off the scheduler and
