@@ -36,6 +36,8 @@ export type Existing = {
 	id: string;
 	areaId: string;
 	osmId: string | null;
+	/** The OSM version its tags were computed against. */
+	version: number;
 	contentHash: string | null;
 	decided: boolean;
 	hasRecord: boolean;
@@ -49,6 +51,7 @@ export function existingCandidates(db: Db, sourceId: string): Map<string, Existi
 			id: t.candidates.id,
 			areaId: t.candidates.areaId,
 			osmId: t.candidates.osmId,
+			version: t.candidates.version,
 			contentHash: t.candidates.contentHash,
 			warning: t.candidates.warning,
 			hasRecord: sql<number>`${t.candidates.record} is not null`,
@@ -65,6 +68,7 @@ export function existingCandidates(db: Db, sourceId: string): Map<string, Existi
 				id: r.id,
 				areaId: r.areaId,
 				osmId: r.osmId,
+				version: r.version,
 				contentHash: r.contentHash,
 				decided: r.decision !== null,
 				hasRecord: !!r.hasRecord,

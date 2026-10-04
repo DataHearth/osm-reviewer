@@ -182,10 +182,16 @@ export async function processArea(
 
 		// What the source proposes, not the rows it was read from: a fixed preset or a new
 		// model answer has to reach an undecided candidate as surely as a change in the data.
-		// The OSM side stays out of it, since an element that moved is a conflict to flag,
-		// not a candidate to rebase quietly.
-		const h = hash(JSON.stringify([x.name, x.addr, x.lat, x.lon, x.tags, x.closedBy ?? null]));
+		// The operations it makes against OSM are hashed apart: a fix to matching must reach
+		// the candidate too, but only while the element is where it was, since an element
+		// that moved is a conflict to flag, not a candidate to rebase quietly.
+		const proposal = hash(
+			JSON.stringify([x.name, x.addr, x.lat, x.lon, x.tags, x.closedBy ?? null]),
+		);
+		const h = `${proposal}:${hash(JSON.stringify(ops.map((o) => [o.op, o.k, o.v, o.was])))}`;
 		const had = existing.get(x.key);
+		const moved = !!had && !!el && had.osmId === osmRef(el) && had.version !== el.version;
+		const same = had?.contentHash === h || (moved && had?.contentHash?.split(":")[0] === proposal);
 		const osmId = el ? osmRef(el) : null;
 		const others = osmId ? (byElement.get(osmId) ?? []).filter((o) => o.key !== x.key) : [];
 		const warning =
@@ -202,7 +208,7 @@ export async function processArea(
 			had &&
 			!had.decided &&
 			had.areaId === area.id &&
-			had.contentHash === h &&
+			same &&
 			had.osmId === osmId &&
 			had.warning === warning
 		) {

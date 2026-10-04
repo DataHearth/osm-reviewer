@@ -219,6 +219,26 @@ describe("runSource (registry)", () => {
 		expect(keys).not.toContain("opening_hours");
 	});
 
+	it("refreshes an undecided candidate when only how it applies to OSM changes", async () => {
+		await runSource(db, "irve");
+		const stale = () => cands().find((x) => x.sourceRecordKey === "FRS1");
+		const proposal = stale()?.contentHash?.split(":")[0];
+		db.update(t.candidates)
+			.set({ contentHash: `${proposal}:older-matching` })
+			.where(eq(t.candidates.id, stale()?.id as string))
+			.run();
+		await runSource(db, "irve");
+		expect(stale()?.contentHash).not.toBe(`${proposal}:older-matching`);
+
+		db.update(t.candidates)
+			.set({ contentHash: `${proposal}:older-matching` })
+			.where(eq(t.candidates.id, stale()?.id as string))
+			.run();
+		(osm.elements[0] as { version: number }).version = 6;
+		await runSource(db, "irve");
+		expect(stale()).toMatchObject({ contentHash: `${proposal}:older-matching`, headVersion: 6 });
+	});
+
 	it("never sweeps or rewrites a candidate a reviewer has decided", async () => {
 		await runSource(db, "irve");
 		age();
