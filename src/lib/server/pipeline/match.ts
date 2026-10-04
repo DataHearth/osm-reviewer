@@ -110,7 +110,10 @@ const fold = (s: string) => normaliseName(s.replace(/&/g, " et "));
 const allDay = (s: string) =>
 	/^(Mo-Su )?00:00-(24:00|23:5\d)$/.test(s.trim()) ? "24/7" : s.trim();
 
-/** Whether two values say the same thing, so a re-spaced phone number is not an edit. */
+/**
+ * Whether the proposed value `a` says what the object's `b` already does, so a re-spaced
+ * phone number is not an edit.
+ */
 export function sameValue(k: string, a: string, b: string): boolean {
 	if (a === b) return true;
 	if (NAMES.includes(k)) return fold(a) === fold(b);
@@ -118,10 +121,11 @@ export function sameValue(k: string, a: string, b: string): boolean {
 	if (k.endsWith(":output")) return Number.parseFloat(a) === Number.parseFloat(b);
 	if (k === "phone" || k === "fax") return digits(a) === digits(b);
 	if (k === "website") return site(a) === site(b);
+	// One object often carries several establishments' ids (a collège and its SEGPA):
+	// the record's own id among them agrees, and replacing the list would delete the others.
 	if (k.startsWith("ref:")) {
-		const sa = new Set(ids(a));
-		const sb = new Set(ids(b));
-		return sa.size === sb.size && [...sa].every((x) => sb.has(x));
+		const had = new Set(ids(b));
+		return ids(a).every((x) => had.has(x));
 	}
 	if (a.includes(";") || b.includes(";")) {
 		const sa = new Set(values(a));

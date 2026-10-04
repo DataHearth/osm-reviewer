@@ -168,6 +168,11 @@ describe("updateOps", () => {
 		expect(sameValue("ref:EU:EVSE", "a;b", "b; a")).toBe(true);
 		expect(sameValue("name", "a", "b")).toBe(false);
 	});
+
+	it("never replaces a list of ids that already holds the record's", () => {
+		expect(updateOps([tag("ref:UAI", "0692864N")], { "ref:UAI": "0692864N;0690053H" })).toEqual([]);
+		expect(updateOps([tag("ref:UAI", "0692864N")], { "ref:UAI": "0690053H" })).toHaveLength(1);
+	});
 });
 
 describe("newOps / closureOps", () => {
