@@ -1,6 +1,16 @@
 /** OSM refuses a longer key or value, and the upload batch with it. */
 export const OSM_MAX = 255;
 
+/**
+ * The result of a changeset whose diff got no answer and does not show as applied yet. Its
+ * decisions point at it, so they are neither staged nor undoable until an upload reads the
+ * changeset back and settles it as `ok` or releases them.
+ */
+export const PARKED = "unknown";
+
+export const resultTone = (result: string) =>
+	result === "ok" ? "text-ok" : result === PARKED ? "text-warn" : "text-bad";
+
 /** Staged rows, in upload order, cut into the changesets they will be sent as. */
 export function batches<T>(rows: T[], size: number): T[][] {
 	const out: T[][] = [];

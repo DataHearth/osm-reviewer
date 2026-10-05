@@ -20,7 +20,7 @@ let sentFor = $state<string | null>(null);
 let justSent = false;
 const sent = $derived(sentFor === stagedKey);
 
-const { form, errors, enhance } = superForm(
+const { form, errors, message, enhance } = superForm(
 	untrack(() => data.form),
 	{
 		resetForm: false,
@@ -108,6 +108,8 @@ const errBody = $derived(
 				>
 			</div>
 		</div>
+	{:else if $message}
+		<div class="m-rise border-b border-bad-line bg-bad-bg px-[18px] py-3 text-[12px] leading-relaxed text-bad">{$message}</div>
 	{/if}
 
 	<div

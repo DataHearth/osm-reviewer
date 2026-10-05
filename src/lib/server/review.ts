@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { batches, OSM_MAX, sourceLabel, sourceTag } from "$lib/changeset";
+import { batches, OSM_MAX, PARKED, sourceLabel, sourceTag } from "$lib/changeset";
 import { osm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import { CREATED_BY } from "$lib/server/instance";
 import { notify } from "$lib/server/notify";
 import {
-	changesetChanges,
+	changesetState,
 	closeChangeset,
 	createChangeset,
 	fetchElements,
@@ -203,7 +203,14 @@ export function undo(db: Db, id: string) {
 	if (uploading) throw new RefusedError("an upload is running — undo once it has finished.");
 	const d = db.select().from(t.decisions).where(eq(t.decisions.candidateId, id)).all()[0];
 	if (!d) throw new RefusedError("nothing to undo.");
-	if (d.changesetId) throw new RefusedError("already uploaded — undo would not reach OSM.");
+	if (d.changesetId) {
+		const cs = db.select().from(t.changesets).where(eq(t.changesets.id, d.changesetId)).get();
+		throw new RefusedError(
+			cs?.result === PARKED
+				? `its upload's outcome is unknown — changeset ${cs.osmId} is checked on the next upload, and the candidate is staged again only if OSM never applied it.`
+				: "already uploaded — undo would not reach OSM.",
+		);
+	}
 	db.delete(t.decisions).where(eq(t.decisions.candidateId, id)).run();
 }
 
@@ -405,16 +412,23 @@ function failChangeset(
 function recordUpload(
 	db: Db,
 	userId: string,
-	cs: { id: string; osmId: string | null; comment: string; objects: string },
+	cs: {
+		id: string;
+		osmId: string | null;
+		comment: string;
+		objects: string;
+		result?: string;
+		error?: string;
+	},
 	rows: StagedRow[],
 ) {
 	db.transaction((tx) => {
 		tx.insert(t.changesets)
 			.values({
+				result: "ok",
 				...cs,
 				url: cs.osmId ? `${osm.url}/changeset/${cs.osmId}` : "",
 				uploadedAt: new Date(),
-				result: "ok",
 				uploadedBy: userId,
 			})
 			.run();
@@ -443,11 +457,55 @@ function changesNothing(c: Change) {
 }
 
 /**
+ * Reads each parked changeset back. One holding changes was applied; one closed empty never
+ * was, and its decisions are staged again; one still open and empty is closed when a token
+ * is given, then read again. A changeset that cannot be read stays parked. Without a token
+ * this only reads, which is what a page load may do.
+ */
+export async function settleParked(db: Db, token: string | null, timeout?: number) {
+	const parked = db.select().from(t.changesets).where(eq(t.changesets.result, PARKED)).all();
+	for (const cs of parked) {
+		const osmId = cs.osmId ?? cs.id;
+		const read = () => changesetState(token, osmId, timeout).catch(() => null);
+		let state = await read();
+		if (token && state?.open && state.changes === 0) {
+			await closeChangeset(token, osmId);
+			state = await read();
+		}
+		if (!state || (state.open && state.changes === 0)) continue;
+		const still = and(eq(t.changesets.id, cs.id), eq(t.changesets.result, PARKED));
+		if (state.changes > 0) {
+			db.update(t.changesets).set({ result: "ok", error: null }).where(still).run();
+			continue;
+		}
+		db.transaction((tx) => {
+			const released = tx
+				.update(t.changesets)
+				.set({
+					osmId: null,
+					url: "",
+					result: "network",
+					error: `The diff got no answer, and OSM later closed changeset ${osmId} without applying it: nothing was written, and its candidates are staged again.`,
+				})
+				.where(still)
+				.run();
+			if (released.changes)
+				tx.update(t.decisions)
+					.set({ changesetId: null })
+					.where(eq(t.decisions.changesetId, cs.id))
+					.run();
+		});
+	}
+}
+
+/**
  * Uploads every staged candidate, in changesets of the account's `osmPerChangeset`.
  * Each object is fetched first: one whose version moved past the candidate's base
  * is marked in conflict and nothing is sent, which is what the composer's rebase
  * resolves. OSM's own version check on upload is the second line for an edit that
- * lands between that fetch and the POST. A batch that fails stays staged.
+ * lands between that fetch and the POST. A batch that fails stays staged; one whose diff
+ * got no answer and that OSM does not show as applied is parked rather than sent twice, and
+ * every upload first settles what earlier ones parked.
  */
 export async function upload(
 	db: Db,
@@ -477,6 +535,7 @@ async function uploadStaged(
 		throw new RefusedError("no OSM account connected — connect one in settings.");
 	const token = account.osmToken;
 
+	await settleParked(db, token);
 	const staged = stagedRows(db);
 	if (staged.length === 0) throw new RefusedError("nothing staged.");
 	const objects = byObject(staged);
@@ -529,11 +588,8 @@ async function uploadStaged(
 			...(account.osmHashtag ? { hashtags: clip(hashtagTag(account.osmHashtag)) } : {}),
 		};
 
-		/** `unknown` is a changeset that may hold the batch: the diff got no answer and reading it back failed. */
-		const failed = async (e: unknown, unknown?: string) => {
-			const error = unknown
-				? `${errorText(e)}. Changeset ${unknown} could not be read back, so whether it holds this batch is unknown.`
-				: errorText(e);
+		const failed = async (e: unknown, detail = "") => {
+			const error = errorText(e) + detail;
 			failChangeset(db, userId, {
 				comment: v.comment,
 				objects: label,
@@ -543,8 +599,7 @@ async function uploadStaged(
 			await notify(db, "uploadFailed", `Upload of ${label} failed: ${error}`);
 			return new RefusedError(
 				`upload failed — ${error}` +
-					(last ? " Earlier batches were uploaded." : unknown ? "" : " Nothing was written.") +
-					(unknown ? ` Check changeset ${unknown} on OSM before uploading again.` : ""),
+					(last ? " Earlier batches were uploaded." : " Nothing was written."),
 			);
 		};
 
@@ -554,9 +609,13 @@ async function uploadStaged(
 		} catch (e) {
 			throw await failed(e);
 		}
-		try {
-			await uploadChange(token, id, osmChange(changes, id, CREATED_BY));
-		} catch (e) {
+		const e = await uploadChange(token, id, osmChange(changes, id, CREATED_BY)).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		// Closed before any read-back, so the change count read is final unless the close failed.
+		await closeChangeset(token, id);
+		if (e) {
 			const moved = e instanceof OsmError && e.status === 409 && /mismatch/i.test(e.message);
 			if (moved) {
 				const reread = await fetchElements(
@@ -571,14 +630,33 @@ async function uploadStaged(
 					}
 				}
 			}
+			if (!(e instanceof OsmError && e.status === null)) throw await failed(e);
 			// No answer is not a refusal: OSM may have applied the diff before the line dropped.
-			const held =
-				e instanceof OsmError && e.status === null
-					? await changesetChanges(token, id).catch(() => null)
-					: 0;
-			if (!held) throw await failed(e, held === null ? id : undefined);
-		} finally {
-			await closeChangeset(token, id);
+			const state = await changesetState(token, id).catch(() => null);
+			if (state && !state.open && state.changes === 0)
+				throw await failed(e, `. OSM closed changeset ${id} without applying it.`);
+			if (!state || state.changes === 0) {
+				const error = `${errorText(e)}, and changeset ${id} does not show the batch as applied.`;
+				recordUpload(
+					db,
+					userId,
+					{
+						id,
+						osmId: id,
+						comment: v.comment,
+						objects: label,
+						result: PARKED,
+						error: `Outcome unknown: ${error} Its candidates are parked until the next upload reads it back.`,
+					},
+					rows,
+				);
+				await notify(db, "uploadFailed", `Upload of ${label}: outcome unknown — ${error}`);
+				throw new RefusedError(
+					`upload outcome unknown — ${error} ${plural(rows.length, "candidate")} parked: not staged, ` +
+						`and not sent again unless the next upload reads changeset ${id} back on OSM and finds it closed with nothing in it.` +
+						(last ? " Earlier batches were uploaded." : ""),
+				);
+			}
 		}
 
 		recordUpload(db, userId, { id, osmId: id, comment: v.comment, objects: label }, [

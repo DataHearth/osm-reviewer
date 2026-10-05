@@ -1,4 +1,5 @@
 <script lang="ts">
+import { PARKED, resultTone } from "$lib/changeset";
 import ChangeRow from "$lib/components/ChangeRow.svelte";
 import type { PageData } from "./$types";
 
@@ -11,8 +12,8 @@ const c = $derived(data.changeset);
 		<a href="/history" class="text-[11.5px] text-faint">‹ history</a>
 		<div class="flex flex-wrap items-baseline gap-x-3">
 			<span class="font-sans text-[19px] font-semibold text-ink">Changeset {c.id}</span>
-			<span class="text-[12px] {c.result === 'ok' ? 'text-ok' : 'text-bad'}">{c.result}</span>
-			{#if c.url && c.result === "ok"}
+			<span class="text-[12px] {resultTone(c.result)}">{c.result}</span>
+			{#if c.url && (c.result === "ok" || c.result === PARKED)}
 				<a href={c.url} target="_blank" rel="noreferrer" class="text-[12px] md:ml-auto">open on OSM ↗</a>
 			{/if}
 		</div>
@@ -24,7 +25,7 @@ const c = $derived(data.changeset);
 		<span class="text-[12.5px] text-ink">{c.comment}</span>
 		{#if c.error}
 			<span class="text-[11px] text-muted">error</span>
-			<span class="text-[12.5px] whitespace-pre-wrap text-bad">{c.error}</span>
+			<span class="text-[12.5px] whitespace-pre-wrap {c.result === PARKED ? 'text-warn-ink' : 'text-bad'}">{c.error}</span>
 		{/if}
 	</div>
 

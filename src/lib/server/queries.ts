@@ -539,7 +539,7 @@ export async function loadChangesets(db: Db): Promise<(Changeset & { href: strin
 	}));
 }
 
-/** One uploaded changeset and the objects it carried; a failed one carried none. */
+/** One changeset and the objects it carried: a failed one carried none, a parked one may have. */
 export async function loadChangeset(db: Db, id: string) {
 	const h = await db.query.changesets.findFirst({ where: (x) => eq(x.id, id) });
 	if (!h) return null;

@@ -1,4 +1,5 @@
 <script lang="ts">
+import { resultTone } from "$lib/changeset";
 import type { PageData } from "./$types";
 
 let { data }: { data: PageData } = $props();
@@ -24,7 +25,7 @@ const cols = "md:grid md:grid-cols-[130px_96px_1fr_130px_92px] md:items-baseline
 				<span class="text-faint max-md:order-1">{h.when}</span>
 				<span class="text-ink max-md:order-3 max-md:basis-full md:truncate md:pr-[14px]">{h.comment}</span>
 				<span class="text-faint max-md:order-4">{h.objects}</span>
-				<span class="{h.result === 'ok' ? 'text-ok' : 'text-bad'} max-md:order-2 max-md:ml-auto">{h.result}</span>
+				<span class="{resultTone(h.result)} max-md:order-2 max-md:ml-auto">{h.result}</span>
 			</a>
 		{/each}
 	</div>

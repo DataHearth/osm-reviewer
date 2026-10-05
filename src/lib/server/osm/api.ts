@@ -159,17 +159,29 @@ export async function uploadChange(token: string, changeset: string, xml: string
 	});
 }
 
-/** How many changes a changeset holds, which is how an upload that got no answer learns whether it landed. */
-export async function changesetChanges(token: string, changeset: string) {
-	const res = await call(`/api/0.6/changeset/${changeset}.json`, { token });
-	const body = (await res.json()) as { changeset?: { changes_count?: unknown } };
-	const count = body.changeset?.changes_count;
-	if (typeof count !== "number")
-		throw new OsmError("the changeset read carried no change count", null);
-	return count;
+/**
+ * How many changes a changeset holds and whether it is still open, which is how an upload
+ * that got no answer learns whether it landed. Once it is closed the count is final.
+ */
+export async function changesetState(token: string | null, changeset: string, timeout?: number) {
+	const res = await call(`/api/0.6/changeset/${changeset}.json`, {
+		token: token ?? undefined,
+		timeout,
+	});
+	const body = (await res.json()) as { changeset?: { changes_count?: unknown; open?: unknown } };
+	const changes = body.changeset?.changes_count;
+	const open = body.changeset?.open;
+	if (typeof changes !== "number" || typeof open !== "boolean")
+		throw new OsmError("the changeset read carried no change count or open flag", null);
+	return { changes, open };
 }
 
-/** Best effort: a changeset that stays open closes itself after an hour of idleness. */
+/**
+ * Best effort: a changeset that stays open closes itself after an hour of idleness. OSM
+ * applies a diff in one transaction holding the changeset's row lock, so a close waits for a
+ * diff still being applied, and a diff arriving after it is refused whole: closing never cuts
+ * an upload short, and after it the change count is final.
+ */
 export async function closeChangeset(token: string, changeset: string) {
 	await call(`/api/0.6/changeset/${changeset}/close`, { method: "PUT", token }).catch(() => {});
 }

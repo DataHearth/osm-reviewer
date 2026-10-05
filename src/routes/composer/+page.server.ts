@@ -7,12 +7,16 @@ import { osm } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { CREATED_BY } from "$lib/server/instance";
 import { loadStaged } from "$lib/server/queries";
-import { RefusedError, upload } from "$lib/server/review";
+import { RefusedError, settleParked, upload } from "$lib/server/review";
 import { loadSettings } from "$lib/server/settings";
 import { requireUser } from "$lib/server/user";
 import type { Actions, PageServerLoad } from "./$types";
 
+/** A parked batch usually means OSM was struggling; the page must not wait on it for long. */
+const PARKED_READ_MS = 5000;
+
 export const load: PageServerLoad = async ({ locals, url }) => {
+	await settleParked(db, null, PARKED_READ_MS);
 	const settings = await loadSettings(db, requireUser(locals).id);
 	const cs = z.coerce.number().int().min(1).catch(1).parse(url.searchParams.get("cs"));
 	const [staged, form] = await Promise.all([

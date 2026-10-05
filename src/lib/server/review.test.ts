@@ -16,6 +16,7 @@ import {
 	type Picks,
 	type Proposal,
 	RefusedError,
+	settleParked,
 	undo,
 	upload,
 } from "./review";
@@ -478,15 +479,13 @@ describe("upload", () => {
 		expect(db.select().from(t.decisions).get()?.changesetId).toBe(changesetId);
 	});
 
+	const noAnswer = () => Promise.reject(new TypeError("fetch failed"));
+	const holding = (changes: number, open: boolean) => async () =>
+		Response.json({ changeset: { id: 77, changes_count: changes, open } });
+
 	it("counts a diff that got no answer as uploaded when the changeset holds it", async () => {
 		const id = stage("a", null, [add("shop", "bakery")], 1);
-		fakeOsm(
-			{},
-			{
-				upload: () => Promise.reject(new TypeError("fetch failed")),
-				read: async () => Response.json({ changeset: { id: 77, changes_count: 1 } }),
-			},
-		);
+		fakeOsm({}, { upload: noAnswer, read: holding(1, false) });
 		await expect(upload(db, "u", { comment: "c" })).resolves.toEqual({ changesetId: "77" });
 		expect(db.select().from(t.decisions).get()).toMatchObject({
 			candidateId: id,
@@ -494,19 +493,94 @@ describe("upload", () => {
 		});
 	});
 
-	it("says the outcome is unknown when the changeset cannot be read back", async () => {
-		stage("a", null, [add("shop", "bakery")], 1);
-		fakeOsm(
-			{},
-			{
-				upload: () => Promise.reject(new TypeError("fetch failed")),
-				read: () => Promise.reject(new TypeError("fetch failed")),
-			},
-		);
+	it("parks a batch whose diff got no answer and that OSM does not show as applied", async () => {
+		const id = stage("a", null, [add("shop", "bakery")], 1);
+		const calls = fakeOsm({}, { upload: noAnswer, read: holding(0, true) });
 		await expect(upload(db, "u", { comment: "c" })).rejects.toThrow(
-			"Check changeset 77 on OSM before uploading again.",
+			/^upload outcome unknown — .* 1 candidate parked: not staged, and not sent again unless the next upload reads changeset 77 back/,
+		);
+		expect(db.select().from(t.changesets).get()).toMatchObject({
+			id: "77",
+			osmId: "77",
+			result: "unknown",
+		});
+		expect(db.select().from(t.decisions).get()).toMatchObject({
+			candidateId: id,
+			changesetId: "77",
+		});
+		expect(() => undo(db, id)).toThrow("its upload's outcome is unknown");
+
+		await expect(upload(db, "u", { comment: "c" })).rejects.toThrow("nothing staged.");
+		expect(sent(calls)).toHaveLength(1);
+	});
+
+	it("parks a batch when the changeset cannot be read back", async () => {
+		stage("a", null, [add("shop", "bakery")], 1);
+		fakeOsm({}, { upload: noAnswer, read: noAnswer });
+		await expect(upload(db, "u", { comment: "c" })).rejects.toThrow("upload outcome unknown");
+		expect(db.select().from(t.decisions).get()?.changesetId).toBe("77");
+	});
+
+	it("keeps a batch staged when OSM closed its changeset empty", async () => {
+		stage("a", null, [add("shop", "bakery")], 1);
+		fakeOsm({}, { upload: noAnswer, read: holding(0, false) });
+		await expect(upload(db, "u", { comment: "c" })).rejects.toThrow(
+			"OSM closed changeset 77 without applying it. Nothing was written.",
 		);
 		expect(db.select().from(t.decisions).get()?.changesetId).toBeNull();
-		expect(db.select().from(t.changesets).get()?.error).toMatch(/77 .* unknown/);
+		expect(db.select().from(t.changesets).get()).toMatchObject({ osmId: null, result: "network" });
+	});
+
+	/** A batch parked by an upload whose diff got no answer, read back as `read` answers next. */
+	async function parked(read: { answer: () => Promise<Response> }) {
+		const id = stage("a", null, [add("shop", "bakery")], 1);
+		const calls = fakeOsm({}, { upload: noAnswer, read: () => read.answer() });
+		await expect(upload(db, "u", { comment: "c" })).rejects.toThrow("upload outcome unknown");
+		return { id, calls };
+	}
+
+	it("settles a parked changeset as uploaded once it shows the batch", async () => {
+		const read = { answer: holding(0, true) };
+		const { id } = await parked(read);
+		read.answer = holding(1, false);
+		await settleParked(db, null);
+		expect(db.select().from(t.changesets).get()).toMatchObject({ result: "ok", error: null });
+		expect(db.select().from(t.decisions).get()).toMatchObject({
+			candidateId: id,
+			changesetId: "77",
+		});
+	});
+
+	it("stages a parked batch again once OSM closed its changeset empty", async () => {
+		const read = { answer: holding(0, true) };
+		const { id } = await parked(read);
+		read.answer = holding(0, false);
+		await settleParked(db, null);
+		expect(db.select().from(t.decisions).get()).toMatchObject({
+			candidateId: id,
+			changesetId: null,
+		});
+		expect(db.select().from(t.changesets).get()).toMatchObject({
+			id: "77",
+			osmId: null,
+			url: "",
+			result: "network",
+		});
+	});
+
+	it("closes a parked changeset still open and empty, and leaves it parked while it stays so", async () => {
+		const read = { answer: holding(0, true) };
+		const { calls } = await parked(read);
+		const closes = () => calls.filter((c) => c.path.endsWith("/77/close")).length;
+		const before = closes();
+
+		await settleParked(db, null);
+		expect(closes()).toBe(before);
+		await settleParked(db, "token");
+		expect(closes()).toBe(before + 1);
+		read.answer = noAnswer;
+		await settleParked(db, "token");
+		expect(db.select().from(t.changesets).get()?.result).toBe("unknown");
+		expect(db.select().from(t.decisions).get()?.changesetId).toBe("77");
 	});
 });
