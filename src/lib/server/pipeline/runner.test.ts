@@ -238,6 +238,21 @@ describe("runSource (registry)", () => {
 		expect(after[0].id).toBe(before.get("FRS1"));
 	});
 
+	it("sweeps nothing when the whole dataset comes back empty, and says so", async () => {
+		await runSource(db, "irve");
+		age();
+		csv = HEADER;
+		await runSource(db, "irve");
+		expect(
+			cands()
+				.map((c) => c.sourceRecordKey)
+				.sort(),
+		).toEqual(["FRS1", "FRS2"]);
+		expect(db.select().from(t.runs).all().at(-1)?.message).toBe(
+			"the source returned no rows, so nothing was swept",
+		);
+	});
+
 	it("refreshes an undecided candidate when the mapping changes but the data does not", async () => {
 		await runSource(db, "irve");
 		const irve = presetById("irve");

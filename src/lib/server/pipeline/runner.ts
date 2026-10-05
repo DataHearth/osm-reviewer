@@ -9,7 +9,7 @@ import { Crawler, parseBudget, parseSeedRule } from "./crawl";
 import { hasShape } from "./geo";
 import { userAgent } from "./http";
 import { modelLabel } from "./llm";
-import { readApiArea } from "./opendata";
+import { type ApiResult, readApiArea } from "./opendata";
 import { fetchElements } from "./overpass";
 import {
 	type AreaInput,
@@ -44,6 +44,8 @@ interface Exec {
 	withheld?: number;
 	/** Undefined when nothing was read, which leaves the last read's list standing. */
 	far?: (FarMatch & { area: string })[];
+	/** A read to the end found no rows at all, which says the source broke rather than every record left. */
+	empty?: boolean;
 }
 
 const blankExec = (source: SourceRow, areas: AreaRow[]): Exec => ({
@@ -69,7 +71,8 @@ function absorb(out: Exec, p: AreaOutcome, area: AreaRow) {
 const FAR_ASIDE = "the place may have moved or its id may be stale";
 
 /** What a run set aside on purpose, which the run's line says whether or not it also failed somewhere. */
-const asides = ({ outside = 0, withheld = 0, far = [] }: Exec) => [
+const asides = ({ outside = 0, withheld = 0, far = [], empty }: Exec) => [
+	...(empty ? ["the source returned no rows, so nothing was swept"] : []),
 	...(outside === 1 ? ["1 record placed outside the area by its own address"] : []),
 	...(outside > 1 ? [`${outside} records placed outside the area by their own address`] : []),
 	...(withheld === 1 ? ["1 personal contact detail left out"] : []),
@@ -151,6 +154,7 @@ async function readRegistrySource(
 		note: reg.unchanged ? "dataset unchanged" : reg.skipped ? `${reg.skipped} rows skipped` : null,
 		state: { ...(source.syncState ?? {}), registry: { ...reg.state, fingerprint } },
 		licence: reg.licence,
+		empty: !reg.unchanged && reg.scanned === 0,
 	};
 	for (const area of areas) {
 		const records: RawRecord[] = [...(reg.byArea.get(area.id) ?? [])].map(([key, rows]) => ({
@@ -163,7 +167,7 @@ async function readRegistrySource(
 				db,
 				withLicence,
 				area,
-				{ records, reader: reg.reader, complete: !reg.unchanged },
+				{ records, reader: reg.reader, complete: !reg.unchanged && !out.empty },
 				at,
 			);
 			absorb(out, r, area);
@@ -179,11 +183,22 @@ async function readRegistrySource(
 async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Date): Promise<Exec> {
 	const out = blankExec(source, areas);
 	let skipped = 0;
+	// Every area is read before any is processed, since only the whole read tells an area
+	// with nothing in it from a source that answered nothing at all.
+	const reads: { area: AreaRow; r: ApiResult }[] = [];
 	for (const area of areas) {
 		try {
 			const r = await readApiArea(source, area);
 			out.fetched += r.fetched;
 			skipped += r.skipped;
+			reads.push({ area, r });
+		} catch (err) {
+			out.errors.push(`${area.name}: ${msg(err)}`);
+		}
+	}
+	out.empty = reads.length > 0 && out.fetched === 0;
+	for (const { area, r } of reads) {
+		try {
 			const base = source.endpoint.replace(/[?#].*$/, "");
 			const records: RawRecord[] = [...r.rows].map(([key, rows]) => ({
 				key,
@@ -196,7 +211,7 @@ async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Da
 				db,
 				source,
 				area,
-				{ records, reader: r.reader, complete: true },
+				{ records, reader: r.reader, complete: !out.empty },
 				at,
 			);
 			absorb(out, p, area);
