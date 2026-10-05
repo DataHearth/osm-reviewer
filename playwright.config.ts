@@ -2,12 +2,6 @@ import { defineConfig, devices } from "@playwright/test";
 import { E2E_DATABASE_PATH } from "./e2e/db";
 import { E2E_ENV } from "./e2e/env";
 
-// The browsers come from this flake's nixpkgs and resolve their own libraries. A
-// LD_LIBRARY_PATH inherited from a wrapper built on another nixpkgs (claude-code's
-// prepends its alsa-lib) loads libraries linked against a newer glibc than the one
-// Chromium starts with, and the launch dies on `GLIBC_2.xx not found`.
-delete process.env.LD_LIBRARY_PATH;
-
 const PORT = 4173;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 
