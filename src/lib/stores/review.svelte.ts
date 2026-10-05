@@ -518,12 +518,14 @@ class ReviewState {
 		this.idx = i < this.candidates.length ? i : 0;
 	}
 
+	/** Whether a decision was actually taken back. */
 	async undo() {
 		const l = this.last;
-		if (!l) return;
+		if (!l) return false;
 		this.last = null;
 		const r = await post("/review?/undo", { id: l.id });
 		if (r.ok) this.openCandidate(l.id);
+		return r.ok;
 	}
 
 	async rebase() {

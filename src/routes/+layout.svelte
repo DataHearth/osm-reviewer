@@ -14,12 +14,21 @@ let { children } = $props();
 const path = $derived(page.url.pathname);
 const onLogin = $derived(path === "/login");
 
+const TYPED_INTO = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
+const PRESSED = "button, a[href], summary, [role=button]";
+
+// Enter and Space belong to a focused control that activates on them: Enter on the
+// upload button is one upload, not a click plus the upload bound to Enter. Its other
+// keys stay shortcuts, or a mouse click would leave the keyboard dead until focus moved.
+function ownsKey(t: EventTarget | null, k: string) {
+	if (!(t instanceof Element)) return false;
+	return !!t.closest(TYPED_INTO) || ((k === "Enter" || k === " ") && !!t.closest(PRESSED));
+}
+
 // Keyboard is the primary input: the whole point of the queue is to clear it
 // without reaching for the mouse. Handled here so it works on every screen.
 function onkeydown(e: KeyboardEvent) {
-	if (!auth.signedIn || onLogin) return;
-	const t = e.target as HTMLElement | null;
-	if (t && /INPUT|TEXTAREA/.test(t.tagName)) return;
+	if (!auth.signedIn || onLogin || e.defaultPrevented || ownsKey(e.target, e.key)) return;
 	// Leave the browser's own chords alone: ctrl+r is a reload, not a reject.
 	if (e.ctrlKey || e.metaKey || e.altKey) return;
 	const k = e.key;
@@ -32,8 +41,9 @@ function onkeydown(e: KeyboardEvent) {
 	}
 	if (k === b.undo) {
 		e.preventDefault();
-		review.undo();
-		if (review.last === null) goto(review.href("/review"));
+		review.undo().then((undone) => {
+			if (undone) goto(review.href("/review"));
+		});
 		return;
 	}
 
