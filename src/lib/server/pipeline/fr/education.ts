@@ -43,8 +43,9 @@ function schoolKind(r: Row): { amenity: string; level: string | null; for?: stri
 	return { amenity: "school", level: null };
 }
 
+/** No lieu-dit or hameau: an address there is `addr:place` in OSM, which this does not write. */
 const STREET =
-	/^(rue|avenue|boulevard|cheminement|chemin|place|port|allée|allées|impasse|route|quai|cours|square|voie|passage|esplanade|rond-point|montée|chaussée|parvis|promenade|sentier|faubourg|clos|cité|grande? rue|petite rue)\b/i;
+	/^(rue|ruelle|avenue|boulevard|cheminement|chemin|place|port|allée|allées|impasse|route|quai|cours|cour|square|voie|passage|esplanade|rond-point|carrefour|montée|chaussée|parvis|promenade|sentier|traverse|venelle|faubourg|clos|cité|résidence|lotissement|domaine|villa|mail|parc|grande? rue|petite rue)(?![\p{L}\d])/iu;
 
 /**
  * How far the directory's point may sit from its own housenumber before the address is taken

@@ -245,6 +245,22 @@ describe("schoolAddress", () => {
 		expect(at({ adresse_1: "158 BIS RUE DU 4 AOUT 1789" })?.query).toMatch(/^158bis /);
 		expect(at({ adresse_1: "8 port SAINT-SAUVEUR" })?.street).toBe("Port SAINT-SAUVEUR");
 	});
+	it("reads a street whose type ends in an accent, or is a lane, a mall or an estate", () => {
+		for (const street of [
+			"cité Jardin",
+			"allée des Tilleuls",
+			"Montée du Gourguillon",
+			"Résidence les Pins",
+			"Lotissement le Clos Fleuri",
+			"Traverse des Écoles",
+			"cour des Fabriques",
+			"Mail François Mitterrand",
+		])
+			expect(at({ adresse_1: `1 ${street}` })?.street).toBe(
+				street[0].toUpperCase() + street.slice(1),
+			);
+		expect(at({ adresse_1: "1 citéJardin" })).toBeNull();
+	});
 	it("keeps a housenumber range whole and asks for its first number", () => {
 		const range = at({ adresse_1: "20-28 rue Louis Auguste Blanqui", code_postal: "69921" });
 		expect(range).toMatchObject({
