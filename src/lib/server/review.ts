@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { batches, OSM_MAX, sourceLabel, sourceTag } from "$lib/changeset";
 import { osm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
@@ -185,8 +185,15 @@ export function reject(db: Db, userId: string, id: string) {
 		.run();
 }
 
+/**
+ * Two uploads reading the same staged rows would each send them, and every new POI
+ * would be created twice. The app is one process on one database, so a flag suffices.
+ */
+let uploading = false;
+
 /** Undo only reaches a decision the upload has not carried away. */
 export function undo(db: Db, id: string) {
+	if (uploading) throw new RefusedError("an upload is running — undo once it has finished.");
 	const d = db.select().from(t.decisions).where(eq(t.decisions.candidateId, id)).all()[0];
 	if (!d) throw new RefusedError("nothing to undo.");
 	if (d.changesetId) throw new RefusedError("already uploaded — undo would not reach OSM.");
@@ -352,12 +359,6 @@ function failChangeset(
 }
 
 /**
- * Two uploads reading the same staged rows would each send them, and every new POI
- * would be created twice. The app is one process on one database, so a flag suffices.
- */
-let uploading = false;
-
-/**
  * Uploads every staged candidate, in changesets of the account's `osmPerChangeset`.
  * Each object is fetched first: one whose version moved past the candidate's base
  * is marked in conflict and nothing is sent, which is what the composer's rebase
@@ -484,9 +485,12 @@ async function uploadStaged(
 			tx.update(t.decisions)
 				.set({ changesetId: done })
 				.where(
-					inArray(
-						t.decisions.candidateId,
-						batch.map((r) => r.candidateId),
+					and(
+						t.STAGED,
+						inArray(
+							t.decisions.candidateId,
+							batch.map((r) => r.candidateId),
+						),
 					),
 				)
 				.run();

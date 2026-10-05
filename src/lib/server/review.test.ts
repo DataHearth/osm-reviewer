@@ -10,7 +10,15 @@ import { rebase } from "./mutations";
 import type { TagOp } from "./osm/osmchange";
 import { unchangedTags, updateOps } from "./pipeline/match/ops";
 import { saveCandidate } from "./pipeline/store";
-import { accept, decisionOps, type Picks, type Proposal, RefusedError, upload } from "./review";
+import {
+	accept,
+	decisionOps,
+	type Picks,
+	type Proposal,
+	RefusedError,
+	undo,
+	upload,
+} from "./review";
 
 const P = (
 	position: number,
@@ -341,5 +349,23 @@ describe("upload", () => {
 		answer(new Response("<diffResult/>"));
 		await expect(first).resolves.toEqual({ changesetId: "77" });
 		expect(sent(calls)).toHaveLength(1);
+	});
+
+	it("refuses an undo while an upload is running", async () => {
+		const id = stage("a", null, [add("shop", "bakery")], 1);
+		let answer = (_: Response) => {};
+		const calls = fakeOsm(
+			{},
+			{ upload: () => new Promise<Response>((resolve) => (answer = resolve)) },
+		);
+		const running = upload(db, "u", { comment: "c" });
+		await vi.waitFor(() => expect(sent(calls)).toHaveLength(1));
+		expect(() => undo(db, id)).toThrow("an upload is running");
+		answer(new Response("<diffResult/>"));
+		await running;
+		expect(db.select().from(t.decisions).get()).toMatchObject({
+			candidateId: id,
+			changesetId: "77",
+		});
 	});
 });
