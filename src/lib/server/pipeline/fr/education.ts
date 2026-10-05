@@ -4,7 +4,7 @@ import { houseNumber, tokens } from "../text";
 import type { ProposedTag, Row } from "../types";
 import { addressBase } from "./ban";
 import { bare, schoolName } from "./school-name";
-import { addressQuery, expandStreet, phoneFR, spacedNumber } from "./text";
+import { addressQuery, expandStreet, mobileFR, phoneFR, spacedNumber } from "./text";
 
 /** Directory natures that are offices, not places anyone is taught. */
 const NOT_A_SCHOOL = /^(service administratif|information et orientation)$/i;
@@ -149,8 +149,6 @@ export function personalMailbox(mail: string, name: string, place: string): bool
 	);
 }
 
-const isMobile = (phone: string) => /^\+33 [67] /.test(phone);
-
 /**
  * The first digit of a SIREN says whose legal person it is: 1 the State, 2 a local authority
  * or public body (hospitals included). Where it disagrees with the directory's status (a
@@ -252,7 +250,7 @@ export const education: Preset = {
 		let withheld = 0;
 		const phoneOf = (row: Row) => phoneFR(str(row, "telephone"));
 		const phone = phoneOf(r);
-		if (phone && isMobile(phone)) withheld += 1;
+		if (phone && mobileFR(phone)) withheld += 1;
 		else if (phone)
 			alsoAt(t.add("phone", phone, 0.85, "telephone", undefined, "normalised"), rows, phoneOf);
 		const sites = rows.map((row) => website(str(row, "web", "site_web")));

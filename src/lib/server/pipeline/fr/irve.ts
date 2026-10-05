@@ -19,7 +19,7 @@ import {
 	stationSite,
 	TAIL,
 } from "./irve-declarations";
-import { addressQuery, phoneFR } from "./text";
+import { addressQuery, digits, mobileFR, phoneFR } from "./text";
 
 /**
  * How far apart two declarations of one site can be placed. A re-declared site's position is
@@ -80,12 +80,12 @@ function serviceDate(rows: Row[]): string | null {
 }
 
 /** Filler numbers some operators declare when they have none to give: `+33 1 23 45 67 89`, `+33 1 00 00 00 00`. */
-const PLACEHOLDER_PHONE = /^\+33 \d (23 45 67 89|(\d)\2 \2\2 \2\2 \2\2)$/;
+const PLACEHOLDER_PHONE = /^0\d(23456789|(\d)\2{7})$/;
 
 /** A mobile is usually somebody's own line, not the operator's. */
 function operatorPhone(raw: string): string | null {
 	const phone = phoneFR(raw.replace(/^tel:/i, ""));
-	return !phone || PLACEHOLDER_PHONE.test(phone) || /^\+33 [67]/.test(phone) ? null : phone;
+	return !phone || PLACEHOLDER_PHONE.test(digits(phone)) || mobileFR(phone) ? null : phone;
 }
 
 /** Only an answer the registry actually gives: "Accessibilité inconnue" proposes nothing. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressQuery, expandStreet, phoneFR, spacedNumber } from "./text";
+import { addressQuery, digits, expandStreet, phoneFR, spacedNumber } from "./text";
 
 describe("expandStreet", () => {
 	it("writes out a street type where it stands and a title anywhere", () => {
@@ -41,5 +41,21 @@ describe("phoneFR", () => {
 		["+33 (0)5 61 23 45 67", "+33 5 61 23 45 67"],
 		["0033561234567", "+33 5 61 23 45 67"],
 		["12345", null],
+		["0806141500", "08 06 14 15 00"],
+		["+33 8 06 14 15 00", "08 06 14 15 00"],
+		["0262 12 34 56", "+262 262 12 34 56"],
+		["0692 12 34 56", "+262 692 12 34 56"],
+		["+262 262 12 34 56", "+262 262 12 34 56"],
+		["00590590123456", "+590 590 12 34 56"],
+		["0694 12 34 56", "+594 694 12 34 56"],
+		["0696 12 34 56", "+596 696 12 34 56"],
+		["05 08 41 23 45", "+508 41 23 45"],
+		["+508 41 23 45", "+508 41 23 45"],
+		["+262 590 12 34 56", null],
 	])("%s", (raw, want) => expect(phoneFR(raw)).toBe(want));
+
+	it("compares a number across its national and international spellings", () => {
+		for (const raw of ["0262 12 34 56", "0806141500", "05 08 41 23 45", "0561234567"])
+			expect(digits(phoneFR(raw) ?? "")).toBe(digits(raw));
+	});
 });
