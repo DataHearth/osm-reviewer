@@ -418,6 +418,52 @@ describe("runSource (registry)", () => {
 		]);
 	});
 
+	it("re-reads an unchanged dataset for a newly linked area or an explicit request", async () => {
+		const conditional: boolean[] = [];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (u: string | URL | Request, init?: RequestInit) => {
+				if (String(u) !== FILE) return fakeFetch(u);
+				const tag = new Headers(init?.headers).get("if-none-match");
+				conditional.push(!!tag);
+				if (tag === '"v1"') return new Response(null, { status: 304 });
+				return new Response(csv, { headers: { etag: '"v1"' } });
+			}),
+		);
+		const lastMessage = () =>
+			db
+				.select()
+				.from(t.runs)
+				.all()
+				.map((r) => r.message)
+				.at(-1);
+
+		await runSource(db, "irve");
+		await runSource(db, "irve");
+		expect(lastMessage()).toBe("dataset unchanged");
+
+		db.insert(t.areas)
+			.values({
+				id: "par",
+				name: "Paris",
+				def: "relation",
+				rel: "7444",
+				bbox: [48.8, 2.3, 48.9, 2.4],
+				centerLat: 48.85,
+				centerLon: 2.35,
+				sqkm: 105,
+				lastRunAt: new Date(Date.now() - 3_600_000),
+			})
+			.run();
+		db.insert(t.areaSources).values({ areaId: "par", sourceId: "irve" }).run();
+		await runSource(db, "irve");
+		expect(cands().map((c) => `${c.areaId}:${c.sourceRecordKey}`)).toContain("par:FRFAR");
+
+		db.update(t.sources).set({ runRequestedAt: new Date() }).where(eq(t.sources.id, "irve")).run();
+		await runSource(db, "irve");
+		expect(conditional).toEqual([false, true, false, false]);
+	});
+
 	it("writes a failed run, retries soon, and holds the source after three in a row", async () => {
 		fileStatus = 500;
 		await runSource(db, "irve");

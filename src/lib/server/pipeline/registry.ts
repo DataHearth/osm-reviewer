@@ -16,6 +16,8 @@ export interface RegistrySource {
 export interface RegistryState {
 	url?: string;
 	etag?: string;
+	/** What the read that stored the ETag depended on besides the file; see `readRegistrySource`. */
+	fingerprint?: string;
 }
 
 export interface RegistryResult {
@@ -77,7 +79,7 @@ export async function* csvRows(
 /**
  * One streamed pass over the file for every area at once. Only rows inside an area are
  * kept; the 158 MB IRVE file is never in memory, only the stations that matter.
- * `force` drops the conditional request, for an area that no run has processed yet.
+ * `force` drops the conditional request, when the last read cannot stand for this one.
  */
 export async function readRegistry(
 	source: RegistrySource,

@@ -4,6 +4,7 @@ import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import { notify } from "$lib/server/notify";
 import { loadNotif } from "$lib/server/settings";
+import { version } from "../../../../package.json";
 import { Crawler, parseBudget, parseSeedRule } from "./crawl";
 import { hasShape } from "./geo";
 import { userAgent } from "./http";
@@ -92,6 +93,41 @@ export function pendingCount(db: Db): number {
 	);
 }
 
+/** Everything a registry read's candidates depend on besides the file itself. */
+function registryFingerprint(db: Db, source: SourceRow, areas: AreaRow[]): string {
+	const allow = db
+		.select({ pattern: t.sourceAllowedTags.pattern })
+		.from(t.sourceAllowedTags)
+		.where(eq(t.sourceAllowedTags.sourceId, source.id))
+		.all()
+		.map((r) => r.pattern)
+		.sort();
+	const shapes = [...areas]
+		.sort((a, b) => a.id.localeCompare(b.id))
+		.map((a) => [a.id, a.def, a.bbox, a.centerLat, a.centerLon, a.km, a.radius]);
+	return hash(
+		JSON.stringify([
+			version,
+			source.endpoint,
+			source.apiKey,
+			source.extractor,
+			source.preset,
+			source.matching,
+			source.floor,
+			allow,
+			shapes,
+		]),
+	);
+}
+
+const lastRunOk = (db: Db, sourceId: string) =>
+	db
+		.select({ result: t.runs.result })
+		.from(t.runs)
+		.where(eq(t.runs.sourceId, sourceId))
+		.orderBy(desc(t.runs.startedAt), desc(t.runs.id))
+		.get()?.result === "ok";
+
 async function readRegistrySource(
 	db: Db,
 	source: SourceRow,
@@ -99,19 +135,21 @@ async function readRegistrySource(
 	at: Date,
 ): Promise<Exec> {
 	const state = ((source.syncState ?? {}) as { registry?: RegistryState }).registry ?? {};
-	const reg = await readRegistry(
-		source,
-		areas,
-		state,
-		areas.some((a) => a.lastRunAt === null),
-	);
+	// "Dataset unchanged" skips every area's matching, so it only stands when the last read
+	// covered the same areas under the same configuration and nothing in it failed.
+	const fingerprint = registryFingerprint(db, source, areas);
+	const force =
+		source.runRequestedAt !== null ||
+		state.fingerprint !== fingerprint ||
+		!lastRunOk(db, source.id);
+	const reg = await readRegistry(source, areas, state, force);
 	// The licence the dataset's own metadata names travels with this run's evidence too.
 	const withLicence = { ...source, licence: source.licence || reg.licence || "" };
 	const out: Exec = {
 		...blankExec(source, areas),
 		fetched: reg.scanned,
 		note: reg.unchanged ? "dataset unchanged" : reg.skipped ? `${reg.skipped} rows skipped` : null,
-		state: { ...(source.syncState ?? {}), registry: reg.state },
+		state: { ...(source.syncState ?? {}), registry: { ...reg.state, fingerprint } },
 		licence: reg.licence,
 	};
 	for (const area of areas) {
