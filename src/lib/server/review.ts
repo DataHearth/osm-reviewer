@@ -202,6 +202,8 @@ export function undo(db: Db, id: string) {
 
 interface StagedRow {
 	candidateId: string;
+	name: string;
+	key: string;
 	osmId: string | null;
 	type: "new" | "update" | "closure";
 	lat: number;
@@ -215,6 +217,8 @@ function stagedRows(db: Db): StagedRow[] {
 	const rows = db
 		.select({
 			candidateId: t.decisions.candidateId,
+			name: t.candidates.name,
+			key: t.candidates.sourceRecordKey,
 			osmId: t.candidates.osmId,
 			type: t.candidates.type,
 			lat: t.candidates.lat,
@@ -252,6 +256,35 @@ function stagedRows(db: Db): StagedRow[] {
 		base: baseVersion ?? version,
 		ops: picked.filter((p) => p.candidateId === r.candidateId),
 	}));
+}
+
+/**
+ * The staged rows of each object, in decision order. Several records can match one object
+ * (a campus), and two `<modify>` of it in one upload would carry the same version: OSM
+ * refuses the second, and across changesets the first upload's own version bump would
+ * look like someone else's edit. Two rows writing one key differently are not guessed at.
+ */
+function byObject(staged: StagedRow[]): StagedRow[][] {
+	const objects = new Map<string, StagedRow[]>();
+	for (const row of staged) {
+		const key = row.osmId ?? row.candidateId;
+		objects.set(key, [...(objects.get(key) ?? []), row]);
+	}
+	const label = (r: StagedRow) => `${r.name} (${r.key})`;
+	for (const rows of objects.values()) {
+		const written = new Map<string, { v: string | null; row: StagedRow }>();
+		for (const row of rows)
+			for (const o of row.ops) {
+				const v = o.op === "del" ? null : o.v;
+				const earlier = written.get(o.k);
+				if (earlier && earlier.v !== v)
+					throw new RefusedError(
+						`${label(earlier.row)} and ${label(row)} both write ${o.k} on ${row.osmId}, differently — undo one of them.`,
+					);
+				written.set(o.k, { v, row });
+			}
+	}
+	return [...objects.values()];
 }
 
 /** Records that OSM moved an object after the candidate was computed; this is what the composer's rebase resolves. */
@@ -395,6 +428,7 @@ async function uploadStaged(
 
 	const staged = stagedRows(db);
 	if (staged.length === 0) throw new RefusedError("nothing staged.");
+	const objects = byObject(staged);
 
 	let current: Map<string, OsmElement>;
 	try {
@@ -418,17 +452,20 @@ async function uploadStaged(
 
 	let placeholder = 0;
 	let last = "";
-	for (const batch of batches(staged, account.osmPerChangeset)) {
-		const changes: Change[] = batch.map((row) => {
-			const head = row.osmId ? current.get(row.osmId) : undefined;
+	for (const batch of batches(objects, account.osmPerChangeset)) {
+		const rows = batch.flat();
+		const changes: Change[] = batch.map((object) => {
+			const [first] = object;
+			const ops = object.flatMap((r) => r.ops);
+			const head = first.osmId ? current.get(first.osmId) : undefined;
 			return head
-				? { kind: "modify", element: head, ops: row.ops, closure: row.type === "closure" }
-				: { kind: "create", placeholder: --placeholder, lat: row.lat, lon: row.lon, ops: row.ops };
+				? { kind: "modify", element: head, ops, closure: object.some((r) => r.type === "closure") }
+				: { kind: "create", placeholder: --placeholder, lat: first.lat, lon: first.lon, ops };
 		});
-		const objects = objectsLabel(changes);
+		const label = objectsLabel(changes);
 		const tags: Record<string, string> = {
 			comment: clip(v.comment),
-			source: clip(sourceTag(batch)),
+			source: clip(sourceTag(rows)),
 			...(account.osmHashtag ? { hashtags: clip(hashtagTag(account.osmHashtag)) } : {}),
 		};
 
@@ -441,9 +478,9 @@ async function uploadStaged(
 			if (moved) {
 				const reread = await fetchElements(
 					token,
-					batch.flatMap((r) => (r.osmId ? [r.osmId] : [])),
+					rows.flatMap((r) => (r.osmId ? [r.osmId] : [])),
 				).catch(() => new Map<string, OsmElement>());
-				for (const row of batch) {
+				for (const row of rows) {
 					const head = row.osmId ? reread.get(row.osmId) : undefined;
 					if (head && head.version > row.base) {
 						markConflict(db, row, head);
@@ -454,11 +491,11 @@ async function uploadStaged(
 			const text = errorText(e);
 			failChangeset(db, userId, {
 				comment: v.comment,
-				objects,
+				objects: label,
 				result: e instanceof OsmError && e.status ? String(e.status) : "network",
 				error: text,
 			});
-			await notify(db, "uploadFailed", `Upload of ${objects} failed: ${text}`);
+			await notify(db, "uploadFailed", `Upload of ${label} failed: ${text}`);
 			throw new RefusedError(
 				"upload failed — " +
 					text +
@@ -477,7 +514,7 @@ async function uploadStaged(
 					url: `${osm.url}/changeset/${done}`,
 					uploadedAt: new Date(),
 					comment: v.comment,
-					objects,
+					objects: label,
 					result: "ok",
 					uploadedBy: userId,
 				})
@@ -489,7 +526,7 @@ async function uploadStaged(
 						t.STAGED,
 						inArray(
 							t.decisions.candidateId,
-							batch.map((r) => r.candidateId),
+							rows.map((r) => r.candidateId),
 						),
 					),
 				)

@@ -368,4 +368,29 @@ describe("upload", () => {
 			changesetId: "77",
 		});
 	});
+
+	it("sends one modify per object, with every row's tags", async () => {
+		const a = stage("a", "node/1", [add("ref:UAI", "0310001A")], 1);
+		const b = stage("b", "node/1", [add("website", "https://e.example")], 2);
+		const calls = fakeOsm({ 1: { amenity: "school" } });
+		await upload(db, "u", { comment: "c" });
+		const [xml] = sent(calls);
+		expect(xml.match(/<node id="1"/g)).toHaveLength(1);
+		expect(xml).toContain('<tag k="ref:UAI" v="0310001A"/>');
+		expect(xml).toContain('<tag k="website" v="https://e.example"/>');
+		expect(db.select().from(t.decisions).all()).toMatchObject([
+			{ candidateId: a, changesetId: "77" },
+			{ candidateId: b, changesetId: "77" },
+		]);
+	});
+
+	it("refuses two rows writing one key of an object differently", async () => {
+		stage("a", "node/1", [add("operator", "Mairie")], 1);
+		stage("b", "node/1", [add("operator", "Région")], 2);
+		const calls = fakeOsm({ 1: { amenity: "school" } });
+		await expect(upload(db, "u", { comment: "c" })).rejects.toThrow(
+			"a (a) and b (b) both write operator on node/1, differently — undo one of them.",
+		);
+		expect(calls).toEqual([]);
+	});
 });
