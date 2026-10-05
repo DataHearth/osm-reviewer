@@ -153,6 +153,24 @@ describe("vetTags", () => {
 		expect(tags.map((t) => t.k)).toEqual(["contact:phone"]);
 	});
 
+	it("finds a number in its quote across spellings, overseas codes included", () => {
+		const text = "2 rue du Port, 97400 Saint-Denis. Tél : 0262 12 34 56. Fax +33 (0)4 72 00 00 00";
+		const tags = vetTags(
+			out([
+				{
+					...ok,
+					k: "phone",
+					v: "+262 262 12 34 56",
+					quote: "97400 Saint-Denis. Tél : 0262 12 34 56",
+				},
+				{ ...ok, k: "fax", v: "+33 4 72 00 00 00", quote: "Fax +33 (0)4 72 00 00 00" },
+				{ ...ok, k: "mobile", v: "+262 692 12 34 56", quote: "Tél : 0262 12 34 56" },
+			]),
+			{ ...page, text, floor: 0 },
+		);
+		expect(tags.map((t) => t.k)).toEqual(["phone", "fax"]);
+	});
+
 	it("groups an address's parts, so it is accepted whole or not at all", () => {
 		const text = "Nous trouver : 12 rue des Lilas, 31000 Toulouse. Tél : 05 61 00 00 00";
 		const tags = vetTags(

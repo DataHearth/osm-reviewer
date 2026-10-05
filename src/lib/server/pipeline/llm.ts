@@ -2,7 +2,7 @@ import OpeningHours from "opening_hours";
 import { z } from "zod";
 import { OSM_MAX } from "$lib/changeset";
 import { llm } from "$lib/server/config";
-import { PHONE_FORMAT } from "./fr/text";
+import { digits, PHONE_FORMAT } from "./fr/text";
 import { request } from "./http";
 import { allowedBy } from "./tagfilter";
 import { PipelineError, type ProposedTag } from "./types";
@@ -175,7 +175,6 @@ const KEY = /^[a-z][a-z0-9_]*(:[a-z0-9_]+)*$/;
 const MODEL_CONF_CEILING = 0.9;
 const CONTEXT = 60;
 
-const digits = (s: string) => s.replace(/\(0\)/g, "").replace(/\D/g, "").replace(/^33/, "0");
 const bareHost = (s: string) =>
 	s
 		.toLowerCase()
@@ -191,8 +190,10 @@ const bareHost = (s: string) =>
 function valueInQuote(k: string, v: string, quote: string): boolean {
 	const q = collapse(quote).toLowerCase();
 	if (/(^|:)(phone|mobile|fax)$/.test(k)) {
-		const number = digits(v);
-		return number !== "" && digits(q).includes(number);
+		// The national number without its trunk 0, so a page's "+262 262…", "0262…" and
+		// "+33 (0)4…" all carry it whatever digits stand before.
+		const number = digits(v).replace(/^0/, "");
+		return number !== "" && q.replace(/\D/g, "").includes(number);
 	}
 	if (k === "website" || k.endsWith(":website"))
 		return q.replace(/\S+@\S+/g, " ").includes(bareHost(v));
