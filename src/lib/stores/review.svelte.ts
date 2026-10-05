@@ -60,7 +60,7 @@ class ReviewState {
 	/** Phone filter sheet. Its trigger lives in the title bar, the sheet on the queue. */
 	filterSheet = $state(false);
 
-	upload = $state<"idle" | "failed" | "retry" | "sent">("idle");
+	upload = $state<"idle" | "failed" | "retry">("idle");
 	uploadConflict = $state<{
 		candidateId: string;
 		osmId: string;

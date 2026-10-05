@@ -13,13 +13,25 @@ let { data }: { data: PageData } = $props();
 const s = $derived(data.staged);
 const conflict = $derived(review.uploadConflict);
 
+// "Uploaded" describes the staged set the upload left behind, read once the reload has
+// brought it. Staging anything since, or opening the page again, makes it uploadable.
+const stagedKey = $derived(`${s.candidates}/${s.rows.map((r) => r.id).join()}`);
+let sentFor = $state<string | null>(null);
+let justSent = false;
+const sent = $derived(sentFor === stagedKey);
+
 const { form, errors, enhance } = superForm(
 	untrack(() => data.form),
 	{
 		resetForm: false,
+		onUpdated: () => {
+			if (justSent) sentFor = stagedKey;
+			justSent = false;
+		},
 		onResult: ({ result }) => {
 			if (result.type === "success") {
-				review.upload = "sent";
+				justSent = true;
+				review.upload = "idle";
 				review.uploadConflict = null;
 				return;
 			}
@@ -146,16 +158,16 @@ const errBody = $derived(
 		<button
 			bind:this={uploadBtn}
 			type="submit"
-			disabled={s.candidates === 0 || review.upload === "sent"}
+			disabled={s.candidates === 0 || sent}
 			class="rounded-md px-[17px] py-2 text-[13.5px] whitespace-nowrap max-md:min-h-[50px] max-md:w-full {s.candidates === 0 ||
-			review.upload === 'sent'
+			sent
 				? 'cursor-not-allowed border border-line bg-raised text-faint'
 				: 'cursor-pointer border-0 bg-accent font-semibold text-accent-ink'}"
 		>
-			{review.upload === "sent" ? "uploaded ✓" : `upload ${s.candidates} objects  ⏎`}
+			{sent ? "uploaded ✓" : `upload ${s.candidates} objects  ⏎`}
 		</button>
 		<span class="text-[12px] text-faint">
-			{review.upload === "sent"
+			{sent
 				? "uploaded — see history"
 				: `${s.candidates} objects will be modified in ${s.changesets} changeset${s.changesets === 1 ? "" : "s"}`}
 		</span>
