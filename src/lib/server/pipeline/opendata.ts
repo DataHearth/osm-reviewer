@@ -22,16 +22,32 @@ export function datasetBase(endpoint: string): string {
 		.replace(/\/(records|exports(\/\w+)?)$/, "");
 }
 
-async function geoField(base: string, headers: Record<string, string>): Promise<string> {
+type Field = { name: string; type: string };
+
+async function datasetFields(base: string, headers: Record<string, string>): Promise<Field[]> {
 	try {
-		const meta = await getJson<{ fields?: { name: string; type: string }[] }>(base, { headers });
-		const fields = meta.fields ?? [];
-		return (
-			(fields.find((x) => x.type === "geo_point_2d") ?? fields.find((x) => x.type === "geo_shape"))
-				?.name ?? "geom"
-		);
+		return (await getJson<{ fields?: Field[] }>(base, { headers })).fields ?? [];
 	} catch {
-		return "geom";
+		return [];
+	}
+}
+
+const geoField = (fields: Field[]) =>
+	(fields.find((x) => x.type === "geo_point_2d") ?? fields.find((x) => x.type === "geo_shape"))
+		?.name ?? "geom";
+
+/**
+ * Offset paging over an unordered query may repeat a row and skip another between pages,
+ * and a skipped record would be swept as gone. Ordered by the reader's key, a record's rows
+ * sit together, so a key is never skipped whole even where rows tie.
+ */
+function orderField(source: ApiSource, fields: Field[]): string | null {
+	const names = fields.map((f) => f.name);
+	try {
+		const key = readerFor(source, names).keyField;
+		return key && names.includes(key) ? key : null;
+	} catch {
+		return null;
 	}
 }
 
@@ -57,7 +73,10 @@ export async function readApiArea(source: ApiSource, area: AreaShape): Promise<A
 		? { authorization: `Apikey ${source.apiKey}` }
 		: {};
 	const base = datasetBase(source.endpoint);
-	const where = whereClause(await geoField(base, headers), area);
+	const fields = await datasetFields(base, headers);
+	const where = whereClause(geoField(fields), area);
+	const order = orderField(source, fields);
+	const orderBy = order ? `&order_by=${encodeURIComponent(order)}` : "";
 
 	const rows = new Map<string, Row[]>();
 	let fetched = 0;
@@ -76,10 +95,15 @@ export async function readApiArea(source: ApiSource, area: AreaShape): Promise<A
 		else rows.set(key, [row]);
 	};
 
-	let offset = 0;
-	let total = Number.POSITIVE_INFINITY;
-	while (offset < total) {
-		if (offset + PAGE > OFFSET_CEILING) {
+	for (let offset = 0; ; offset += PAGE) {
+		const page = await getJson<{ total_count?: number; results?: Row[] }>(
+			`${base}/records?limit=${PAGE}&offset=${offset}${orderBy}&where=${encodeURIComponent(where)}`,
+			{ headers },
+		);
+		if (!Array.isArray(page.results))
+			throw new PipelineError("not an Opendatasoft explore v2.1 records endpoint");
+		const total = page.total_count ?? page.results.length;
+		if (total > OFFSET_CEILING) {
 			// The export is the whole answer; what the pages gave so far would be counted twice.
 			rows.clear();
 			fetched = 0;
@@ -92,16 +116,8 @@ export async function readApiArea(source: ApiSource, area: AreaShape): Promise<A
 			for await (const row of ndjson<Row>(res.body)) take(row);
 			break;
 		}
-		const page = await getJson<{ total_count?: number; results?: Row[] }>(
-			`${base}/records?limit=${PAGE}&offset=${offset}&where=${encodeURIComponent(where)}`,
-			{ headers },
-		);
-		if (!Array.isArray(page.results))
-			throw new PipelineError("not an Opendatasoft explore v2.1 records endpoint");
-		total = page.total_count ?? page.results.length;
 		for (const row of page.results) take(row);
-		if (page.results.length < PAGE) break;
-		offset += PAGE;
+		if (page.results.length < PAGE || offset + PAGE >= total) break;
 	}
 	return { rows, reader: rd, fetched, skipped };
 }

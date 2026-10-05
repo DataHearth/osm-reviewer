@@ -52,7 +52,12 @@ describe("readApiArea", () => {
 				const headers = init.headers as Record<string, string>;
 				seen.push({ url: u, auth: headers.authorization ?? null });
 				if (u === BASE)
-					return Response.json({ fields: [{ name: "position", type: "geo_point_2d" }] });
+					return Response.json({
+						fields: [
+							{ name: "identifiant_de_l_etablissement", type: "text" },
+							{ name: "position", type: "geo_point_2d" },
+						],
+					});
 				const offset = Number(new URL(u).searchParams.get("offset"));
 				const n = offset === 0 ? 100 : 20;
 				return Response.json({
@@ -68,6 +73,9 @@ describe("readApiArea", () => {
 		const pages = seen.filter((s) => s.url.includes("/records?"));
 		expect(pages).toHaveLength(2);
 		expect(decodeURIComponent(pages[0].url)).toContain("within_distance(position,");
+		expect(pages.every((p) => p.url.includes("&order_by=identifiant_de_l_etablissement&"))).toBe(
+			true,
+		);
 		expect(pages.every((p) => p.auth === "Apikey secret")).toBe(true);
 	});
 
@@ -88,6 +96,7 @@ describe("readApiArea", () => {
 			}),
 		);
 		const res = await readApiArea(source, radius);
+		expect(requested.filter((u) => u.includes("/records?"))).toHaveLength(1);
 		expect(requested.some((u) => u.includes("/exports/jsonl?where="))).toBe(true);
 		expect([...res.rows.keys()]).toEqual(["U1", "U2"]);
 		expect(res.fetched).toBe(2);
