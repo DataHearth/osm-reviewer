@@ -190,10 +190,13 @@ const bareHost = (s: string) =>
  */
 function valueInQuote(k: string, v: string, quote: string): boolean {
 	const q = collapse(quote).toLowerCase();
-	if (k === "phone" || k === "fax" || k.endsWith(":phone")) return digits(q).includes(digits(v));
+	if (/(^|:)(phone|mobile|fax)$/.test(k)) {
+		const number = digits(v);
+		return number !== "" && digits(q).includes(number);
+	}
 	if (k === "website" || k.endsWith(":website"))
 		return q.replace(/\S+@\S+/g, " ").includes(bareHost(v));
-	if (k === "email" || k === "name" || k === "brand" || k.startsWith("addr:"))
+	if (/(^|:)email$/.test(k) || k === "name" || k === "brand" || k.startsWith("addr:"))
 		return q.includes(collapse(v).toLowerCase());
 	return true;
 }

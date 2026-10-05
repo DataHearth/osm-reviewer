@@ -135,6 +135,24 @@ describe("vetTags", () => {
 		expect(tags.map((t) => t.k)).toEqual(["email"]);
 	});
 
+	it("holds every email, mobile and fax key to its quote, and a number to having digits", () => {
+		const text = "Collège Jean Moulin. Contactez-nous au secrétariat. Tél : 05 61 00 00 00";
+		const quote = "Contactez-nous au secrétariat";
+		const tags = vetTags(
+			out([
+				{ ...ok, k: "contact:email", v: "made.up@example.org", quote },
+				{ ...ok, k: "school:email", v: "made.up@example.org", quote },
+				{ ...ok, k: "mobile", v: "+33 6 12 34 56 78", quote },
+				{ ...ok, k: "contact:mobile", v: "06 12 34 56 78", quote },
+				{ ...ok, k: "contact:fax", v: "05 61 99 99 99", quote },
+				{ ...ok, k: "phone", v: "N/A", quote },
+				{ ...ok, k: "contact:phone", v: "05 61 00 00 00", quote: "Tél : 05 61 00 00 00" },
+			]),
+			{ ...page, text, floor: 0 },
+		);
+		expect(tags.map((t) => t.k)).toEqual(["contact:phone"]);
+	});
+
 	it("matches phone numbers by digits, whatever the formatting", () => {
 		const [t] = vetTags(out([{ ...ok, v: "+33561000000" }]), { ...page, floor: 0 });
 		expect(t?.v).toBe("+33561000000");
