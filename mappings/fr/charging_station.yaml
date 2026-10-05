@@ -1,0 +1,171 @@
+format: 1
+id: FR:charging_station
+language: cel
+title: Charging stations in France
+
+# One row is one charge point; a station is the rows sharing station_id.
+inputs:
+  station_id: the station's roaming id (FR + operator code + P + number)
+  point_id: the charge point's roaming id
+  station_name: the station's name
+  operator_name: who runs the station
+  owner_name: who owns it
+  owner_siren: the owner's SIREN
+  brand: the commercial network's name
+  operator_phone: the operator's phone as written
+  address: the station's address in one line
+  point_count: how many charge points the station has
+  power_kw: the charge point's nominal power
+  socket_ef: yes/no, domestic socket
+  socket_type2: yes/no, type 2 socket
+  socket_ccs: yes/no, CCS connector
+  socket_chademo: yes/no, CHAdeMO connector
+  socket_other: yes/no, another connector
+  type2_cable_attached: yes/no, the type 2 cable is attached
+  free: yes/no, free with no condition of use
+  pay_per_session: yes/no, payment without a subscription
+  pay_by_card: yes/no, bank card accepted
+  tariff: the price in words
+  access_condition: who may use it, in words
+  booking: yes/no, a point can be booked
+  hours: opening hours as written
+  wheelchair_access: accessibility in words
+  max_height: height limit in metres
+  two_wheelers: yes/no, the station is for two-wheelers
+  notes: the operator's free-text remarks
+  commissioning_date: the date the station went into service
+  position_ok: yes/no, the publisher's own check of the coordinates
+  lat: latitude, WGS84
+  lon: longitude, WGS84
+
+record:
+  key: station_id
+  groupBy: station_id
+  lat: lat
+  lon: lon
+  skip: 'position_ok != "" && !truthy(position_ok)'
+
+let:
+  allFree: 'rows.all(r, truthy(r.free))'
+  someNotFree: 'rows.exists(r, r.free != "" && !truthy(r.free))'
+  statesPrice: 'rows.exists(r, r.tariff.imatches(r"\d\s*(€|eur|cts?\b)|€\s*\d") && !r.tariff.imatches("gratuit"))'
+  statesTariff: 'rows.exists(r, r.tariff.imatches(r"\d|€|kwh|tarif|https?:") && !r.tariff.imatches("inconnu|gratuit"))'
+  perSession: 'rows.exists(r, truthy(r.pay_per_session))'
+  card: 'rows.exists(r, truthy(r.pay_by_card))'
+  needsAccount: >-
+    rows.exists(r, (r.notes + " " + r.tariff).imatches(r"\b(app|appli|application|badge|abonnement|compte|rfid|lidl plus|emsp)\b"))
+  twoWheelYes: 'rows.exists(r, r.two_wheelers != "" && truthy(r.two_wheelers))'
+  twoWheelNo: 'rows.exists(r, r.two_wheelers != "" && !truthy(r.two_wheelers))'
+  twoWheelName: 'station_name.imatches(r"deux[- ]roues|2[- ]roues|\bmotos?\b|scooter|v[ée]los?\b")'
+  fast: 'rows.exists(r, truthy(r.socket_ccs) || truthy(r.socket_chademo))'
+  bookingYes: 'rows.exists(r, r.booking != "" && truthy(r.booking))'
+  bookingNo: 'rows.exists(r, r.booking != "" && !truthy(r.booking))'
+  height: 'max_height.replace(",", ".")'
+  ownersAgree: 'rows.all(r, r.owner_name == owner_name)'
+
+tags:
+  amenity:
+    value: '"charging_station"'
+    conf: 0.95
+  operator:
+    value: 'operator_name != "" ? operator_name : owner_name'
+    conf: 0.8
+    fill: true
+  fee:
+    value: >-
+      allFree ? (statesPrice ? "" : "no")
+      : someNotFree ? "yes"
+      : perSession || card ? "yes"
+      : statesTariff ? "yes" : ""
+    conf: 0.8
+    rule: >-
+      "Free" means free with no condition of use. Every point free and no price stated: fee=no.
+      Any point not free: fee=yes. Otherwise a payment method or a stated tariff means fee=yes.
+      Free beside a price contradicts itself and proposes nothing. May replace a mapper's value.
+  access:
+    value: 'access_condition.imatches("libre") ? "yes" : ""'
+    conf: 0.8
+    fill: true
+    rule: '"Accès libre" is access=yes where OSM says nothing. "Accès réservé" covers customers, residents and subscribers alike and proposes nothing.'
+  motorcycle:
+    value: '!(twoWheelYes && twoWheelNo) && twoWheelYes && !fast ? "yes" : ""'
+    conf: 0.75
+    fill: true
+    rule: A two-wheeler station, unless it has fast DC connectors or its points disagree.
+  motorcar:
+    value: '!(twoWheelYes && twoWheelNo) && !twoWheelYes && !twoWheelName ? "yes" : ""'
+    conf: 0.75
+    fill: true
+    rule: A car station, unless its own name says two-wheelers or its points disagree.
+  authentication:none:
+    value: 'perSession && !needsAccount ? "yes" : ""'
+    conf: 0.7
+    fill: true
+    rule: Paying per session means no identification, unless the operator's notes mention an app, a badge or a subscription.
+  payment:credit_cards:
+    value: 'card ? "yes" : ""'
+    conf: 0.75
+    fill: true
+  reservation:
+    value: 'bookingYes != bookingNo ? (bookingYes ? "yes" : "no") : ""'
+    conf: 0.7
+    fill: true
+    rule: Only when every point that says anything says the same.
+  maxheight:
+    value: 'height.matches(r"^\d(\.\d+)?$") && double(height) >= 1.5 ? string(double(height)) : ""'
+    conf: 0.7
+    fill: true
+    rule: A height in metres of at least 1.5; anything else is a typing error or another unit.
+  owner:
+    value: 'ownersAgree ? owner_name : ""'
+    conf: 0.7
+    fill: true
+    unless: { key: "owner:ref:FR:SIREN", value: owner_siren }
+    rule: >-
+      Only when every point names the same owner, and never when the OSM object already carries
+      another owner's SIREN. (Partial: the real rule also cleans the owner's name.)
+
+  opening_hours: { function: fr/openingHours, reads: [hours, notes], conf: 0.7 }
+  network: { function: fr.charging_station/network, reads: [brand, operator_name, station_name, owner_name], conf: 0.8, fill: true }
+  capacity: { function: fr.charging_station/capacity, reads: [point_count, point_id], conf: 0.8 }
+  ref:EU:EVSE: { function: any.charging_station/poolId, reads: [station_id], conf: 0.9, fill: true }
+  socket:*: { function: any.charging_station/sockets, reads: [socket_ef, socket_type2, socket_ccs, socket_chademo, socket_other, type2_cable_attached, power_kw, station_name], conf: 0.8 }
+  start_date: { function: fr.charging_station/serviceDate, reads: [commissioning_date], conf: 0.7, fill: true }
+  operator:phone: { function: fr/phone, reads: [operator_phone], conf: 0.7, fill: true }
+  wheelchair: { function: fr.charging_station/wheelchair, reads: [wheelchair_access], conf: 0.7, fill: true }
+  addr:*: { function: fr/address, reads: [address], conf: 0.8, fill: true }
+
+notes:
+  - when: allFree && statesPrice
+    text: The register says this station is free but also states a price, so no fee is proposed.
+  - when: twoWheelYes && twoWheelNo
+    text: The station's points disagree on whether it is for two-wheelers, so no vehicle tag is proposed.
+
+examples:
+  - about: two free points, open access, card accepted
+    rows:
+      - { station_id: FRABCP001, station_name: Parking Mairie, operator_name: ABC, free: "true", pay_by_card: "true", access_condition: Accès libre, booking: "false", two_wheelers: "false" }
+      - { station_id: FRABCP001, station_name: Parking Mairie, operator_name: ABC, free: "true", pay_by_card: "true", access_condition: Accès libre, booking: "false", two_wheelers: "false" }
+    expect: { amenity: charging_station, operator: ABC, fee: no, access: yes, motorcar: yes, payment:credit_cards: yes, reservation: no }
+  - about: one point of two is not free, and the points disagree on booking
+    rows:
+      - { station_id: FRABCP002, owner_name: Ville de Lyon, free: "true", booking: "true", two_wheelers: "false" }
+      - { station_id: FRABCP002, owner_name: Ville de Lyon, free: "false", booking: "false", two_wheelers: "false" }
+    expect: { amenity: charging_station, operator: Ville de Lyon, owner: Ville de Lyon, fee: yes, motorcar: yes }
+  - about: free beside a price contradicts itself; per-session payment but the note asks for a badge
+    rows:
+      - { station_id: FRABCP003, operator_name: ABC, free: "true", tariff: "0,35 €/kWh", pay_per_session: "true", notes: Badge requis, access_condition: Accès réservé, two_wheelers: "false", max_height: "2,10" }
+    expect: { amenity: charging_station, operator: ABC, motorcar: yes, maxheight: "2.1" }
+    notes: ["The register says this station is free but also states a price, so no fee is proposed."]
+  - about: a two-wheeler station; a height of 0 is not a height
+    rows:
+      - { station_id: FRABCP004, operator_name: ABC, station_name: Abri vélos gare, two_wheelers: "true", pay_per_session: "true", max_height: "0" }
+    expect: { amenity: charging_station, operator: ABC, fee: yes, motorcycle: yes, authentication:none: yes }
+  - about: the publisher flags the coordinates as wrong
+    rows:
+      - { station_id: FRABCP005, operator_name: ABC, position_ok: "False" }
+    expect: null
+  - about: one owner named on every point
+    rows:
+      - { station_id: FRABCP006, operator_name: ABC, owner_name: Ville de Lyon, owner_siren: "216901231", free: "true" }
+    expect: { amenity: charging_station, operator: ABC, owner: Ville de Lyon, fee: no, motorcar: yes }

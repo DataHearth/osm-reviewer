@@ -21,7 +21,7 @@ let
     src = sources.manifest;
     # pnpm 12 rejects fetcherVersion 3; 4 is the only value this nixpkgs accepts.
     fetcherVersion = 4;
-    hash = "sha256-zl/CrGau+TglICrOfDUhd7oNT1fB85a3vH1zn+q2fUk=";
+    hash = "sha256-o97REwWESk2oyJzKnR5cBt+TcSaZcOFl36PfXWKOz9U=";
   };
 
   # `pnpm prune --prod` hangs in the build sandbox: it re-runs pnpm 12's

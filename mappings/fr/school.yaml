@@ -1,0 +1,114 @@
+format: 1
+id: FR:school
+language: cel
+title: Schools in France
+
+inputs:
+  id: the establishment's UAI
+  name: the establishment's name as its register writes it
+  kind: "the kind of establishment in words: Ecole, Collège, Lycée, Médico-social, Service Administratif…"
+  nature_code: the ministry's three-digit nature code
+  has_maternelle: yes/no, teaches the maternelle years
+  has_elementaire: yes/no, teaches the élémentaire years
+  status: public or private, in words
+  siret: the 14-digit SIRET, spaces allowed
+  phone: the phone number as written
+  website: the website as written
+  email: the mailbox
+  opening_date: the date the establishment opened, YYYY-MM-DD
+  state: open or closed, in words
+  street: the address line holding the housenumber and street
+  postcode: the postcode
+  city: the commune's name
+  lat: latitude, WGS84
+  lon: longitude, WGS84
+
+record:
+  key: id
+  lat: lat
+  lon: lon
+  skip: >-
+    !(postbac || medico) && (kind == "" ||
+    kind.imatches("^(service administratif|information et orientation)$") || nature_code == "809")
+  closed: 'state.imatches("^ferm")'
+
+let:
+  postbac: 'nature_code == "400"'
+  medico: 'kind.imatches("^m[ée]dico")'
+  ecole: 'kind.imatches("^[ée]cole")'
+  mat: 'truthy(has_maternelle)'
+  elem: 'truthy(has_elementaire)'
+  level: >-
+    postbac || medico ? ""
+    : ecole ? (mat && elem ? "primaire" : mat ? "maternelle" : elem ? "élémentaire" : "")
+    : kind.imatches("^coll[èe]ge") ? "collège"
+    : kind.imatches("^lyc[ée]e") ? "lycée" : ""
+  siret14: 'siret.remove(r"\s")'
+  said: 'status.imatches("^public") ? "public" : status.imatches("priv") ? "private" : ""'
+  bySiren: >-
+    !siret14.matches(r"^\d{14}$") ? "" : siret14.matches("^[12]") ? "public" : "private"
+  phoneFr: 'phone(phone, "33")'
+
+tags:
+  amenity:
+    value: 'postbac ? "college" : medico ? "social_facility" : "school"'
+    conf: 0.9
+    fill: 'medico && !postbac'
+    rule: >-
+      Every level from the maternelle up is a school in France; post-bac only is a college.
+      A medico-social institute is a social facility, and never changes the main tag of one
+      already mapped.
+  social_facility:for:
+    value: 'medico && !postbac ? "disabled" : ""'
+    conf: 0.8
+    fill: true
+  school:FR:
+    value: level
+    conf: 0.9
+  name: { function: fr.school/name, reads: [name], conf: 0.9, fill: true }
+  ref:UAI:
+    value: id
+    conf: 0.98
+  ref:FR:SIRET:
+    value: 'siret14.matches(r"^\d{14}$") ? siret14 : ""'
+    conf: 0.95
+  phone:
+    value: 'phoneFr.matches(r"^\+33 [67]") ? "" : phoneFr'
+    conf: 0.85
+    rule: Written as FR:Key:phone does. A mobile is left out.
+  website:
+    value: 'website(website)'
+    conf: 0.8
+  email: { function: fr.school/mailbox, reads: [email, name, city, street], conf: 0.8, fill: true }
+  start_date:
+    value: 'opening_date.matches(r"^\d{4}-\d{2}-\d{2}$") ? opening_date : ""'
+    conf: 0.7
+    fill: true
+    rule: The opening date, when it is a full date.
+  operator:type:
+    value: 'said != "" && (bySiren == "" || bySiren == said) ? said : ""'
+    conf: 0.9
+    rule: From the stated status, unless the SIRET's first digit says otherwise.
+  addr:*: { function: fr/address, reads: [street, postcode, city], conf: 0.8, fill: true }
+
+examples:
+  - about: a primaire, public, with a landline
+    rows:
+      - { id: 0690001A, kind: Ecole, nature_code: "151", has_maternelle: "1", has_elementaire: "1", status: Public, siret: "216 901 231 00012", phone: "0478123456", website: ecole-exemple.fr, opening_date: "1965-09-01" }
+    expect: { amenity: school, school:FR: primaire, ref:UAI: 0690001A, ref:FR:SIRET: "21690123100012", phone: "+33 4 78 12 34 56", website: "https://ecole-exemple.fr", operator:type: public, start_date: "1965-09-01" }
+  - about: a collège, mobile number left out, private by status but a public SIRET
+    rows:
+      - { id: 0690002B, kind: Collège, nature_code: "340", status: Privé, siret: "19690002000015", phone: "06 12 34 56 78", opening_date: "1992-09-01" }
+    expect: { amenity: school, school:FR: collège, ref:UAI: 0690002B, ref:FR:SIRET: "19690002000015", start_date: "1992-09-01" }
+  - about: a medico-social institute
+    rows:
+      - { id: 0690003C, kind: Médico-social, nature_code: "999" }
+    expect: { amenity: social_facility, social_facility:for: disabled, ref:UAI: 0690003C }
+  - about: an administrative office is not a place
+    rows:
+      - { id: 0690004D, kind: Service Administratif, nature_code: "809" }
+    expect: null
+  - about: no type at all is not a place
+    rows:
+      - { id: 0690005E, nature_code: "151" }
+    expect: null

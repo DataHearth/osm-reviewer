@@ -1,0 +1,103 @@
+format: 1
+source: fr/irve
+mapping: FR:charging_station
+# 40 of the file's 52 columns, the ones the current preset reads; the rest are listed before this source ships.
+columns:
+  - id_station_itinerance
+  - id_pdc_itinerance
+  - nom_station
+  - nom_operateur
+  - nom_amenageur
+  - siren_amenageur
+  - nom_enseigne
+  - telephone_operateur
+  - adresse_station
+  - code_insee_commune
+  - coordonneesXY
+  - nbre_pdc
+  - puissance_nominale
+  - prise_type_ef
+  - prise_type_2
+  - prise_type_combo_ccs
+  - prise_type_chademo
+  - prise_type_autre
+  - cable_t2_attache
+  - gratuit
+  - paiement_acte
+  - paiement_cb
+  - tarification
+  - condition_acces
+  - reservation
+  - horaires
+  - accessibilite_pmr
+  - restriction_gabarit
+  - station_deux_roues
+  - observations
+  - date_mise_en_service
+  - date_maj
+  - last_modified
+  - datagouv_resource_id
+  - datagouv_organization_or_owner
+  - consolidated_longitude
+  - consolidated_latitude
+  - consolidated_code_postal
+  - consolidated_commune
+  - consolidated_is_lon_lat_correct
+
+steps:
+  - name: fr.irve/declarations
+    why: A station is declared again and again, by its operator and by aggregators. Only its newest declaration counts, the operator's own file winning a same-day tie.
+    reads: [date_maj, last_modified, datagouv_resource_id, datagouv_organization_or_owner, id_pdc_itinerance]
+  - name: fr.irve/sites
+    why: Operators re-declare one site under new station ids, or declare each charge point as a station. Records are merged into sites by shared point ids, position and name.
+    reads: [id_pdc_itinerance, nom_station, adresse_station, coordonneesXY, nom_operateur, nom_amenageur]
+
+rename:
+  id_station_itinerance: station_id
+  id_pdc_itinerance: point_id
+  nom_station: station_name
+  nom_operateur: operator_name
+  nom_amenageur: owner_name
+  siren_amenageur: owner_siren
+  nom_enseigne: brand
+  telephone_operateur: operator_phone
+  adresse_station: address
+  nbre_pdc: point_count
+  puissance_nominale: power_kw
+  prise_type_ef: socket_ef
+  prise_type_2: socket_type2
+  prise_type_combo_ccs: socket_ccs
+  prise_type_chademo: socket_chademo
+  prise_type_autre: socket_other
+  cable_t2_attache: type2_cable_attached
+  gratuit: free
+  paiement_acte: pay_per_session
+  paiement_cb: pay_by_card
+  tarification: tariff
+  condition_acces: access_condition
+  reservation: booking
+  horaires: hours
+  accessibilite_pmr: wheelchair_access
+  restriction_gabarit: max_height
+  station_deux_roues: two_wheelers
+  observations: notes
+  date_mise_en_service: commissioning_date
+  consolidated_is_lon_lat_correct: position_ok
+  consolidated_latitude: lat
+  consolidated_longitude: lon
+
+ignored:
+  code_insee_commune: used only to build the address shown to the reviewer
+  consolidated_code_postal: used only to build the address shown to the reviewer
+  consolidated_commune: used only to build the address shown to the reviewer
+
+examples:
+  - about: two free points through the register's own columns
+    rows:
+      - { id_station_itinerance: FRABCP001, nom_station: Parking Mairie, nom_operateur: ABC, gratuit: "true", paiement_cb: "true", condition_acces: Accès libre, reservation: "false", station_deux_roues: "false" }
+      - { id_station_itinerance: FRABCP001, nom_station: Parking Mairie, nom_operateur: ABC, gratuit: "true", paiement_cb: "true", condition_acces: Accès libre, reservation: "false", station_deux_roues: "false" }
+    expect: { amenity: charging_station, operator: ABC, fee: no, access: yes, motorcar: yes, payment:credit_cards: yes, reservation: no }
+  - about: a station named for bicycles though flagged as a car station gets no vehicle tag
+    rows:
+      - { id_station_itinerance: FRABCP007, nom_operateur: ABC, nom_station: Station vélos Bellecour, station_deux_roues: "false", paiement_acte: "true" }
+    expect: { amenity: charging_station, operator: ABC, fee: yes, authentication:none: yes }

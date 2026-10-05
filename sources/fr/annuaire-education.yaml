@@ -1,0 +1,83 @@
+format: 1
+source: fr/annuaire-education
+mapping: FR:school
+# 27 of the file's 71 columns, the ones the current preset reads plus a few known unread ones; the rest are listed before this source ships.
+columns:
+  - identifiant_de_l_etablissement
+  - nom_etablissement
+  - type_etablissement
+  - code_nature
+  - libelle_nature
+  - ecole_maternelle
+  - ecole_elementaire
+  - statut_public_prive
+  - siren_siret
+  - telephone
+  - web
+  - mail
+  - date_ouverture
+  - etat
+  - adresse_1
+  - adresse_2
+  - adresse_3
+  - code_postal
+  - nom_commune
+  - latitude
+  - longitude
+  - precision_localisation
+  - etablissement_mere
+  - type_rattachement_etablissement_mere
+  - restauration
+  - ulis
+  - fiche_onisep
+
+rename:
+  identifiant_de_l_etablissement: id
+  nom_etablissement: name
+  type_etablissement: kind
+  code_nature: nature_code
+  ecole_maternelle: has_maternelle
+  ecole_elementaire: has_elementaire
+  statut_public_prive: status
+  siren_siret: siret
+  telephone: phone
+  web: website
+  mail: email
+  date_ouverture: opening_date
+  etat: state
+  adresse_1: street
+  code_postal: postcode
+  nom_commune: city
+  latitude: lat
+  longitude: lon
+
+ignored:
+  libelle_nature: the label of code_nature
+  adresse_2: "GAP: the mapping has one street input; the preset reads three address lines"
+  adresse_3: "GAP: same"
+  precision_localisation: "GAP: read for a reviewer note"
+  etablissement_mere: "GAP: a section housed in its parent is skipped, which needs another record's rows"
+  type_rattachement_etablissement_mere: "GAP: same"
+  restauration: no OSM key for a school canteen
+  ulis: no documented OSM key
+  fiche_onisep: "todo: ask the tagging researcher"
+
+overrides:
+  tags:
+    start_date:
+      value: >-
+        opening_date.matches(r"^\d{4}-\d{2}-\d{2}$") && opening_date >= "1978" && level != "primaire"
+        ? opening_date : ""
+      rule: >-
+        Only from 1978 on (earlier dates are this register's bulk entries) and never for a primaire
+        (the date is a merger's).
+
+examples:
+  - about: the same primaire as the mapping's first example, through the Annuaire's own columns; the override drops its date
+    rows:
+      - { identifiant_de_l_etablissement: 0690001A, type_etablissement: Ecole, code_nature: "151", ecole_maternelle: "1", ecole_elementaire: "1", statut_public_prive: Public, siren_siret: "216 901 231 00012", telephone: "0478123456", web: ecole-exemple.fr, date_ouverture: "1965-09-01" }
+    expect: { amenity: school, school:FR: primaire, ref:UAI: 0690001A, ref:FR:SIRET: "21690123100012", phone: "+33 4 78 12 34 56", website: "https://ecole-exemple.fr", operator:type: public }
+  - about: a collège opened in 1992 keeps its date
+    rows:
+      - { identifiant_de_l_etablissement: 0690002B, type_etablissement: Collège, code_nature: "340", statut_public_prive: Public, date_ouverture: "1992-09-01" }
+    expect: { amenity: school, school:FR: collège, ref:UAI: 0690002B, operator:type: public, start_date: "1992-09-01" }

@@ -96,6 +96,12 @@
                 category = "quality";
               }
               {
+                name = "validate";
+                help = "Check the mapping files and run their examples";
+                command = ''pnpm validate "$@"'';
+                category = "quality";
+              }
+              {
                 name = "e2e";
                 help = "Run the Playwright end-to-end suite";
                 command = ''pnpm test:e2e "$@"'';
