@@ -142,6 +142,8 @@ export function stationFit(
 	const listed = [...(x.tags ?? []), ...(x.fit ?? [])];
 	for (const t of listed) {
 		if (!/^(capacity|socket:(?!unknown)[^:]+(:output)?)$/.test(t.k)) continue;
+		// A count that only fills a gap is too unsure to tell one object from another.
+		if ("addOnly" in t && t.addOnly) continue;
 		const had = e.tags[t.k];
 		if (had === undefined) continue;
 		const [a, b] = t.k.endsWith(":output")

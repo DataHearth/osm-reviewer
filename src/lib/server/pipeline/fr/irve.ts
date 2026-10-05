@@ -234,6 +234,12 @@ const has = (r: Row, field: string) => truthy(str(r, field));
 /** A type 2 point with its cable attached is `socket:type2_cable`, not a socket. */
 const cable = (r: Row) => has(r, "cable_t2_attache");
 
+/**
+ * A type 2 point that leaves `cable_t2_attache` blank, which may be either. It is counted as a
+ * socket, but only to fill a gap, and rules out no cable.
+ */
+const unstated = (r: Row) => has(r, "prise_type_2") && !str(r, "cable_t2_attache");
+
 const SOCKETS: [string, string, (r: Row) => boolean][] = [
 	["socket:type2", "prise_type_2", (r) => !cable(r)],
 	["socket:type2_cable", "prise_type_2", cable],
@@ -247,7 +253,7 @@ const listedSockets = (rows: Row[]) =>
 	SOCKETS.map(([k, field, only]) => ({
 		k,
 		v: String(rows.filter((r) => has(r, field) && only(r)).length),
-	})).filter((s) => s.v !== "0");
+	})).filter((s) => s.v !== "0" && !(s.k === "socket:type2" && rows.some(unstated)));
 
 const DC = ["prise_type_combo_ccs", "prise_type_chademo"];
 
@@ -473,10 +479,11 @@ export const irve: Preset = {
 		for (const [k, field, only] of oneRow || everything || unsure || blank ? [] : SOCKETS) {
 			const carrying = rows.filter((r) => has(r, field) && only(r));
 			if (carrying.length === 0) {
-				if (!declared.some((r) => has(r, field) && only(r))) absent.push(k);
+				if (!declared.some((r) => has(r, field) && (only(r) || unstated(r)))) absent.push(k);
 				continue;
 			}
-			t.add(
+			const gap = k === "socket:type2" && carrying.some(unstated);
+			const count = t.add(
 				k,
 				String(carrying.length),
 				0.9,
@@ -484,11 +491,12 @@ export const irve: Preset = {
 				`true on ${carrying.length} of ${rows.length} points`,
 				"derived",
 			);
+			if (gap) fill(count);
 			const shared = carrying.some((r) => kinds(r) > 1);
 			if (shared && k !== "socket:type2_combo") continue;
 			const power = Math.max(0, ...carrying.map((r) => Number(str(r, "puissance_nominale")) || 0));
 			if (power === 0 || power > (MAX_KW[k] ?? Number.POSITIVE_INFINITY)) continue;
-			t.add(
+			const output = t.add(
 				`${k}:output`,
 				POWER_KW(power),
 				shared ? 0.7 : 0.8,
@@ -496,6 +504,7 @@ export const irve: Preset = {
 				String(power),
 				"derived",
 			);
+			if (gap) fill(output);
 		}
 		if (!unsure && !blank && !declared.some((r) => has(r, "prise_type_autre"))) {
 			absent.push(...OTHER_SOCKETS);

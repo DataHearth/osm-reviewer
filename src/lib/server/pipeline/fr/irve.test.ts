@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { stationFit } from "../match/charging";
+import { updateOps } from "../match/ops";
 import { mergeSites } from "../preset";
 import { detectPreset, presetById } from "../presets";
 import type { Row } from "../types";
@@ -826,6 +828,29 @@ describe("IRVE preset", () => {
 				"socket:type2_cable": ["1", 0.9],
 				"socket:type2_cable:output": ["22 kW", 0.8],
 			});
+		});
+
+		it("counts type 2 points with no word on their cable as sockets only where OSM has no type 2 count", () => {
+			const extract = (cable_t2_attache: string) =>
+				irve.extract(
+					[1, 2].map((n) => point(n, { prise_type_2: "true", cable_t2_attache, nbre_pdc: "2" })),
+					"u",
+				);
+			const stated = extract("false");
+			expect(stated?.tags.find((t) => t.k === "socket:type2")?.addOnly).toBeUndefined();
+			expect(stated?.absent).toContain("socket:type2_cable");
+
+			const blank = extract("");
+			if (!blank) throw new Error("no record");
+			expect(blank.absent).not.toContain("socket:type2_cable");
+			const sockets = blank.tags.filter((t) => t.k.startsWith("socket:type2"));
+			const ops = (tags: Record<string, string>) => updateOps(sockets, tags).map((o) => o.k);
+			expect(ops({})).toEqual(["socket:type2", "socket:type2:output"]);
+			expect(ops({ "socket:type2": "4" })).toEqual(["socket:type2:output"]);
+			expect(ops({ "socket:type2_cable": "2" })).toEqual([]);
+			const station = { type: "node" as const, id: 1, version: 1, lat: 0, lon: 0 };
+			expect(stationFit(blank, { ...station, tags: { "socket:type2": "4" } })).toBeNull();
+			expect(stationFit(blank, { ...station, tags: { "socket:type2_cable": "2" } })).toBeNull();
 		});
 
 		it("takes each type's power from the points that carry it, not the station's maximum", () => {

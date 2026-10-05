@@ -85,6 +85,12 @@ const UNTYPED = ["socket:unknown", "socket:unknown:output"];
 /** A registry's bare `24/7` is what it writes when nobody filled the hours in, not a survey. */
 const addOnly = (p: ProposedTag) => p.addOnly || (p.k === "opening_hours" && p.v.trim() === "24/7");
 
+/** Keys that leave a gap-filling value no gap: type 2 points the object already counts as cables. */
+const FILLED_BY: Record<string, string[]> = {
+	"socket:type2": ["socket:type2_cable"],
+	"socket:type2:output": ["socket:type2_cable"],
+};
+
 /** Tag operations that turn the element's tags into what the source says; nothing for what already agrees. */
 export function updateOps(proposed: ProposedTag[], current: Record<string, string>): TagOp[] {
 	const ops: TagOp[] = addressOps(
@@ -93,6 +99,7 @@ export function updateOps(proposed: ProposedTag[], current: Record<string, strin
 	);
 	for (const p of proposed) {
 		if (p.group === "addr" || RULED_OUT[p.k]?.(current)) continue;
+		if (addOnly(p) && FILLED_BY[p.k]?.some((o) => current[o] !== undefined)) continue;
 		// A main tag beside its own `disused:` twin would reopen the place on the source's word.
 		if (MAIN.includes(p.k) && RETIRED.some((r) => current[`${r}:${p.k}`] !== undefined)) continue;
 		const k = keyOn(p.k, current);
