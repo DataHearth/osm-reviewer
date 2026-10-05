@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Extraction, OsmElement, ProposedTag } from "../types";
 import { stationFit } from "./charging";
+import { deprecatedWarnings } from "./deprecated";
 import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./find";
 import { closureOps, contextTags, disputedOps, newOps, unchangedTags, updateOps } from "./ops";
 import { planUpdate } from "./plan";
@@ -2255,5 +2256,27 @@ describe("settlePoints", () => {
 		expect(settle([agripat(near)])[0].from).toBeUndefined();
 		const elsewhere = { ...cleppe, label: "343 Route des Etangs 42600 Montbrison" };
 		expect(settle([agripat(elsewhere)])[0].from).toBeUndefined();
+	});
+});
+
+describe("deprecatedWarnings", () => {
+	it("flags a deprecated tag the candidate writes, with iD's replacement", () => {
+		expect(deprecatedWarnings(newOps([tag("amenity", "ev_charging")]))).toEqual([
+			"amenity=ev_charging is deprecated: iD writes amenity=charging_station instead",
+		]);
+	});
+
+	it("matches a wildcard against the object's tags and carries its value over", () => {
+		const station = { amenity: "charging_station" };
+		expect(deprecatedWarnings(updateOps([tag("car", "yes")], station), station)).toEqual([
+			"amenity=charging_station + car=yes is deprecated: iD writes amenity=charging_station + motorcar=yes instead",
+		]);
+	});
+
+	it("leaves a deprecated tag the candidate does not write to the mapper", () => {
+		expect(deprecatedWarnings(updateOps([tag("name", "X")], { amenity: "ev_charging" }))).toEqual(
+			[],
+		);
+		expect(deprecatedWarnings(newOps([tag("amenity", "charging_station")]))).toEqual([]);
 	});
 });

@@ -9,6 +9,7 @@ import { NAME_FIELDS } from "./fr/words";
 import { inArea } from "./geo";
 import { getJson } from "./http";
 import { askModel, modelLabel, vetTags } from "./llm";
+import { deprecatedWarnings } from "./match/deprecated";
 import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./match/find";
 import { closureOps, newOps, type TagOp, unchangedTags } from "./match/ops";
 import { planUpdate } from "./match/plan";
@@ -334,6 +335,7 @@ export async function processArea(
 			[
 				...(x.notes ?? []),
 				...notes,
+				...deprecatedWarnings(ops, el?.tags),
 				...(el ? (x.absent ?? []).filter((k) => el.tags[k] !== undefined) : []).map(
 					(k) => `OSM has ${k}=${el?.tags[k]}, which the source says this place does not have`,
 				),
