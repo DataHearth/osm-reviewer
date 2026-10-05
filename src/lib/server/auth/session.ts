@@ -36,6 +36,8 @@ const REFRESH_AFTER_MS = 24 * 60 * 60 * 1000;
 interface ResolvedSession {
 	user: User;
 	session: Session;
+	/** The expiry was pushed out, so the cookie's has to follow. */
+	refreshed: boolean;
 }
 
 export function createSession(userId: string, via: Session["via"]): string {
@@ -62,13 +64,21 @@ export function resolveSession(token: string): ResolvedSession | null {
 		.get();
 	if (!row) return null;
 
+	// Disabling deletes the sessions, but a sign-in already past its own check can still
+	// write one afterwards; this is where that session is refused.
+	if (row.user.disabled) {
+		db.delete(sessions).where(eq(sessions.userId, row.user.id)).run();
+		return null;
+	}
+
 	const now = new Date();
 	if (+row.session.expiresAt <= +now) {
 		deleteSession(token);
 		return null;
 	}
 
-	if (+row.session.expiresAt - +now < TTL_MS - REFRESH_AFTER_MS) {
+	const refreshed = +row.session.expiresAt - +now < TTL_MS - REFRESH_AFTER_MS;
+	if (refreshed) {
 		db.transaction((tx) => {
 			tx.update(sessions)
 				.set({ expiresAt: new Date(+now + TTL_MS) })
@@ -81,6 +91,7 @@ export function resolveSession(token: string): ResolvedSession | null {
 	return {
 		user: toUser(row.user),
 		session: { email: row.user.email, via: row.session.via, at: stamp(row.session.createdAt) },
+		refreshed,
 	};
 }
 
