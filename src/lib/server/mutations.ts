@@ -1,8 +1,9 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { AreaDraft } from "$lib/schemas/area";
 import type { SourceDraft } from "$lib/schemas/source";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import { RefusedError } from "$lib/server/review";
 
 /** Every write below runs either directly or inside a transaction. */
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -150,12 +151,14 @@ export function removeArea(db: Db, id: string) {
  * `headVersion` back to null is the schema's own definition of "no conflict".
  */
 export function rebase(db: Db, candidateId: string) {
-	db.update(t.candidates)
+	const rebased = db
+		.update(t.candidates)
 		.set({
 			baseVersion: sql`${t.candidates.headVersion}`,
 			version: sql`${t.candidates.headVersion}`,
 			headVersion: null,
 		})
-		.where(eq(t.candidates.id, candidateId))
+		.where(and(eq(t.candidates.id, candidateId), isNotNull(t.candidates.headVersion)))
 		.run();
+	if (!rebased.changes) throw new RefusedError("no version conflict to rebase.");
 }

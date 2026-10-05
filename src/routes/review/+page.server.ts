@@ -61,7 +61,6 @@ export const actions: Actions = {
 		requireUser(locals);
 		const form = await superValidate(request, zod4(candidateSchema));
 		if (!form.valid) return fail(400, { form });
-		rebase(db, form.data.id);
-		return { form };
+		return refusable(form, () => rebase(db, form.data.id));
 	},
 };

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type Db } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import * as t from "./db/schema";
+import { rebase } from "./mutations";
 import { unchangedTags, updateOps } from "./pipeline/match/ops";
 import { saveCandidate } from "./pipeline/store";
 import { accept, decisionOps, type Picks, type Proposal, RefusedError } from "./review";
@@ -231,5 +232,17 @@ describe("accept", () => {
 		expect(db.select().from(t.decisionTags).all()).toMatchObject([
 			{ op: "mod", k: "wheelchair", v: "yes", was: "no" },
 		]);
+	});
+
+	it("rebases only a candidate in conflict", () => {
+		const { id } = candidate();
+		expect(() => rebase(db, id)).toThrow(RefusedError);
+		db.update(t.candidates).set({ headVersion: 4 }).where(eq(t.candidates.id, id)).run();
+		rebase(db, id);
+		expect(db.select().from(t.candidates).get()).toMatchObject({
+			version: 4,
+			baseVersion: 4,
+			headVersion: null,
+		});
 	});
 });
