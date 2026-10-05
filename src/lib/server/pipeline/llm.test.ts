@@ -153,6 +153,25 @@ describe("vetTags", () => {
 		expect(tags.map((t) => t.k)).toEqual(["contact:phone"]);
 	});
 
+	it("groups an address's parts, so it is accepted whole or not at all", () => {
+		const text = "Nous trouver : 12 rue des Lilas, 31000 Toulouse. Tél : 05 61 00 00 00";
+		const tags = vetTags(
+			out([
+				{ ...ok, k: "addr:housenumber", v: "12", quote: "12 rue des Lilas" },
+				{ ...ok, k: "addr:street", v: "Rue des Lilas", quote: "12 rue des Lilas" },
+				{ ...ok, k: "addr:postcode", v: "31000", quote: "31000 Toulouse" },
+				ok,
+			]),
+			{ ...page, text, floor: 0 },
+		);
+		expect(tags.map((t) => [t.k, t.group])).toEqual([
+			["addr:housenumber", "addr"],
+			["addr:street", "addr"],
+			["addr:postcode", "addr"],
+			["phone", undefined],
+		]);
+	});
+
 	it("matches phone numbers by digits, whatever the formatting", () => {
 		const [t] = vetTags(out([{ ...ok, v: "+33561000000" }]), { ...page, floor: 0 });
 		expect(t?.v).toBe("+33561000000");

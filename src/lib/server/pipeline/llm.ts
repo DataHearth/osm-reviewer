@@ -316,6 +316,7 @@ export function vetTags(
 			path: new URL(page.url).pathname || "/",
 			parts,
 			kind: `model extraction · ${page.model}`,
+			...(k.startsWith("addr:") ? { group: "addr" } : {}),
 		});
 	}
 	return kept;
