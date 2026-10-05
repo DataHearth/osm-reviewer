@@ -11,3 +11,4 @@ playwright-report
 !.env.example
 data
 /.claude/settings.local.json
+docs/plans
