@@ -2,14 +2,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import * as t from "./db/schema";
 import { rebase } from "./mutations";
+import type { TagOp } from "./osm/osmchange";
 import { unchangedTags, updateOps } from "./pipeline/match/ops";
 import { saveCandidate } from "./pipeline/store";
-import { accept, decisionOps, type Picks, type Proposal, RefusedError } from "./review";
+import { accept, decisionOps, type Picks, type Proposal, RefusedError, upload } from "./review";
 
 const P = (
 	position: number,
@@ -139,26 +140,29 @@ describe("decisionOps on an address", () => {
 	});
 });
 
+let dir: string;
+let db: Db;
+
+function openDb() {
+	dir = mkdtempSync(join(tmpdir(), "osm-reviewer-review-"));
+	db = createDb(join(dir, "test.db"));
+	runMigrations(db);
+	db.insert(t.users)
+		.values({ id: "u", name: "U", email: "u@example.test", role: "reviewer", initials: "U" })
+		.run();
+	db.insert(t.sources)
+		.values({ id: "s", name: "s", kind: "registry", health: "ok", floor: 0.5 })
+		.run();
+	db.insert(t.areas)
+		.values({ id: "a", name: "a", def: "radius", centerLat: 0, centerLon: 0, sqkm: 1 })
+		.run();
+}
+
+const closeDb = () => rmSync(dir, { recursive: true, force: true });
+
 describe("accept", () => {
-	let dir: string;
-	let db: Db;
-
-	beforeEach(() => {
-		dir = mkdtempSync(join(tmpdir(), "osm-reviewer-review-"));
-		db = createDb(join(dir, "test.db"));
-		runMigrations(db);
-		db.insert(t.users)
-			.values({ id: "u", name: "U", email: "u@example.test", role: "reviewer", initials: "U" })
-			.run();
-		db.insert(t.sources)
-			.values({ id: "s", name: "s", kind: "registry", health: "ok", floor: 0.5 })
-			.run();
-		db.insert(t.areas)
-			.values({ id: "a", name: "a", def: "radius", centerLat: 0, centerLon: 0, sqkm: 1 })
-			.run();
-	});
-
-	afterEach(() => rmSync(dir, { recursive: true, force: true }));
+	beforeEach(openDb);
+	afterEach(closeDb);
 
 	/** An object holding its address as `contact:*`, and many more tags than the screen shows. */
 	function candidate() {
@@ -244,5 +248,98 @@ describe("accept", () => {
 			baseVersion: 4,
 			headVersion: null,
 		});
+	});
+});
+
+describe("upload", () => {
+	beforeEach(() => {
+		openDb();
+		db.insert(t.userSettings)
+			.values({ userId: "u", osmToken: "token", osmConnected: new Date() })
+			.run();
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		closeDb();
+	});
+
+	/** A staged candidate on `osmId` (a new POI when null), decided `at` seconds into 1970. */
+	function stage(key: string, osmId: string | null, ops: TagOp[], at: number) {
+		const id = `c-${key}`;
+		db.insert(t.candidates)
+			.values({
+				id,
+				osmId,
+				sourceRecordKey: key,
+				areaId: "a",
+				sourceId: "s",
+				type: osmId ? "update" : "new",
+				name: key,
+				addr: "",
+				lat: 0,
+				lon: 0,
+				conf: 0.9,
+				version: osmId ? 1 : 0,
+				fetchedAt: new Date(),
+			})
+			.run();
+		db.insert(t.decisions)
+			.values({ candidateId: id, kind: "accepted", userId: "u", decidedAt: new Date(at * 1000) })
+			.run();
+		db.insert(t.decisionTags)
+			.values(ops.map((o, position) => ({ candidateId: id, position, ...o })))
+			.run();
+		return id;
+	}
+
+	const add = (k: string, v: string): TagOp => ({ op: "add", k, v });
+
+	/** OSM's API as far as an upload reaches it: every object at version 1, changeset 77. */
+	function fakeOsm(
+		nodes: Record<number, Record<string, string>>,
+		answer: { upload?: () => Promise<Response>; read?: () => Promise<Response> } = {},
+	) {
+		const calls: { method: string; path: string; body: string }[] = [];
+		vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
+			const { pathname } = new URL(url);
+			const method = init.method ?? "GET";
+			calls.push({ method, path: pathname, body: String(init.body ?? "") });
+			if (pathname.endsWith("/nodes.json"))
+				return Response.json({
+					elements: Object.entries(nodes).map(([id, tags]) => ({
+						type: "node",
+						id: Number(id),
+						version: 1,
+						lat: 0,
+						lon: 0,
+						tags,
+					})),
+				});
+			if (pathname.endsWith("/changeset/create")) return new Response("77");
+			if (pathname.endsWith("/changeset/77/upload"))
+				return answer.upload ? answer.upload() : new Response("<diffResult/>");
+			if (pathname.endsWith("/changeset/77.json") && answer.read) return answer.read();
+			if (pathname.endsWith("/changeset/77/close")) return new Response("");
+			throw new Error(`unexpected ${method} ${pathname}`);
+		});
+		return calls;
+	}
+
+	const sent = (calls: { path: string; body: string }[]) =>
+		calls.filter((c) => c.path.endsWith("/upload")).map((c) => c.body);
+
+	it("refuses a second upload while one is running", async () => {
+		stage("a", null, [add("shop", "bakery")], 1);
+		let answer = (_: Response) => {};
+		const calls = fakeOsm(
+			{},
+			{ upload: () => new Promise<Response>((resolve) => (answer = resolve)) },
+		);
+		const first = upload(db, "u", { comment: "c" });
+		await expect(upload(db, "u", { comment: "c" })).rejects.toThrow("already running");
+		await vi.waitFor(() => expect(sent(calls)).toHaveLength(1));
+		answer(new Response("<diffResult/>"));
+		await expect(first).resolves.toEqual({ changesetId: "77" });
+		expect(sent(calls)).toHaveLength(1);
 	});
 });

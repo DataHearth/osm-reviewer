@@ -352,6 +352,12 @@ function failChangeset(
 }
 
 /**
+ * Two uploads reading the same staged rows would each send them, and every new POI
+ * would be created twice. The app is one process on one database, so a flag suffices.
+ */
+let uploading = false;
+
+/**
  * Uploads every staged candidate, in changesets of the account's `osmPerChangeset`.
  * Each object is fetched first: one whose version moved past the candidate's base
  * is marked in conflict and nothing is sent, which is what the composer's rebase
@@ -359,6 +365,20 @@ function failChangeset(
  * lands between that fetch and the POST. A batch that fails stays staged.
  */
 export async function upload(
+	db: Db,
+	userId: string,
+	v: { comment: string },
+): Promise<{ changesetId: string } | { conflict: UploadConflict }> {
+	if (uploading) throw new RefusedError("an upload is already running — wait for it to finish.");
+	uploading = true;
+	try {
+		return await uploadStaged(db, userId, v);
+	} finally {
+		uploading = false;
+	}
+}
+
+async function uploadStaged(
 	db: Db,
 	userId: string,
 	v: { comment: string },
