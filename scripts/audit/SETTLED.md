@@ -52,7 +52,7 @@ Moving a point, and addresses:
 - A record is matched at its SOURCE point first and stays there when something matches. The campus/mall exception for moves is gone.
 - A school's point more than 1 km from its housenumber moves there, only to a housenumber on the street the source names. A station's point moves (100 m) only when the registry gives it to four decimals or fewer; a precise one stays, is matched at its address only when nothing matches where it stands, and a "new" one says how far its address is. Duplicates are looked for at the source point of a moved record.
 - The address base's street is taken only when it names the street the source gives, whatever type it calls it; a near-miss on another street proposes no address. It is asked again without the postcode when that sinks the line, and with the housenumber glued. A station whose address is in another département than the consolidation is geocoded from its own postcode and commune.
-- Housenumbers: no leading zeros, suffix in lower case, bis/ter written spaced ("12 bis"), as mappers in Lyon and Toulouse do. A merged commune's old name is dropped from the street; a port reads as a street.
+- Housenumbers: no leading zeros, a letter suffix in capitals and glued ("6A", as FR:Adresses and most mapped ones do), bis/ter in lower case and spaced ("12 bis"), as mappers in Lyon and Toulouse do. Comparison ignores case and spacing. A merged commune's old name is dropped from the street; a port reads as a street.
 - A match more than 500 m from BOTH the source's point and the address base's housenumber or street gets no address, contacts or SIRET, and nothing saying what the place is goes onto a far object mapped as no place. Such matches left with nothing to write are counted in the run's line.
 
 Matching:
@@ -79,6 +79,17 @@ Education:
 - Names: EPNAK, IESCA, ICS, ASEI, OVE and ISO stay in capitals; the accent goes back on Métiers, Éclat, Édouard and Boétie; a capital typed twice is dropped; De, Du and Des are small inside a name.
 - A website's fragment is dropped, and https is kept where another site of the UAI gives the page over it.
 - Disputed values are compared under the object's own key, and a move or an address is left out whole.
+
+Settled after the code bug hunt (on `main` 2026-10-05). Where a line here differs from one above, this one wins.
+
+- No `socket:type2_combo:output` or `socket:chademo:output` above 400 kW (the registry holds cabinet or site totals), like the 43.5 kW cap on type 2. A type 2 point declared in watts counts as a bay, not as a DC cabinet's outlet.
+- Phones follow FR:Key:phone: `+33 4 …` for a geographic or mobile number, an 08 number national and spaced (`08 06 14 15 00`), an overseas number under its own code (`+262 262 …`). Mobiles, overseas ones included, are still left out of schools.
+- A blank `cable_t2_attache` means unknown: such type 2 points are proposed as `socket:type2` (and its output) fill-only, and not at all where the object has `socket:type2` or `socket:type2_cable`; `socket:type2_cable` is never ruled out because of them and they weigh nothing in the fit. Explicit true is a cable, explicit false a socket.
+- A day named again after `;` in the registry's hours is one split day (`Mo-Sa 07:30-12:00,13:30-17:30`); overlapping spans propose no opening_hours. Only 23:57 to 23:59 read as the end of the day.
+- `socket:schuko` is never ruled out on a station that ticks an E/F outlet. `motorcycle=yes` from `station_deux_roues` stays, fill-only, with no `motorcar=no` beside it.
+- A school's street may be a cité, ruelle, cour, traverse, résidence, lotissement and the like; a lieu-dit or hameau still gets no address (`addr:place` is never written). A postcode is dropped only where the address lines say CEDEX, BP or CS.
+- A mapper's socket output is read in its own unit (W, kW, kVA) before power classes are compared.
+- A candidate whose OSM object moved on is flagged in conflict whatever its banner says; one accepted during a run is not rewritten; a record that moves to another area is taken over by it in the same run.
 
 Known gaps, deliberately not done: mention them only as a count, do not analyse them. This list replaces any earlier one: a stale UAI on an object that shares no address, phone, email or SIRET with the record (never matched, and not named by the "Another establishment" banner line); point-inside-area containment; street names not verified against OSM highways; no banner when a fill-only value contradicts the source; an IRVE operator, owner or network written as the registry spells it (capitals, legal names); operator:email / charge / maxheight not proposed.
 
