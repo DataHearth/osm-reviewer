@@ -16,10 +16,15 @@ vi.mock("./llm", async (orig) => ({
 vi.mock("node:dns/promises", () => ({
 	lookup: async () => [{ address: "203.0.113.7", family: 4 }],
 }));
-vi.mock("./http", async (orig) => ({
-	...(await orig<typeof import("./http")>()),
-	sleep: async () => {},
-}));
+vi.mock("./http", async (orig) => {
+	const http = await orig<typeof import("./http")>();
+	return {
+		...http,
+		sleep: async () => {},
+		requestPinned: (u: URL, _address: string, timeoutMs: number, ok: number[]) =>
+			http.request(u.toString(), { timeoutMs, redirect: "manual" }, ok),
+	};
+});
 
 import { runSource } from "./runner";
 

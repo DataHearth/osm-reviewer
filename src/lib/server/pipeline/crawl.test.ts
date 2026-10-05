@@ -10,6 +10,18 @@ import {
 	sameHostLinks,
 } from "./crawl";
 
+const pinned = vi.hoisted(() => [] as string[]);
+vi.mock("./http", async (orig) => {
+	const http = await orig<typeof import("./http")>();
+	return {
+		...http,
+		requestPinned: (u: URL, address: string, timeoutMs: number, ok: number[]) => {
+			pinned.push(`${u.host} ${address}`);
+			return http.request(u.toString(), { timeoutMs, redirect: "manual" }, ok);
+		},
+	};
+});
+
 describe("parseBudget", () => {
 	it("reads pages and per-host delay", () => {
 		expect(parseBudget("400 pages / run · 1 request / 4 s per host")).toEqual({
@@ -178,6 +190,21 @@ describe("Crawler", () => {
 		await expect(crawler.fetchSeed("http://a.test/hidden")).resolves.toBeNull();
 		expect(seen).not.toContain("https://www.a.test/private/x");
 		expect(seen).not.toContain("https://b.test/");
+	});
+
+	it("pins each request to the address its check passed, whatever DNS answers next", async () => {
+		crawl({ "https://r.test/": () => html("<p>Bienvenue</p>") });
+		let asked = 0;
+		const rebinding = new Crawler({ pages: 10, delayMs: 0 }, "osm-reviewer/1", async () =>
+			++asked <= 2 ? ["203.0.113.5"] : ["127.0.0.1"],
+		);
+		pinned.length = 0;
+		expect((await rebinding.fetchSeed("https://r.test/"))?.text).toBe("Bienvenue");
+		expect(pinned).toEqual(["r.test 203.0.113.5", "r.test 203.0.113.5"]);
+		await expect(rebinding.fetchSeed("https://r.test/again")).rejects.toThrow(
+			/not a public address/,
+		);
+		expect(pinned).toHaveLength(2);
 	});
 
 	it("skips a page that declares itself too big and stops reading one that never ends", async () => {

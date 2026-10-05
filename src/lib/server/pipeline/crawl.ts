@@ -1,7 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP, isIPv6 } from "node:net";
 import { LINK_HINTS } from "./fr/words";
-import { request, sleep } from "./http";
+import { requestPinned, sleep } from "./http";
 import { parseMatching, type Selector } from "./tagfilter";
 import { PipelineError } from "./types";
 
@@ -253,7 +253,8 @@ export class Crawler {
 		return rules !== null && robotsAllows(rules, u.pathname + u.search);
 	}
 
-	private async assertPublic(u: URL) {
+	/** The address the request is then pinned to, so a second DNS answer cannot replace it. */
+	private async publicAddress(u: URL): Promise<string> {
 		const host = u.hostname.replace(/^\[(.*)\]$/, "$1");
 		let addresses: string[];
 		try {
@@ -263,13 +264,14 @@ export class Crawler {
 		}
 		if (addresses.length === 0 || !addresses.every(isPublicAddress))
 			throw new PipelineError(`${host}: refused, not a public address`);
+		return addresses[0];
 	}
 
-	private async polite(u: URL, ok: number[]): Promise<Response> {
+	private async polite(u: URL, address: string, ok: number[]): Promise<Response> {
 		const wait = (this.lastAt.get(u.host) ?? 0) + this.budget.delayMs - Date.now();
 		if (wait > 0) await sleep(wait);
 		this.lastAt.set(u.host, Date.now());
-		return request(u.toString(), { timeoutMs: PAGE_TIMEOUT_MS, redirect: "manual" }, ok);
+		return requestPinned(u, address, PAGE_TIMEOUT_MS, ok);
 	}
 
 	/**
@@ -283,12 +285,12 @@ export class Crawler {
 	): Promise<{ res: Response; url: URL } | null> {
 		let at = start;
 		for (let hop = 0; hop <= MAX_HOPS; hop++) {
-			await this.assertPublic(at);
+			const address = await this.publicAddress(at);
 			if (robots) {
 				if (!(await this.allowed(at))) return null;
 				this.pages += 1;
 			}
-			const res = await this.polite(at, [...ok, ...REDIRECTS]);
+			const res = await this.polite(at, address, [...ok, ...REDIRECTS]);
 			if (!REDIRECTS.includes(res.status)) return { res, url: at };
 			await res.body?.cancel().catch(() => {});
 			const next = URL.parse(res.headers.get("location") ?? "", at);

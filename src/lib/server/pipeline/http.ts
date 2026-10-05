@@ -1,3 +1,7 @@
+import { request as httpGet, type IncomingMessage } from "node:http";
+import { request as httpsGet } from "node:https";
+import { isIPv6, type LookupFunction } from "node:net";
+import { Readable } from "node:stream";
 import { version } from "../../../../package.json";
 import { PipelineError } from "./types";
 
@@ -40,6 +44,75 @@ export async function request(
 		throw new PipelineError(`${safeHost(url)}: ${res.status} ${res.statusText}`.trim());
 	}
 	return res;
+}
+
+const NULL_BODY = [204, 205, 304];
+
+/**
+ * A GET that connects to `address` and nowhere else. `fetch` resolves the name again on its
+ * own, so DNS could answer the check with a public address and the connection with a private
+ * one; here the socket's lookup only ever returns `address`, while SNI and Host stay the
+ * URL's hostname. Redirects come back unfollowed, the timeout runs until the body is done,
+ * and the body is asked for as identity, since nothing decompresses it.
+ */
+export function requestPinned(
+	url: URL,
+	address: string,
+	timeoutMs: number,
+	okStatuses: number[] = [],
+): Promise<Response> {
+	const family = isIPv6(address) ? 6 : 4;
+	const lookup: LookupFunction = (_host, opts, done) =>
+		opts.all ? done(null, [{ address, family }]) : done(null, address, family);
+	return new Promise((resolve, reject) => {
+		const fail = (err: unknown) =>
+			reject(
+				err instanceof PipelineError
+					? err
+					: new PipelineError(`${url.host}: ${err instanceof Error ? err.message : String(err)}`),
+			);
+		let res: IncomingMessage | undefined;
+		const req = (url.protocol === "https:" ? httpsGet : httpGet)(
+			url,
+			{ headers: { "user-agent": userAgent(), "accept-encoding": "identity" }, lookup },
+			(answer) => {
+				res = answer;
+				answer.once("close", () => clearTimeout(timer));
+				const status = answer.statusCode ?? 0;
+				const encoding = answer.headers["content-encoding"];
+				try {
+					if (encoding && encoding.toLowerCase() !== "identity")
+						throw new PipelineError(`${url.host}: answered ${encoding} where identity was asked`);
+					if ((status < 200 || status > 299) && !okStatuses.includes(status))
+						throw new PipelineError(`${url.host}: ${status} ${answer.statusMessage ?? ""}`.trim());
+					const headers = new Headers();
+					for (const [k, v] of Object.entries(answer.headers))
+						for (const one of [v ?? []].flat()) headers.append(k, one);
+					const empty = NULL_BODY.includes(status);
+					if (empty) answer.resume();
+					resolve(
+						new Response(empty ? null : (Readable.toWeb(answer) as ReadableStream), {
+							status,
+							statusText: answer.statusMessage,
+							headers,
+						}),
+					);
+				} catch (err) {
+					answer.destroy();
+					fail(err);
+				}
+			},
+		);
+		const timer = setTimeout(
+			() => (res ?? req).destroy(new Error(`no complete answer within ${timeoutMs / 1000} s`)),
+			timeoutMs,
+		);
+		req.on("error", (err) => {
+			clearTimeout(timer);
+			fail(err);
+		});
+		req.end();
+	});
 }
 
 export async function getJson<T>(url: string, init: RequestInit & { timeoutMs?: number } = {}) {
