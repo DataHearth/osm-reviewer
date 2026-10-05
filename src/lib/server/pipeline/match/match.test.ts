@@ -1884,43 +1884,6 @@ describe("schools of the fifth audit", () => {
 		);
 		expect(plain.ops.map((o) => `${o.op} ${o.k}`)).toContain("mod amenity");
 	});
-
-	it("writes a street-only address only on an object near that street", () => {
-		const address = [
-			tag("addr:housenumber", "49"),
-			tag("addr:street", "Rue Lafontaine"),
-			tag("addr:postcode", "69100"),
-			tag("addr:city", "Villeurbanne"),
-		].map((t) => ({ ...t, group: "addr", addOnly: true }));
-		const prevert = {
-			...school(
-				"0692609L",
-				45.76072566829456,
-				4.878457372288534,
-				"École primaire Jacques Prévert",
-				[...address, tag("phone", "+33 4 78 68 73 10")],
-			),
-			onStreet: { lat: 45.760726, lon: 4.878457, label: "Rue Lafontaine 69100 Villeurbanne" },
-		};
-		const maternelle = way(526612513, 45.7639517, 4.8770989, {
-			amenity: "school",
-			name: "École maternelle Jacques Prévert",
-			"ref:UAI": "0692609L",
-		});
-		expect(planUpdate(prevert, maternelle, [maternelle]).ops.map((o) => o.k)).toEqual(["phone"]);
-		const tillion = {
-			...prevert,
-			lat: 45.74255126440812,
-			lon: 4.821088303456594,
-			onStreet: { lat: 45.742809, lon: 4.820254, label: "Rue Casimir Périer 69002 Lyon" },
-		};
-		const groupe = way(850927755, 45.7438245, 4.8195879, {
-			amenity: "school",
-			name: "Groupe scolaire Germaine Tillion",
-			"ref:UAI": "0692609L",
-		});
-		expect(planUpdate(tillion, groupe, [groupe]).ops.map((o) => o.k)).toContain("addr:street");
-	});
 });
 
 describe("a commissioning date and the object's own history", () => {

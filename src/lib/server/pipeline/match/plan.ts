@@ -10,7 +10,6 @@ import {
 	type MatchedBy,
 	matchedElsewhere,
 	modWarnings,
-	offStreet,
 	type Placed,
 	splitParts,
 } from "./warnings";
@@ -89,7 +88,6 @@ export function planUpdate(
 				: (o) => reachedAt(o) || !o.k.startsWith("ref:"),
 		);
 	const farOut = far && ops.length < before ? far : undefined;
-	if (offStreet(x, el)) leave((o) => o.group === "addr");
 	const main = mainOf(x);
 	if (groundsOf(x, el, els)) leave((o) => o.k === "amenity" || o.k === "name");
 	// A place closed, being built or turned into something else is not reopened on the

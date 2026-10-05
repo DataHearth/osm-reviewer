@@ -146,8 +146,7 @@ server calls is configuration rather than code:
   names the same street, or is dropped whole, with a bis or ter housenumber written spaced as
   local mappers do; a hit scored under 0.7 still counts down to 0.5 when it is the source's own
   housenumber on a street holding all the source street's words ("rue Rebatel" in Rue Docteur
-  Rebatel), and an address the base found only by its street is written only on an object
-  within 150 m of the base's point for it; a school's point more than 1 km from its housenumber moves there unless
+  Rebatel); a school's point more than 1 km from its housenumber moves there unless
   something matches it where it stands or the base found another street, and a record moved out
   of the area is dropped and counted in the run's message. A station's point moves (100 m) only
   when the registry gives it to four decimals or fewer: a precise one stays, is matched at its

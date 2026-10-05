@@ -95,7 +95,7 @@ Settled after the fifth audit (schools). Where a line here differs from one abov
 
 Addresses:
 - A hit of the address base scored from 0.5 up to 0.7 counts when it is the source's own housenumber on a street holding every word of the source's street ("rue Rebatel" in Rue Docteur Rebatel, "impasse Roger Brechan" as Passage Roger Bréchan); under 0.5 it never does. Schools and stations alike.
-- An address the base found by its street only is written only on an object within 150 m of the base's point for that street; housenumber hits keep the 500 m rule.
+- Open, not settled: an address the base found by its street only still follows the 500 m rule. A 150 m limit measured to the street's point was tried on 05-10-2026 and withdrawn, since it dropped 11 good addresses with Jacques Prévert's (a school stands on its street, not at its centre). Count Jacques Prévert as a known gap.
 - A street spelling a day out ("Rue du Onze Novembre 1918") is the mapper's "Rue du 11 Novembre 1918" (days 1–31, "premier"/"1er"), and the mapper's spelling stays.
 - A match more than 500 m off gets no `start_date` either, so one left with only that is counted as a far match.
 

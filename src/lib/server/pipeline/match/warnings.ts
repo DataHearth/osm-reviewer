@@ -292,21 +292,6 @@ export function farFromAddress(x: Located, el: OsmElement): number | null {
 	return d > FAR_FROM_ADDRESS_M ? d : null;
 }
 
-/**
- * Where the address base found the street but not the housenumber, its point is somewhere on
- * the street: an object farther than this from it may stand on another street altogether.
- */
-const STREET_REACH_M = 150;
-
-/** Whether `el` is too far from the only point the address base gave, a street's, to take its address. */
-export function offStreet(x: Located, el: OsmElement): boolean {
-	return (
-		!!x.onStreet &&
-		!x.atAddress &&
-		distance(x.onStreet.lat, x.onStreet.lon, el.lat, el.lon) > STREET_REACH_M
-	);
-}
-
 /** A point kept where the source puts it is worth a line when its housenumber is this far. */
 const ADDRESS_AWAY_M = 100;
 
