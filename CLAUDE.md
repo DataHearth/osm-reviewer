@@ -172,7 +172,9 @@ server calls is configuration rather than code:
   at a time, and an undo is refused meanwhile. Candidates on one object go out as a single
   modify (refused when two write one key differently), and an object the ops would leave as it
   is gets no modify at all. A diff that got no answer is not assumed lost: the changeset is
-  read back, and counts as uploaded when it holds changes. A closure is
+  closed and read back, and counts as uploaded when it holds changes. One that cannot be
+  settled is parked (a `changesets` row with result `unknown` holding its decisions, so they
+  are neither staged nor resent) until a later upload or composer load reads it back. A closure is
   written as the `disused:` key its candidate carries, and the bare key it replaces is
   dropped. A failed batch is a `changesets` row with a null `osm_id` and the error, and its
   decisions stay staged. The diagnostics page probes `/api/0.6/capabilities.json` only when a
@@ -197,7 +199,7 @@ run over the same areas, configuration and app version, and never on "run now").
 paged by 100 and switched to the `jsonl` export past the 10 000 offset ceiling. A **crawl**'s
 seed rule is either URLs or `key=*` on OSM POIs (`website=*`): the pages OSM already points
 at, same host only (redirects are followed by hand under the same rule), public addresses
-only, robots.txt honoured, the budget and per-host delay read from the free text, and only the
+only (each request is pinned to the address that was checked), robots.txt honoured, the budget and per-host delay read from the free text, and only the
 model extractor reads them. A read that returns no rows at all sweeps nothing. Relation areas are cut by their bounding box
 while a source is read, which lets in a neighbour's corner of the box, and matching fetches
 OSM over that same box: cut by the exact `area` instead, a neighbour's records find nothing to
@@ -290,7 +292,9 @@ its address each get a line in the candidate's `warning`, which the review scree
 "Check" banner.
 Candidates upsert on `(source_id, source_record_key)`; a record whose `content_hash` is
 unchanged is left as the reviewer saw it, and a queued candidate whose OSM object has a newer
-version than its base is flagged in conflict instead of being silently recomputed. A candidate
+version than its base is flagged in conflict instead of being silently recomputed. Resolving
+it (the review screen's rebase) reads the object from OSM and the candidate's writes against
+it: what the mapper already wrote is dropped, and a candidate with nothing left is removed. A candidate
 with a decision is never touched, and one the source no longer lists is swept only if
 undecided and only after a run that read the source to the end (a crawl never sweeps).
 
