@@ -3,6 +3,8 @@ import { CREATED_BY } from "$lib/server/instance";
 import { changesetXml, type OsmElement } from "./osmchange";
 
 const TIMEOUT_MS = 20_000;
+/** OSM can take a while to apply a large diff, and an upload given up on has an unknown outcome. */
+const UPLOAD_TIMEOUT_MS = 60_000;
 const BATCH = 100;
 
 export class OsmError extends Error {
@@ -16,12 +18,12 @@ export class OsmError extends Error {
 
 export const userAgent = () => `${CREATED_BY} (+${process.env.ORIGIN ?? "http://localhost"})`;
 
-async function call(path: string, init: RequestInit & { token?: string }) {
-	const { token, headers, ...rest } = init;
+async function call(path: string, init: RequestInit & { token?: string; timeout?: number }) {
+	const { token, headers, timeout = TIMEOUT_MS, ...rest } = init;
 	let res: Response;
 	try {
 		res = await fetch(osm.url + path, {
-			signal: AbortSignal.timeout(TIMEOUT_MS),
+			signal: AbortSignal.timeout(timeout),
 			...rest,
 			headers: {
 				"User-Agent": userAgent(),
@@ -30,9 +32,9 @@ async function call(path: string, init: RequestInit & { token?: string }) {
 			},
 		});
 	} catch (err) {
-		const timeout = err instanceof Error && err.name === "TimeoutError";
+		const timedOut = err instanceof Error && err.name === "TimeoutError";
 		throw new OsmError(
-			timeout ? `${osm.url} did not answer in ${TIMEOUT_MS / 1000} s` : `${osm.url} is unreachable`,
+			timedOut ? `${osm.url} did not answer in ${timeout / 1000} s` : `${osm.url} is unreachable`,
 			null,
 		);
 	}
@@ -153,7 +155,18 @@ export async function uploadChange(token: string, changeset: string, xml: string
 		token,
 		headers: XML,
 		body: xml,
+		timeout: UPLOAD_TIMEOUT_MS,
 	});
+}
+
+/** How many changes a changeset holds, which is how an upload that got no answer learns whether it landed. */
+export async function changesetChanges(token: string, changeset: string) {
+	const res = await call(`/api/0.6/changeset/${changeset}.json`, { token });
+	const body = (await res.json()) as { changeset?: { changes_count?: unknown } };
+	const count = body.changeset?.changes_count;
+	if (typeof count !== "number")
+		throw new OsmError("the changeset read carried no change count", null);
+	return count;
 }
 
 /** Best effort: a changeset that stays open closes itself after an hour of idleness. */
@@ -164,7 +177,7 @@ export async function closeChangeset(token: string, changeset: string) {
 /** Null when the API answers its capabilities document, else why it did not. */
 export async function probeOsm(): Promise<string | null> {
 	try {
-		await call("/api/0.6/capabilities.json", { signal: AbortSignal.timeout(3000) });
+		await call("/api/0.6/capabilities.json", { timeout: 3000 });
 		return null;
 	} catch (err) {
 		return err instanceof Error ? err.message : String(err);

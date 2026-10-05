@@ -421,4 +421,36 @@ describe("upload", () => {
 		]);
 		expect(db.select().from(t.decisions).get()?.changesetId).toBe(changesetId);
 	});
+
+	it("counts a diff that got no answer as uploaded when the changeset holds it", async () => {
+		const id = stage("a", null, [add("shop", "bakery")], 1);
+		fakeOsm(
+			{},
+			{
+				upload: () => Promise.reject(new TypeError("fetch failed")),
+				read: async () => Response.json({ changeset: { id: 77, changes_count: 1 } }),
+			},
+		);
+		await expect(upload(db, "u", { comment: "c" })).resolves.toEqual({ changesetId: "77" });
+		expect(db.select().from(t.decisions).get()).toMatchObject({
+			candidateId: id,
+			changesetId: "77",
+		});
+	});
+
+	it("says the outcome is unknown when the changeset cannot be read back", async () => {
+		stage("a", null, [add("shop", "bakery")], 1);
+		fakeOsm(
+			{},
+			{
+				upload: () => Promise.reject(new TypeError("fetch failed")),
+				read: () => Promise.reject(new TypeError("fetch failed")),
+			},
+		);
+		await expect(upload(db, "u", { comment: "c" })).rejects.toThrow(
+			"Check changeset 77 on OSM before uploading again.",
+		);
+		expect(db.select().from(t.decisions).get()?.changesetId).toBeNull();
+		expect(db.select().from(t.changesets).get()?.error).toMatch(/77 .* unknown/);
+	});
 });

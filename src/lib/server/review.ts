@@ -7,6 +7,7 @@ import * as t from "$lib/server/db/schema";
 import { CREATED_BY } from "$lib/server/instance";
 import { notify } from "$lib/server/notify";
 import {
+	changesetChanges,
 	closeChangeset,
 	createChangeset,
 	fetchElements,
@@ -528,9 +529,32 @@ async function uploadStaged(
 			...(account.osmHashtag ? { hashtags: clip(hashtagTag(account.osmHashtag)) } : {}),
 		};
 
-		let id: string | null = null;
+		/** `unknown` is a changeset that may hold the batch: the diff got no answer and reading it back failed. */
+		const failed = async (e: unknown, unknown?: string) => {
+			const error = unknown
+				? `${errorText(e)}. Changeset ${unknown} could not be read back, so whether it holds this batch is unknown.`
+				: errorText(e);
+			failChangeset(db, userId, {
+				comment: v.comment,
+				objects: label,
+				result: e instanceof OsmError && e.status ? String(e.status) : "network",
+				error,
+			});
+			await notify(db, "uploadFailed", `Upload of ${label} failed: ${error}`);
+			return new RefusedError(
+				`upload failed — ${error}` +
+					(last ? " Earlier batches were uploaded." : unknown ? "" : " Nothing was written.") +
+					(unknown ? ` Check changeset ${unknown} on OSM before uploading again.` : ""),
+			);
+		};
+
+		let id: string;
 		try {
 			id = await createChangeset(token, tags);
+		} catch (e) {
+			throw await failed(e);
+		}
+		try {
 			await uploadChange(token, id, osmChange(changes, id, CREATED_BY));
 		} catch (e) {
 			const moved = e instanceof OsmError && e.status === 409 && /mismatch/i.test(e.message);
@@ -543,25 +567,18 @@ async function uploadStaged(
 					const head = row.osmId ? reread.get(row.osmId) : undefined;
 					if (head && head.version > row.base) {
 						markConflict(db, row, head);
-						return conflictOf(row, head, id ?? "—", staged.length);
+						return conflictOf(row, head, id, staged.length);
 					}
 				}
 			}
-			const text = errorText(e);
-			failChangeset(db, userId, {
-				comment: v.comment,
-				objects: label,
-				result: e instanceof OsmError && e.status ? String(e.status) : "network",
-				error: text,
-			});
-			await notify(db, "uploadFailed", `Upload of ${label} failed: ${text}`);
-			throw new RefusedError(
-				"upload failed — " +
-					text +
-					(last ? " Earlier batches were uploaded." : " Nothing was written."),
-			);
+			// No answer is not a refusal: OSM may have applied the diff before the line dropped.
+			const held =
+				e instanceof OsmError && e.status === null
+					? await changesetChanges(token, id).catch(() => null)
+					: 0;
+			if (!held) throw await failed(e, held === null ? id : undefined);
 		} finally {
-			if (id) await closeChangeset(token, id);
+			await closeChangeset(token, id);
 		}
 
 		recordUpload(db, userId, { id, osmId: id, comment: v.comment, objects: label }, [
