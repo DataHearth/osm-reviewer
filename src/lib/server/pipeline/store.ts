@@ -79,6 +79,29 @@ export function existingCandidates(db: Db, sourceId: string): Map<string, Existi
 }
 
 /**
+ * Whether the candidate is still undecided and in this area. `existingCandidates` is read
+ * before the slow read and match, and a reviewer may decide the candidate meanwhile, so
+ * every write to one checks again in the same transaction.
+ */
+function stillOpen(db: Pick<Db, "select">, id: string, areaId: string): boolean {
+	const live = db
+		.select({ areaId: t.candidates.areaId, decision: t.decisions.candidateId })
+		.from(t.candidates)
+		.leftJoin(t.decisions, eq(t.decisions.candidateId, t.candidates.id))
+		.where(eq(t.candidates.id, id))
+		.get();
+	return !!live && live.decision === null && live.areaId === areaId;
+}
+
+/** Stores the record a candidate was made from, for one made before records were kept. */
+export function backfillRecord(db: Db, existing: Existing, record: SourceRecord) {
+	db.transaction((tx) => {
+		if (stillOpen(tx, existing.id, existing.areaId))
+			tx.update(t.candidates).set({ record }).where(eq(t.candidates.id, existing.id)).run();
+	});
+}
+
+/**
  * Writes one candidate with its tags and evidence. A candidate a reviewer has decided on,
  * or one another area already holds, is left exactly as it is: the unique key is the
  * source's record, so one record cannot be queued twice.
@@ -86,7 +109,8 @@ export function existingCandidates(db: Db, sourceId: string): Map<string, Existi
 export function saveCandidate(db: Db, w: CandidateWrite, existing: Existing | undefined): boolean {
 	if (existing && (existing.decided || existing.areaId !== w.areaId)) return false;
 
-	db.transaction((tx) => {
+	return db.transaction((tx) => {
+		if (existing && !stillOpen(tx, existing.id, w.areaId)) return false;
 		const row = {
 			sourceId: w.sourceId,
 			areaId: w.areaId,
@@ -164,8 +188,8 @@ export function saveCandidate(db: Db, w: CandidateWrite, existing: Existing | un
 			tx.insert(t.candidateNearby)
 				.values(w.nearby.map((label, position) => ({ candidateId: id, position, label })))
 				.run();
+		return true;
 	});
-	return true;
 }
 
 const CHUNK = 500;

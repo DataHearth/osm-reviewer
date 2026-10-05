@@ -17,7 +17,13 @@ import { countPois, fetchElements } from "./overpass";
 import { addressGaps, mergeSites } from "./preset";
 import { hash, type Reader } from "./reader";
 import { str } from "./row";
-import { existingCandidates, saveCandidate, sweepVanished, touchSeen } from "./store";
+import {
+	backfillRecord,
+	existingCandidates,
+	saveCandidate,
+	sweepVanished,
+	touchSeen,
+} from "./store";
 import {
 	allowedBy,
 	lookalikeSelectors,
@@ -306,11 +312,7 @@ export async function processArea(
 			had.osmId === osmId &&
 			had.warning === warning
 		) {
-			if (!had.hasRecord)
-				db.update(t.candidates)
-					.set({ record: recordOf(rec) })
-					.where(eq(t.candidates.id, had.id))
-					.run();
+			if (!had.hasRecord) backfillRecord(db, had, recordOf(rec));
 			unchanged.push(x.key);
 			continue;
 		}

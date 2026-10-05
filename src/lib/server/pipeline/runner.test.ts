@@ -307,6 +307,44 @@ describe("runSource (registry)", () => {
 		).toEqual(["FRS1", "FRS2"]);
 	});
 
+	it("leaves alone a candidate a reviewer decided while the run was matching", async () => {
+		await runSource(db, "irve");
+		const before = cands().find((c) => c.sourceRecordKey === "FRS2");
+		db.insert(t.users)
+			.values({ id: "u1", name: "R", email: "r@x.test", role: "reviewer", initials: "R" })
+			.run();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (u: string | URL | Request) => {
+				if (String(u).includes("overpass"))
+					db.insert(t.decisions)
+						.values({
+							candidateId: before?.id as string,
+							kind: "accepted",
+							userId: "u1",
+							decidedAt: new Date(),
+						})
+						.onConflictDoNothing()
+						.run();
+				return fakeFetch(u);
+			}),
+		);
+		osm.elements.push({
+			type: "node",
+			id: 200,
+			lat: 45.77,
+			lon: 4.84,
+			version: 3,
+			tags: { amenity: "charging_station", "ref:EU:EVSE": "FR*S2*E1" },
+		});
+		await runSource(db, "irve");
+		expect(cands().find((c) => c.sourceRecordKey === "FRS2")).toMatchObject({
+			type: "new",
+			osmId: null,
+			baseVersion: null,
+		});
+	});
+
 	it("flags a queued candidate whose OSM object moved on", async () => {
 		await runSource(db, "irve");
 		const el = osm.elements[0] as { version: number; tags: Record<string, string> };
