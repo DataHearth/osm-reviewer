@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { csvRows, pickResource, sniffDelimiter } from "./registry";
+import { pickResource } from "./fr/datagouv";
+import { csvRows, sniffDelimiter } from "./registry";
 
 const stream = (...parts: string[]) =>
 	new ReadableStream<Uint8Array>({
