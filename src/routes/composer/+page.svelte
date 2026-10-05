@@ -129,7 +129,7 @@ const errBody = $derived(
 			class="sticky top-0 z-1 flex flex-wrap items-center gap-x-[14px] gap-y-1 border-b border-line bg-bar px-[14px] py-2 text-[11.5px] md:px-[18px]"
 		>
 			<span class="text-muted md:w-[120px]">changeset {s.cs}/{s.changesets}</span>
-			<span class="min-w-0 flex-1 text-faint">{s.rows.length} objects · source <span class="text-ink-2">{sourceTag(s.rows)}</span></span>
+			<span class="min-w-0 flex-1 text-faint">{s.csObjects} objects · source <span class="text-ink-2">{sourceTag(s.rows)}</span></span>
 			{#if s.changesets > 1}
 				<span class="flex items-center gap-2">
 					{#if s.cs > 1}<a class={pageStep(true)} href="?cs={s.cs - 1}" aria-label="Previous changeset">‹</a>{:else}<span class={pageStep(false)}>‹</span>{/if}
@@ -166,12 +166,12 @@ const errBody = $derived(
 				? 'cursor-not-allowed border border-line bg-raised text-faint'
 				: 'cursor-pointer border-0 bg-accent font-semibold text-accent-ink'}"
 		>
-			{sent ? "uploaded ✓" : `upload ${s.candidates} objects  ⏎`}
+			{sent ? "uploaded ✓" : `upload ${s.objects} objects  ⏎`}
 		</button>
 		<span class="text-[12px] text-faint">
 			{sent
 				? "uploaded — see history"
-				: `${s.candidates} objects will be modified in ${s.changesets} changeset${s.changesets === 1 ? "" : "s"}`}
+				: `${s.objects} objects will be modified in ${s.changesets} changeset${s.changesets === 1 ? "" : "s"}`}
 		</span>
 		<button
 			type="button"

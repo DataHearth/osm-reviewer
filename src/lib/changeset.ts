@@ -11,7 +11,21 @@ export const PARKED = "unknown";
 export const resultTone = (result: string) =>
 	result === "ok" ? "text-ok" : result === PARKED ? "text-warn" : "text-bad";
 
-/** Staged rows, in upload order, cut into the changesets they will be sent as. */
+/**
+ * Staged rows, in upload order, grouped by the object they write, each object where its first
+ * row falls. Several records can match one object (a campus), and its rows travel together as
+ * one `<modify>`; a new POI is an object of its own.
+ */
+export function byObject<T extends { candidateId: string; osmId: string | null }>(rows: T[]) {
+	const objects = new Map<string, T[]>();
+	for (const row of rows) {
+		const key = row.osmId ?? row.candidateId;
+		objects.set(key, [...(objects.get(key) ?? []), row]);
+	}
+	return [...objects.values()];
+}
+
+/** Objects, in upload order, cut into the changesets they will be sent as, `size` to each. */
 export function batches<T>(rows: T[], size: number): T[][] {
 	const out: T[][] = [];
 	for (let i = 0; i < rows.length; i += Math.max(1, size))

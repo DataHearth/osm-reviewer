@@ -13,7 +13,7 @@ import {
 	type SQL,
 	sql,
 } from "drizzle-orm";
-import { sourceLabel } from "$lib/changeset";
+import { batches, byObject, sourceLabel } from "$lib/changeset";
 import {
 	CONF_HIGH,
 	CONF_MID,
@@ -431,34 +431,47 @@ const toStaged = (d: DecisionRow): Staged => ({
 });
 
 /**
- * One changeset's worth of the staged rows — the `cs`th batch of `size`, in upload
- * order — and the totals across all of them. A batch past the end clamps to the last,
- * so removing the last row of the last batch never strands the page.
+ * One changeset's worth of the staged rows — the `cs`th, cut as the upload cuts them: by
+ * object, `size` objects to a changeset — and the totals across all of them. A changeset
+ * past the end clamps to the last, so removing the last row of the last one never strands
+ * the page. An object that turns out to need nothing sent is only known at upload time, so
+ * it is still counted here.
  */
 export async function loadStaged(db: Db, cs: number, size: number) {
-	const [candidates, [{ writes }]] = await Promise.all([
-		stagedCount(db),
+	const [order, [{ writes }]] = await Promise.all([
+		db
+			.select({ candidateId: t.decisions.candidateId, osmId: t.candidates.osmId })
+			.from(t.decisions)
+			.innerJoin(t.candidates, eq(t.candidates.id, t.decisions.candidateId))
+			.where(t.STAGED)
+			.orderBy(asc(t.decisions.decidedAt), asc(t.decisions.candidateId)),
 		db
 			.select({ writes: n })
 			.from(t.decisionTags)
 			.innerJoin(t.decisions, eq(t.decisions.candidateId, t.decisionTags.candidateId))
 			.where(t.STAGED),
 	]);
-	const changesets = Math.max(1, Math.ceil(candidates / size));
-	const page = Math.min(cs, changesets);
-	const rows = await db.query.decisions.findMany({
-		where: (d) => and(eq(d.kind, "accepted"), isNull(d.changesetId)),
-		with: WITH_TAGS,
-		orderBy: (d) => [asc(d.decidedAt), asc(d.candidateId)],
-		limit: size,
-		offset: (page - 1) * size,
-	});
+	const objects = byObject(order);
+	const changesets = batches(objects, size);
+	const page = Math.min(cs, Math.max(1, changesets.length));
+	const here = changesets[page - 1] ?? [];
+	const ids = here.flat().map((r) => r.candidateId);
+	const rows = ids.length
+		? await db.query.decisions.findMany({
+				where: (d) => inArray(d.candidateId, ids),
+				with: WITH_TAGS,
+			})
+		: [];
+	const at = new Map(ids.map((id, i) => [id, i]));
+	rows.sort((x, y) => (at.get(x.candidateId) ?? 0) - (at.get(y.candidateId) ?? 0));
 
 	return {
 		rows: rows.map(toStaged),
-		candidates,
+		candidates: order.length,
+		objects: objects.length,
+		csObjects: here.length,
 		writes,
-		changesets: candidates ? changesets : 0,
+		changesets: changesets.length,
 		cs: page,
 	};
 }

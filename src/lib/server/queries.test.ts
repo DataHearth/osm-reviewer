@@ -1,12 +1,13 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { queueQuerySchema, queueSearch } from "$lib/schemas/queue";
 import { createDb, type Db } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import * as t from "./db/schema";
-import { loadCounts, loadQueue } from "./queries";
+import { loadCounts, loadQueue, loadStaged } from "./queries";
 import { emailTaken } from "./users";
 
 interface Fixture {
@@ -252,6 +253,55 @@ describe("loadCounts", () => {
 		expect(await loadCounts(db, "all")).toMatchObject({ scope: null, pending: 8, total: 9 });
 		expect((await loadCounts(db, "gone")).scope).toBe("a");
 		expect(await loadCounts(db, "b")).toMatchObject({ scope: "b", pending: 1, total: 1 });
+	});
+});
+
+describe("loadStaged", () => {
+	/** Accepts each candidate in turn, on the OSM object named beside it (a new POI when null). */
+	function stage(rows: [string, string | null][]) {
+		rows.forEach(([id, osmId], i) => {
+			db.update(t.candidates).set({ osmId }).where(eq(t.candidates.id, id)).run();
+			db.insert(t.decisions)
+				.values({ candidateId: id, kind: "accepted", userId: "u", decidedAt: new Date(i * 1000) })
+				.run();
+			db.insert(t.decisionTags)
+				.values({ candidateId: id, position: 0, op: "add", k: "k", v: "v" })
+				.run();
+		});
+	}
+
+	it("cuts changesets by object, as the upload does, with an object's rows together", async () => {
+		stage([
+			["k1", null],
+			["k3", "node/1"],
+			["k2", null],
+			["k4", "node/1"],
+			["k6", "node/2"],
+		]);
+		const first = await loadStaged(db, 1, 2);
+		expect(first).toMatchObject({
+			candidates: 5,
+			objects: 4,
+			csObjects: 2,
+			writes: 5,
+			changesets: 2,
+			cs: 1,
+		});
+		expect(first.rows.map((r) => r.id)).toEqual(["k1", "k3", "k4"]);
+
+		const last = await loadStaged(db, 9, 2);
+		expect(last).toMatchObject({ cs: 2, csObjects: 2 });
+		expect(last.rows.map((r) => r.id)).toEqual(["k2", "k6"]);
+	});
+
+	it("answers no changesets when nothing is staged", async () => {
+		expect(await loadStaged(db, 3, 2)).toMatchObject({
+			rows: [],
+			candidates: 0,
+			objects: 0,
+			changesets: 0,
+			cs: 1,
+		});
 	});
 });
 

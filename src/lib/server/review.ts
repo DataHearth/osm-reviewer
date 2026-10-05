@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { batches, OSM_MAX, PARKED, sourceLabel, sourceTag } from "$lib/changeset";
+import { batches, byObject, OSM_MAX, PARKED, sourceLabel, sourceTag } from "$lib/changeset";
 import { osm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
@@ -273,19 +273,14 @@ function stagedRows(db: Db): StagedRow[] {
 }
 
 /**
- * The staged rows of each object, in decision order. Several records can match one object
- * (a campus), and two `<modify>` of it in one upload would carry the same version: OSM
- * refuses the second, and across changesets the first upload's own version bump would
- * look like someone else's edit. Two rows writing one key differently are not guessed at.
+ * Two `<modify>` of one object in one upload would carry the same version: OSM refuses the
+ * second, and across changesets the first upload's own version bump would look like someone
+ * else's edit. So an object's rows are merged, and two of them writing one key differently
+ * are not guessed at.
  */
-function byObject(staged: StagedRow[]): StagedRow[][] {
-	const objects = new Map<string, StagedRow[]>();
-	for (const row of staged) {
-		const key = row.osmId ?? row.candidateId;
-		objects.set(key, [...(objects.get(key) ?? []), row]);
-	}
+function refuseClashes(objects: StagedRow[][]) {
 	const label = (r: StagedRow) => `${r.name} (${r.key})`;
-	for (const rows of objects.values()) {
+	for (const rows of objects) {
 		const written = new Map<string, { v: string | null; row: StagedRow }>();
 		for (const row of rows)
 			for (const o of row.ops) {
@@ -298,7 +293,6 @@ function byObject(staged: StagedRow[]): StagedRow[][] {
 				written.set(o.k, { v, row });
 			}
 	}
-	return [...objects.values()];
 }
 
 /** Records that OSM moved an object after the candidate was computed; this is what the composer's rebase resolves. */
@@ -539,6 +533,7 @@ async function uploadStaged(
 	const staged = stagedRows(db);
 	if (staged.length === 0) throw new RefusedError("nothing staged.");
 	const objects = byObject(staged);
+	refuseClashes(objects);
 
 	let current: Map<string, OsmElement>;
 	try {
