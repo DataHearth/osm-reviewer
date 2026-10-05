@@ -11,9 +11,13 @@ import type { Session, User } from "$lib/types";
 export const SESSION_COOKIE = "osm-session";
 
 /** The value arrives from a query string or a cookie, so only same-site paths are honoured.
-    Browsers read `/\` as `//`, so a backslash second is as off-site as a slash. */
-export const safePath = (value: string | null | undefined) =>
-	value?.startsWith("/") && !/^\/[/\\]/.test(value) ? value : "/";
+    Browsers drop tabs and newlines from a URL and read `\` as `/`, so `/\t/evil.com` and
+    `/\evil.com` are both `//evil.com`: either kind of character refuses the value outright. */
+export function safePath(value: string | null | undefined): string {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
+	if (!value?.startsWith("/") || /[\u0000-\u001f\u007f\\]/.test(value)) return "/";
+	return new URL(value, "http://x").origin === "http://x" ? value : "/";
+}
 
 /**
  * Sessions are long-lived on purpose: the instance sits on a trusted LAN and a
