@@ -130,6 +130,12 @@ describe("decisionOps on an address", () => {
 	it("counts a part typed over as taken", () => {
 		expect(refused({ tags: [1, 2], set: ["addr:street=Rue Y"] })).toBeNull();
 	});
+
+	it("refuses a move whose old key is rewritten rather than removed", () => {
+		expect(refused({ tags: [0, 2], set: ["contact:street=Rue Y"] })).toBe(
+			"contact:street moves to addr:street — it can only be removed, not rewritten.",
+		);
+	});
 });
 
 describe("accept", () => {

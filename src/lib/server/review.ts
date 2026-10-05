@@ -102,7 +102,7 @@ export function decisionOps(
 		push({ tagId: fromProposal(k), op: "del", k, v: cur, was: null });
 	}
 	if (!out.length) throw new RefusedError("nothing selected — no tags would be written.");
-	refuseParts(proposals, new Set(out.map((o) => o.k)));
+	refuseParts(proposals, new Map(out.map((o) => [o.k, o.op])));
 	return out;
 }
 
@@ -112,12 +112,15 @@ const groupName = (g: string) => (g === "addr" ? "the address" : `the ${g} group
  * A move written half is a lost or doubled value, and half an address is a wrong one. A
  * proposal counts as taken whether it was picked as is, typed over, or deleted by hand.
  */
-function refuseParts(proposals: Proposal[], written: Set<string>) {
-	for (const p of proposals)
-		if (p.pair && written.has(p.k) !== written.has(p.pair)) {
-			const [from, to] = p.op === "del" ? [p.k, p.pair] : [p.pair, p.k];
+function refuseParts(proposals: Proposal[], written: Map<string, DecisionOp["op"]>) {
+	for (const p of proposals) {
+		if (!p.pair) continue;
+		const [from, to] = p.op === "del" ? [p.k, p.pair] : [p.pair, p.k];
+		if (written.has(p.k) !== written.has(p.pair))
 			throw new RefusedError(`${from} moves to ${to} — accept both or neither.`);
-		}
+		if (written.has(from) && written.get(from) !== "del")
+			throw new RefusedError(`${from} moves to ${to} — it can only be removed, not rewritten.`);
+	}
 	for (const g of new Set(proposals.flatMap((p) => (p.group ? [p.group] : [])))) {
 		const members = proposals.filter((p) => p.group === g);
 		const taken = members.find((p) => written.has(p.k));
