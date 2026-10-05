@@ -463,25 +463,45 @@ export async function loadStaged(db: Db, cs: number, size: number) {
 	};
 }
 
-/** Every area the top bar's picker offers, most waiting first. */
+/**
+ * Every area the top bar's picker offers, most waiting first. This runs on every navigation,
+ * so it is three grouped reads and no more: `loadAreas` has the fuller tallies.
+ */
 async function loadScopeAreas(db: Db): Promise<(ScopeArea & { queued: number })[]> {
-	const [rows, tally] = await Promise.all([
-		db.query.areas.findMany({ with: { sources: true } }),
-		areaTallies(db),
+	const [rows, queued, links] = await Promise.all([
+		db.select().from(t.areas),
+		db
+			.select({
+				areaId: t.candidates.areaId,
+				n,
+				decided: sql<number>`count(${t.decisions.candidateId})`.mapWith(Number),
+			})
+			.from(t.candidates)
+			.leftJoin(t.decisions, eq(t.decisions.candidateId, t.candidates.id))
+			.groupBy(t.candidates.areaId),
+		db
+			.select({ areaId: t.areaSources.areaId, n })
+			.from(t.areaSources)
+			.groupBy(t.areaSources.areaId),
 	]);
+	const queuedBy = new Map(queued.map((r) => [r.areaId, r]));
+	const linksBy = new Map(links.map((r) => [r.areaId, r.n]));
 
 	return rows
-		.map((a) => ({
-			id: a.id,
-			name: a.name,
-			def: a.def,
-			radius: a.radius ?? undefined,
-			status: areaStatus(a),
-			lastRun: areaLastRun(a),
-			sources: a.sources.length,
-			queued: tally(a.id).total,
-			pending: tally(a.id).pending,
-		}))
+		.map((a) => {
+			const tally = queuedBy.get(a.id);
+			return {
+				id: a.id,
+				name: a.name,
+				def: a.def,
+				radius: a.radius ?? undefined,
+				status: areaStatus(a),
+				lastRun: areaLastRun(a),
+				sources: linksBy.get(a.id) ?? 0,
+				queued: tally?.n ?? 0,
+				pending: (tally?.n ?? 0) - (tally?.decided ?? 0),
+			};
+		})
 		.sort((x, y) => y.pending - x.pending);
 }
 

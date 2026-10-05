@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +6,8 @@ import { queueQuerySchema, queueSearch } from "$lib/schemas/queue";
 import { createDb, type Db } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import * as t from "./db/schema";
-import { loadQueue } from "./queries";
+import { loadCounts, loadQueue } from "./queries";
+import { emailTaken } from "./users";
 
 interface Fixture {
 	id: string;
@@ -235,6 +235,31 @@ describe("loadQueue", () => {
 	it("answers one empty page when nothing matches", async () => {
 		const none = await loadQueue(db, "b", q({ type: "update", page: "4" }), 3);
 		expect(none).toMatchObject({ candidates: [], total: 0, page: 1, pages: 1, offset: 0 });
+	});
+});
+
+describe("loadCounts", () => {
+	it("scopes to the area with the most waiting, and counts every area for the picker", async () => {
+		const counts = await loadCounts(db, undefined);
+		expect(counts).toMatchObject({ scope: "a", pending: 7, total: 8, staged: 0 });
+		expect(counts.areas.map((a) => [a.id, a.pending, a.sources])).toEqual([
+			["a", 7, 0],
+			["b", 1, 0],
+		]);
+	});
+
+	it("adds the areas up when unscoped, and falls back from an area since removed", async () => {
+		expect(await loadCounts(db, "all")).toMatchObject({ scope: null, pending: 8, total: 9 });
+		expect((await loadCounts(db, "gone")).scope).toBe("a");
+		expect(await loadCounts(db, "b")).toMatchObject({ scope: "b", pending: 1, total: 1 });
+	});
+});
+
+describe("emailTaken", () => {
+	it("compares addresses whatever their case, and leaves the asking account out", () => {
+		expect(emailTaken(db, "U@Example.test")).toBe(true);
+		expect(emailTaken(db, "U@Example.test", "u")).toBe(false);
+		expect(emailTaken(db, "other@example.test")).toBe(false);
 	});
 });
 
