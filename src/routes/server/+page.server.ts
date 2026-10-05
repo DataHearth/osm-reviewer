@@ -3,7 +3,6 @@ import { message, type SuperValidated, superValidate } from "sveltekit-superform
 import { zod4 } from "sveltekit-superforms/adapters";
 import { areaDraftSchema, areaIdSchema, areaPausedSchema } from "$lib/schemas/area";
 import {
-	type NotifForm,
 	newUserSchema,
 	notifSchema,
 	userDisabledSchema,
@@ -13,7 +12,7 @@ import {
 import { sourceDraftSchema, sourceEnabledSchema, sourceIdSchema } from "$lib/schemas/source";
 import { pipeline, sso, ssoShown } from "$lib/server/config";
 import { db } from "$lib/server/db";
-import { redact } from "$lib/server/diagnostics";
+import { redact, shownNotif } from "$lib/server/diagnostics";
 import { health, instanceFacts, release } from "$lib/server/instance";
 import {
 	applyAreaDraft,
@@ -51,13 +50,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		superValidate(zod4(areaDraftSchema)),
 		// Nobody but an admin can save the pane, so nobody else needs its secrets to fill it.
 		loadNotif(db).then((v) =>
-			superValidate(admin ? v : (redact(v) as NotifForm), zod4(notifSchema), { errors: false }),
+			superValidate(admin ? v : shownNotif(v), zod4(notifSchema), { errors: false }),
 		),
 		superValidate(zod4(newUserSchema)),
 	]);
 
 	return {
-		sources,
+		// An endpoint may carry its credentials in the URL; only an admin edits it.
+		sources: admin ? sources : (redact(sources) as typeof sources),
 		areas: areas.areas,
 		yields: areas.yields,
 		forms: { source: sourceForm, area: areaForm, notif, newUser },

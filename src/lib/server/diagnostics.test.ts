@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { redact, stripCredentials } from "./diagnostics";
+import type { NotifForm } from "$lib/schemas/settings";
+import { redact, shownNotif, stripCredentials } from "./diagnostics";
 
 describe("redact", () => {
 	it("blanks secrets by key, at any depth, and leaves empty ones empty", () => {
@@ -19,12 +20,13 @@ describe("redact", () => {
 	});
 
 	it("leaves nothing secret in the notification settings a reviewer is shown", () => {
-		const shown = redact({
-			ntfy: { on: true, server: "https://bot:pw@ntfy.lan", topic: "osm" },
-			webhook: { on: true, url: "https://hooks.lan/in", secret: "hmac-key" },
+		const shown = shownNotif({
+			ntfy: { on: true, server: "https://bot:pw@ntfy.lan", topic: "osm-s3cret-topic" },
+			webhook: { on: true, url: "https://hooks.lan/services/T0/B0/pathtoken", secret: "hmac-key" },
 			email: { on: true, to: "ops@lan", relay: "smtp://alerts:hunter2@mail.lan:587" },
-		});
-		expect(JSON.stringify(shown)).not.toMatch(/pw|hmac-key|hunter2/);
+		} as NotifForm);
+		expect(JSON.stringify(shown)).not.toMatch(/pw|hmac-key|hunter2|s3cret|pathtoken/);
+		expect(shown.webhook.url).toBe("https://hooks.lan");
 	});
 
 	it("strips credentials out of URLs", () => {

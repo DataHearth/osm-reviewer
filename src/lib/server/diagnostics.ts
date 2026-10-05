@@ -1,3 +1,4 @@
+import type { NotifForm } from "$lib/schemas/settings";
 import * as config from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
@@ -27,6 +28,20 @@ export function redact(value: unknown, key = ""): unknown {
 	if (value && typeof value === "object")
 		return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redact(v, k)]));
 	return value;
+}
+
+/**
+ * The notification settings as an account that cannot save them sees them. A webhook's path
+ * and an ntfy topic are what lets anyone post to the channel, so they go with the secrets.
+ */
+export function shownNotif(v: NotifForm): NotifForm {
+	const shown = redact(v) as NotifForm;
+	const origin = (url: string) => (URL.canParse(url) ? new URL(url).origin : REDACTED);
+	return {
+		...shown,
+		ntfy: { ...shown.ntfy, topic: shown.ntfy.topic && REDACTED },
+		webhook: { ...shown.webhook, url: shown.webhook.url && origin(shown.webhook.url) },
+	};
 }
 
 export async function diagnosticsBundle(db: Db) {
