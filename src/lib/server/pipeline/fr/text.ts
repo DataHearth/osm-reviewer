@@ -111,12 +111,17 @@ export function addressQuery(line: string, postcode: string, city: string): stri
 	return postcode && q.includes(postcode) ? q : [q, postcode, city].filter(Boolean).join(" ");
 }
 
-/** A housenumber as Lyon's and Toulouse's mappers write it: "74 bis", not the address base's "74bis". */
+/**
+ * A housenumber as Lyon's and Toulouse's mappers write it: "74 bis", not the address base's
+ * "74bis", and a letter suffix in capitals, "6A", as FR:Adresses does.
+ */
 export const spacedNumber = (s: string) =>
-	compactNumber(s).replace(
-		/(\d)(bis|ter|quater|quinquies)$/i,
-		(_, n: string, w: string) => `${n} ${w.toLowerCase()}`,
-	);
+	compactNumber(s)
+		.replace(
+			/(\d)(bis|ter|quater|quinquies)$/i,
+			(_, n: string, w: string) => `${n} ${w.toLowerCase()}`,
+		)
+		.replace(/(\d)([a-z])(?=$|-)/g, (_, n: string, l: string) => n + l.toUpperCase());
 
 /** `+33 5 61…` and `05 61…` are the same line, and so are `+262 262…` and `0262…`. */
 export const digits = (s: string) =>

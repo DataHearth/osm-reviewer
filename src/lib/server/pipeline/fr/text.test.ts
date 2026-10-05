@@ -17,7 +17,8 @@ describe("spacedNumber", () => {
 	it("keeps a letter suffix in the source's case and writes bis and ter spaced, in lowercase", () => {
 		expect(spacedNumber("6A")).toBe("6A");
 		expect(spacedNumber("12 B")).toBe("12B");
-		expect(spacedNumber("12b")).toBe("12b");
+		expect(spacedNumber("12b")).toBe("12B");
+		expect(spacedNumber("20a-28")).toBe("20A-28");
 		expect(spacedNumber("074BIS")).toBe("74 bis");
 		expect(spacedNumber("3 Ter")).toBe("3 ter");
 	});
