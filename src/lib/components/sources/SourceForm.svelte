@@ -36,7 +36,7 @@ $effect(() => {
 
 const d = $derived($form);
 const ready = $derived(sourceDraftSchema.safeParse(d).success);
-const enabledAreas = $derived(review.visibleAreas.filter((a) => d.areas[a.id]).length);
+const enabledAreas = $derived(review.areas.filter((a) => d.areas[a.id]).length);
 
 /** The chip being typed is not part of the draft — only committed keys are. */
 let allowInput = $state("");
@@ -191,7 +191,7 @@ function allowKeydown(e: KeyboardEvent) {
 
 	<div class="border-b border-line-soft px-[18px] py-[13px]">
 		<div class="mb-2 font-sans text-[10.5px] tracking-[0.08em] text-muted">AREAS TO ENABLE</div>
-		{#each review.visibleAreas as a (a.id)}
+		{#each review.areas as a (a.id)}
 			{@const on = !!d.areas[a.id]}
 			<div class="grid grid-cols-[26px_minmax(0,1fr)_150px] items-center gap-2 py-1.5 text-[12.5px]">
 				<button type="button" class={boxBtn(on)} onclick={() => ($form.areas = { ...d.areas, [a.id]: !on })}>{on ? "[x]" : "[ ]"}</button>

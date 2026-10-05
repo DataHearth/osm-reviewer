@@ -202,10 +202,6 @@ class ReviewState {
 		return Object.fromEntries(this.areas.map((a) => [a.id, a.status === "disabled"]));
 	}
 
-	get visibleAreas() {
-		return this.areas;
-	}
-
 	// ── derived ─────────────────────────────────────────────────────────────
 	get candidate(): Candidate | undefined {
 		const list = this.candidates;
@@ -315,7 +311,7 @@ class ReviewState {
 	}
 
 	area(id: string | null) {
-		const list = this.visibleAreas;
+		const list = this.areas;
 		return list.find((a) => a.id === id) ?? list[0];
 	}
 
@@ -607,7 +603,7 @@ class ReviewState {
 			matching: "",
 			budget: "400 pages / run · 1 request / 4 s per host",
 			extractor: "deterministic",
-			areas: Object.fromEntries(this.visibleAreas.map((a, i) => [a.id, i === 0])),
+			areas: Object.fromEntries(this.areas.map((a, i) => [a.id, i === 0])),
 		};
 		const s = editId ? this.sources.find((x) => x.id === editId) : null;
 		if (!s) return blank;
@@ -625,7 +621,7 @@ class ReviewState {
 			matching: s.matching,
 			budget: s.budget,
 			extractor: s.extractor,
-			areas: Object.fromEntries(this.visibleAreas.map((a) => [a.id, !!links[`${s.id}:${a.id}`]])),
+			areas: Object.fromEntries(this.areas.map((a) => [a.id, !!links[`${s.id}:${a.id}`]])),
 		};
 	}
 

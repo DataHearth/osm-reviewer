@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { batches, sourceLabel, sourceTag } from "$lib/changeset";
+import { asc, eq, inArray } from "drizzle-orm";
+import { batches, OSM_MAX, sourceLabel, sourceTag } from "$lib/changeset";
 import { osm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
@@ -53,8 +53,6 @@ export interface DecisionOp {
 	v: string;
 	was: string | null;
 }
-
-const OSM_MAX = 255;
 
 /**
  * The ops an accept writes. A reviewer's write says only what the key should end up as;
@@ -143,13 +141,26 @@ export function accept(db: Db, userId: string, id: string, picks: Picks) {
 			`accept blocked — version conflict unresolved. Rebase onto v${c.headVersion}.`,
 		);
 
-	const proposals = db
+	const tags = db
 		.select()
 		.from(t.tags)
 		.where(eq(t.tags.candidateId, id))
 		.orderBy(asc(t.tags.position))
-		.all()
-		.map((tag) => ({ ...tag, ev: hasEvidence(db, tag.id) }));
+		.all();
+	const evidenced = new Set(
+		db
+			.select({ tagId: t.evidence.tagId })
+			.from(t.evidence)
+			.where(
+				inArray(
+					t.evidence.tagId,
+					tags.map((tag) => tag.id),
+				),
+			)
+			.all()
+			.map((e) => e.tagId),
+	);
+	const proposals = tags.map((tag) => ({ ...tag, ev: evidenced.has(tag.id) }));
 	if (proposals.every((p) => !p.ev))
 		throw new RefusedError("accept blocked — candidate quarantined, no tag has evidence.");
 
@@ -162,10 +173,6 @@ export function accept(db: Db, userId: string, id: string, picks: Picks) {
 			.values(ops.map((o, position) => ({ candidateId: id, position, ...o })))
 			.run();
 	});
-}
-
-function hasEvidence(db: Db, tagId: number) {
-	return db.select().from(t.evidence).where(eq(t.evidence.tagId, tagId)).all().length > 0;
 }
 
 export function reject(db: Db, userId: string, id: string) {
@@ -210,7 +217,7 @@ function stagedRows(db: Db): StagedRow[] {
 		.from(t.decisions)
 		.innerJoin(t.candidates, eq(t.candidates.id, t.decisions.candidateId))
 		.innerJoin(t.sources, eq(t.sources.id, t.candidates.sourceId))
-		.where(and(eq(t.decisions.kind, "accepted"), isNull(t.decisions.changesetId)))
+		.where(t.STAGED)
 		.orderBy(asc(t.decisions.decidedAt), asc(t.decisions.candidateId))
 		.all();
 	const picked = db
@@ -295,8 +302,7 @@ const conflictOf = (
 	},
 });
 
-const TAG_MAX = 255;
-const clip = (s: string) => (s.length > TAG_MAX ? `${s.slice(0, TAG_MAX - 1)}…` : s);
+const clip = (s: string) => (s.length > OSM_MAX ? `${s.slice(0, OSM_MAX - 1)}…` : s);
 
 /** `#a;#b`, the form OSM's `hashtags` tag takes, from however the setting was typed. */
 const hashtagTag = (raw: string) =>

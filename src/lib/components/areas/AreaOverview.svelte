@@ -8,7 +8,7 @@ import { comma, num, statusText } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
 
-const list = $derived(review.visibleAreas);
+const list = $derived(review.areas);
 const paused = $derived(list.filter((a) => review.paused[a.id]).length);
 const never = $derived(list.filter((a) => a.lastRun === "never").length);
 

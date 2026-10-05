@@ -14,7 +14,15 @@ import {
 	sql,
 } from "drizzle-orm";
 import { sourceLabel } from "$lib/changeset";
-import { comma, daysSince, fmtDate, STALE_AFTER_DAYS, stamp } from "$lib/format";
+import {
+	CONF_HIGH,
+	CONF_MID,
+	comma,
+	daysSince,
+	fmtDate,
+	STALE_AFTER_DAYS,
+	stamp,
+} from "$lib/format";
 import type { QueueQuery, SortKey } from "$lib/schemas/queue";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
@@ -43,6 +51,7 @@ const RECENT_DAYS = 30;
 export type Yields = Record<string, [number, number | null]>;
 
 const n = sql<number>`count(*)`.mapWith(Number);
+const accepted = sql<number>`coalesce(sum(${t.decisions.kind} = 'accepted'), 0)`.mapWith(Number);
 
 /** Per area: what the pipeline queued, and what reviewers have decided of it. */
 async function areaTallies(db: Db) {
@@ -93,7 +102,7 @@ export async function loadSources(db: Db): Promise<Source[]> {
 			.select({
 				sourceId: t.candidates.sourceId,
 				n,
-				accepted: sql<number>`coalesce(sum(${t.decisions.kind} = 'accepted'), 0)`.mapWith(Number),
+				accepted,
 			})
 			.from(t.decisions)
 			.innerJoin(t.candidates, eq(t.decisions.candidateId, t.candidates.id))
@@ -163,7 +172,7 @@ export async function loadAreas(db: Db): Promise<{ areas: Area[]; yields: Yields
 				areaId: t.candidates.areaId,
 				n,
 				decided: sql<number>`count(${t.decisions.candidateId})`.mapWith(Number),
-				accepted: sql<number>`coalesce(sum(${t.decisions.kind} = 'accepted'), 0)`.mapWith(Number),
+				accepted,
 			})
 			.from(t.candidates)
 			.leftJoin(t.decisions, eq(t.decisions.candidateId, t.candidates.id))
@@ -230,9 +239,9 @@ const SORT_EXPR: Record<SortKey, () => SQL> = {
 
 const CONF_RANGE: Record<QueueQuery["conf"], SQL | undefined> = {
 	all: undefined,
-	high: gte(cand.conf, 0.85),
-	mid: and(gte(cand.conf, 0.6), lt(cand.conf, 0.85)),
-	low: lt(cand.conf, 0.6),
+	high: gte(cand.conf, CONF_HIGH),
+	mid: and(gte(cand.conf, CONF_MID), lt(cand.conf, CONF_HIGH)),
+	low: lt(cand.conf, CONF_MID),
 };
 
 export interface QueuePage {
@@ -393,7 +402,8 @@ function toCandidate(c: CandidateRow): Candidate {
 	};
 }
 
-const STAGED = and(eq(t.decisions.kind, "accepted"), isNull(t.decisions.changesetId));
+const stagedCount = async (db: Db) =>
+	(await db.select({ n }).from(t.decisions).where(t.STAGED))[0].n;
 
 const WITH_TAGS = {
 	candidate: { with: { source: true } },
@@ -426,18 +436,15 @@ const toStaged = (d: DecisionRow): Staged => ({
  * so removing the last row of the last batch never strands the page.
  */
 export async function loadStaged(db: Db, cs: number, size: number) {
-	const [[{ n }], [{ w }]] = await Promise.all([
+	const [candidates, [{ writes }]] = await Promise.all([
+		stagedCount(db),
 		db
-			.select({ n: sql<number>`count(*)`.mapWith(Number) })
-			.from(t.decisions)
-			.where(STAGED),
-		db
-			.select({ w: sql<number>`count(*)`.mapWith(Number) })
+			.select({ writes: n })
 			.from(t.decisionTags)
 			.innerJoin(t.decisions, eq(t.decisions.candidateId, t.decisionTags.candidateId))
-			.where(STAGED),
+			.where(t.STAGED),
 	]);
-	const changesets = Math.max(1, Math.ceil(n / size));
+	const changesets = Math.max(1, Math.ceil(candidates / size));
 	const page = Math.min(cs, changesets);
 	const rows = await db.query.decisions.findMany({
 		where: (d) => and(eq(d.kind, "accepted"), isNull(d.changesetId)),
@@ -449,9 +456,9 @@ export async function loadStaged(db: Db, cs: number, size: number) {
 
 	return {
 		rows: rows.map(toStaged),
-		candidates: n,
-		writes: w,
-		changesets: n ? changesets : 0,
+		candidates,
+		writes,
+		changesets: candidates ? changesets : 0,
 		cs: page,
 	};
 }
@@ -489,14 +496,10 @@ export async function loadCounts(db: Db, wanted: string | undefined): Promise<Co
 	const scope =
 		wanted === "all" ? null : ((all.find((a) => a.id === wanted) ?? all[0])?.id ?? null);
 	const inScope = scope ? all.filter((a) => a.id === scope) : all;
-	const [staged] = await db
-		.select({ n: sql<number>`count(*)`.mapWith(Number) })
-		.from(t.decisions)
-		.where(and(eq(t.decisions.kind, "accepted"), isNull(t.decisions.changesetId)));
 
 	return {
 		pending: inScope.reduce((n, a) => n + a.pending, 0),
-		staged: staged.n,
+		staged: await stagedCount(db),
 		total: inScope.reduce((n, a) => n + a.queued, 0),
 		scope,
 		areas: all.map(({ queued: _queued, ...a }) => a),

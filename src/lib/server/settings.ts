@@ -27,6 +27,13 @@ async function rowFor(db: Db, userId: string) {
 	return created;
 }
 
+const keysOf = (s: typeof t.userSettings.$inferSelect): KeysForm => ({
+	vim: s.vim,
+	confirmAccept: s.confirmAccept,
+	showHints: s.showHints,
+	bindings: resolveBindings(s.bindings),
+});
+
 export async function loadSettings(db: Db, userId: string): Promise<SettingsPanes> {
 	const s = await rowFor(db, userId);
 	const user = await db.query.users.findFirst({ where: (u) => eq(u.id, userId) });
@@ -38,12 +45,7 @@ export async function loadSettings(db: Db, userId: string): Promise<SettingsPane
 			hashtag: s.osmHashtag,
 			perChangeset: s.osmPerChangeset,
 		},
-		keys: {
-			vim: s.vim,
-			confirmAccept: s.confirmAccept,
-			showHints: s.showHints,
-			bindings: resolveBindings(s.bindings),
-		},
+		keys: keysOf(s),
 		identity:
 			s.osmUserName && s.osmConnected && s.osmToken
 				? {
@@ -130,13 +132,7 @@ export async function saveKeys(db: Db, userId: string, v: KeysForm) {
 
 /** What the root layout's key handler needs, on every screen. */
 export async function loadKeys(db: Db, userId: string) {
-	const s = await rowFor(db, userId);
-	return {
-		vim: s.vim,
-		confirmAccept: s.confirmAccept,
-		showHints: s.showHints,
-		bindings: resolveBindings(s.bindings),
-	};
+	return keysOf(await rowFor(db, userId));
 }
 
 export function saveAccount(db: Db, userId: string, v: AccountForm) {

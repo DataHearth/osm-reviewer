@@ -1,4 +1,4 @@
-import { relations, sql } from "drizzle-orm";
+import { and, eq, isNull, relations, sql } from "drizzle-orm";
 import {
 	check,
 	index,
@@ -406,6 +406,9 @@ export const decisionTags = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.candidateId, t.k] })],
 );
+
+/** Staged is derived, never stored: accepted, and not yet carried away by a changeset. */
+export const STAGED = and(eq(decisions.kind, "accepted"), isNull(decisions.changesetId));
 
 export const usersRelations = relations(users, ({ many, one }) => ({
 	sessions: many(sessions),

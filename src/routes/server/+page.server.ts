@@ -10,7 +10,7 @@ import {
 	userRoleSchema,
 } from "$lib/schemas/settings";
 import { sourceDraftSchema, sourceEnabledSchema, sourceIdSchema } from "$lib/schemas/source";
-import { pipeline, sso } from "$lib/server/config";
+import { pipeline, sso, ssoShown } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { health, instanceFacts, release } from "$lib/server/instance";
 import {
@@ -58,13 +58,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		user,
 		instance: admin ? instanceFacts(db) : null,
 		health: admin ? await health(db) : [],
-		sso: {
-			enabled: sso.enabled,
-			provider: sso.provider,
-			host: sso.host,
-			clientId: sso.clientId,
-			scopes: sso.scopes,
-		},
+		sso: ssoShown,
 	};
 };
 

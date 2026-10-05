@@ -8,11 +8,15 @@ export const num = (v: string | number) => {
 	return Number.isNaN(n) ? 0 : n;
 };
 
-export const confTone = (v: number): Tone => (v >= 0.85 ? "ok" : v >= 0.6 ? "warn" : "bad");
+/** Where confidence turns from bad to warn to ok, on screen and in the queue's filter alike. */
+export const CONF_MID = 0.6;
+export const CONF_HIGH = 0.85;
+
 export const confText = (v: number) =>
-	v >= 0.85 ? "text-ok" : v >= 0.6 ? "text-warn" : "text-bad";
+	v >= CONF_HIGH ? "text-ok" : v >= CONF_MID ? "text-warn" : "text-bad";
 export const pct = (v: number) => `${Math.floor(v * 100)}%`;
-export const confBg = (v: number) => (v >= 0.85 ? "bg-ok" : v >= 0.6 ? "bg-warn" : "bg-bad");
+export const confBg = (v: number) =>
+	v >= CONF_HIGH ? "bg-ok" : v >= CONF_MID ? "bg-warn" : "bg-bad";
 
 export const toneText = (t: Tone | undefined) =>
 	t === "ok" ? "text-ok" : t === "warn" ? "text-warn" : t === "bad" ? "text-bad" : "text-ink";

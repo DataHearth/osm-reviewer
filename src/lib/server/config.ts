@@ -23,6 +23,15 @@ export const sso = {
 	group: process.env.SSO_GROUP ?? "osm-reviewers",
 };
 
+/** What the settings screens show of the provider: never the secret. */
+export const ssoShown = {
+	enabled: sso.enabled,
+	provider: sso.provider,
+	host: sso.host,
+	clientId: sso.clientId,
+	scopes: sso.scopes,
+};
+
 /**
  * The first admin, which `bootstrapAdmin` creates at boot while the users table is empty.
  */

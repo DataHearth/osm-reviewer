@@ -8,25 +8,23 @@ import * as t from "$lib/server/db/schema";
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type Writer = Db | Tx;
 
-function syncAreaLinks(db: Writer, sourceId: string, wanted: Record<string, boolean>) {
-	for (const [areaId, on] of Object.entries(wanted)) {
-		if (on) {
-			db.insert(t.areaSources).values({ areaId, sourceId }).onConflictDoNothing().run();
-		} else {
-			db.delete(t.areaSources)
-				.where(and(eq(t.areaSources.areaId, areaId), eq(t.areaSources.sourceId, sourceId)))
-				.run();
-		}
-	}
+function setLink(db: Writer, areaId: string, sourceId: string, on: boolean) {
+	if (on) db.insert(t.areaSources).values({ areaId, sourceId }).onConflictDoNothing().run();
+	else
+		db.delete(t.areaSources)
+			.where(and(eq(t.areaSources.areaId, areaId), eq(t.areaSources.sourceId, sourceId)))
+			.run();
 }
 
-function nextId(db: Writer, table: "sources" | "areas", prefix: string): string {
-	const rows =
-		table === "sources"
-			? db.select({ id: t.sources.id }).from(t.sources).all()
-			: db.select({ id: t.areas.id }).from(t.areas).all();
-	const taken = new Set(rows.map((r) => r.id));
-	let n = rows.length + 1;
+function nextId(db: Writer, table: typeof t.sources | typeof t.areas, prefix: string): string {
+	const taken = new Set(
+		db
+			.select({ id: table.id })
+			.from(table)
+			.all()
+			.map((r) => r.id),
+	);
+	let n = taken.size + 1;
 	while (taken.has(prefix + n)) n += 1;
 	return prefix + n;
 }
@@ -46,7 +44,7 @@ export function applySourceDraft(db: Db, d: SourceDraft): string {
 	const key = d.key.trim();
 
 	return db.transaction((tx) => {
-		const id = d.editId ?? nextId(tx, "sources", "src");
+		const id = d.editId ?? nextId(tx, t.sources, "src");
 
 		if (d.editId) {
 			// A blank key keeps the saved one: the form never receives it back.
@@ -74,7 +72,7 @@ export function applySourceDraft(db: Db, d: SourceDraft): string {
 				.values(allow.map((pattern, position) => ({ sourceId: id, position, pattern })))
 				.run();
 		}
-		syncAreaLinks(tx, id, d.areas);
+		for (const [areaId, on] of Object.entries(d.areas)) setLink(tx, areaId, id, on);
 		return id;
 	});
 }
@@ -83,7 +81,7 @@ export function applyAreaDraft(db: Db, d: AreaDraft): string {
 	const sqkm = (Math.PI * d.radius * d.radius) / 1e6;
 
 	return db.transaction((tx) => {
-		const id = d.editId ?? nextId(tx, "areas", "a");
+		const id = d.editId ?? nextId(tx, t.areas, "a");
 		const shape =
 			d.mode === "radius"
 				? {
@@ -130,15 +128,7 @@ export function applyAreaDraft(db: Db, d: AreaDraft): string {
 				.run();
 		}
 
-		for (const [sourceId, on] of Object.entries(d.srcs)) {
-			if (on) {
-				tx.insert(t.areaSources).values({ areaId: id, sourceId }).onConflictDoNothing().run();
-			} else {
-				tx.delete(t.areaSources)
-					.where(and(eq(t.areaSources.areaId, id), eq(t.areaSources.sourceId, sourceId)))
-					.run();
-			}
-		}
+		for (const [sourceId, on] of Object.entries(d.srcs)) setLink(tx, id, sourceId, on);
 		return id;
 	});
 }

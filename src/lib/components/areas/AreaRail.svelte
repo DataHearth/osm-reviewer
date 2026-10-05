@@ -8,7 +8,7 @@ const overviewOn = $derived(!review.areaId && !review.draft);
 <div
 	class="sticky top-0 z-1 flex items-center justify-between gap-2.5 border-b border-line-soft bg-head py-1.5 pr-2.5 pl-[14px] font-sans text-[10.5px] tracking-[0.08em] text-muted"
 >
-	<span class="whitespace-nowrap">AREAS · {review.visibleAreas.length}</span>
+	<span class="whitespace-nowrap">AREAS · {review.areas.length}</span>
 	<button class={railAdd(true)} onclick={() => review.newArea()}>+ new area</button>
 </div>
 
@@ -21,10 +21,10 @@ const overviewOn = $derived(!review.areaId && !review.draft);
 	}}
 >
 	<div class="text-[12.5px] {overviewOn ? 'text-ink' : 'text-ink-2'}">All areas</div>
-	<div class="mt-1 text-[11px] text-faint">{review.visibleAreas.length} areas · aggregate</div>
+	<div class="mt-1 text-[11px] text-faint">{review.areas.length} areas · aggregate</div>
 </button>
 
-{#each review.visibleAreas as a (a.id)}
+{#each review.areas as a (a.id)}
 	{@const on = a.id === review.areaId && (!review.draft || review.draft.editId === a.id)}
 	{@const st = review.paused[a.id] ? "disabled" : a.status}
 	<button

@@ -105,7 +105,7 @@ function draw() {
 	}
 
 	if (!d && !review.areaId) {
-		const all = review.visibleAreas;
+		const all = review.areas;
 		const key =
 			"all|" +
 			all.map((a) => `${a.id}:${review.radiusOf(a)}:${review.paused[a.id] ? "p" : "a"}`).join(",");
@@ -188,7 +188,7 @@ $effect(() => {
 	draft?.picked;
 	review.radii;
 	review.paused;
-	review.visibleAreas.length;
+	review.areas.length;
 	draw();
 });
 </script>

@@ -115,7 +115,7 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 			<div class="border-b border-line-soft px-4 py-[9px] font-sans text-[10.5px] tracking-[0.08em] text-muted">
 				AREAS USING THIS SOURCE
 			</div>
-			{#each review.visibleAreas as a (a.id)}
+			{#each review.areas as a (a.id)}
 				{@const on = !!review.links[s.id + ":" + a.id]}
 				{@const y = review.yieldFor(s.id, a.id)}
 				<div class="grid grid-cols-[26px_minmax(0,1fr)_96px_74px] items-center gap-2 border-b border-line-faint px-4 py-2 text-[12.5px]">
