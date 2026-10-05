@@ -64,9 +64,15 @@ export function parseRobots(txt: string, agent: string): Rules {
 		if (field === "allow") cur.rules.allow.push(value);
 		else if (field === "disallow" && value) cur.rules.disallow.push(value);
 	}
-	const mine = agent.toLowerCase();
-	const own = groups.find((g) => g.agents.some((a) => a !== "*" && mine.includes(a)));
-	return (own ?? groups.find((g) => g.agents.includes("*")))?.rules ?? { allow: [], disallow: [] };
+	// RFC 9309 §2.2.1: groups are matched on the product token alone, every group naming
+	// it counts, and `*` only applies when none does.
+	const product = agent.split("/")[0].trim().toLowerCase();
+	const named = groups.filter((g) => g.agents.some((a) => a.split("/")[0].trim() === product));
+	const chosen = named.length ? named : groups.filter((g) => g.agents.includes("*"));
+	return {
+		allow: chosen.flatMap((g) => g.rules.allow),
+		disallow: chosen.flatMap((g) => g.rules.disallow),
+	};
 }
 
 function ruleMatches(rule: string, path: string): boolean {

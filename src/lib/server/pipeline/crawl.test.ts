@@ -62,6 +62,30 @@ Disallow: /blocked
 		expect(robotsAllows(r, "/blocked/a")).toBe(false);
 		expect(robotsAllows(r, "/private/a")).toBe(true);
 	});
+
+	it("merges every group for the product token, and never matches by substring", () => {
+		const agent = "osm-reviewer/1.0 (+https://rev.example.org)";
+		const both = parseRobots(
+			"User-agent: *\nDisallow: /a\n\nUser-agent: *\nDisallow: /private\n",
+			agent,
+		);
+		expect(robotsAllows(both, "/a/x")).toBe(false);
+		expect(robotsAllows(both, "/private/x")).toBe(false);
+
+		const named = parseRobots(
+			"User-agent: OSM-Reviewer\nDisallow: /a\n\nUser-agent: example\nAllow: /\n\nUser-agent: osm-reviewer\nDisallow: /b\n\nUser-agent: *\nDisallow: /\n",
+			agent,
+		);
+		expect(robotsAllows(named, "/a/x")).toBe(false);
+		expect(robotsAllows(named, "/b/x")).toBe(false);
+		expect(robotsAllows(named, "/c")).toBe(true);
+
+		const foreign = parseRobots(
+			"User-agent: example\nAllow: /\n\nUser-agent: *\nDisallow: /\n",
+			agent,
+		);
+		expect(robotsAllows(foreign, "/x")).toBe(false);
+	});
 });
 
 describe("htmlToText", () => {
