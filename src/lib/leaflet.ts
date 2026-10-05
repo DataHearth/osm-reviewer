@@ -4,7 +4,7 @@ export type Leaflet = typeof import("leaflet");
 
 // The app ships no tiles of its own: every map is live OSM raster, filtered to
 // the dark ground at the pane level so the markers keep their real colour.
-export const DARK_TILES = "invert(0.92) hue-rotate(180deg) saturate(0.4) contrast(0.88)";
+const DARK_TILES = "invert(0.92) hue-rotate(180deg) saturate(0.4) contrast(0.88)";
 
 let pending: Promise<Leaflet> | null = null;
 

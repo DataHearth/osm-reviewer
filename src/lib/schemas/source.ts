@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SOURCE_KINDS = ["registry", "crawl", "api"] as const;
+const SOURCE_KINDS = ["registry", "crawl", "api"] as const;
 export const EXTRACTORS = ["deterministic", "model"] as const;
 export const SCHEDULES = ["every 12 h", "daily", "weekly", "monthly"] as const;
 

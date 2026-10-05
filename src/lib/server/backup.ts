@@ -27,7 +27,7 @@ export function pruneSnapshots(dir: string, keep: number) {
 }
 
 /** Skips when one is already in flight, so a slow disk never stacks two on each other. */
-export async function runBackup(db: Db, dir: string, keep: number): Promise<string | null> {
+async function runBackup(db: Db, dir: string, keep: number): Promise<string | null> {
 	if (running) return null;
 	running = true;
 	try {

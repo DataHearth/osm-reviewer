@@ -13,8 +13,7 @@ import { probeOsm } from "$lib/server/osm/api";
 import type { MetricRow } from "$lib/types";
 import { version } from "../../../package.json";
 
-export const NOT_CONFIGURED = "not configured";
-export const NOT_IMPLEMENTED = "not implemented";
+const NOT_CONFIGURED = "not configured";
 
 /** The `created_by` tag a changeset carries. */
 export const CREATED_BY = `osm-reviewer/${version}`;

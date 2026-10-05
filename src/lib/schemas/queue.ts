@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SORT_KEYS = ["type", "name", "tags", "source", "age", "flags", "conf"] as const;
+const SORT_KEYS = ["type", "name", "tags", "source", "age", "flags", "conf"] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
 export type SortDir = "asc" | "desc";
 

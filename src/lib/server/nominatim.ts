@@ -23,7 +23,7 @@ interface Hit {
 const rounded = (n: number, digits = 1) => Math.round(n * 10 ** digits) / 10 ** digits;
 
 /** The bbox's area. It overstates the boundary's, so the picker labels it as the bbox. */
-export function bboxSqkm([s, w, n, e]: [number, number, number, number]) {
+function bboxSqkm([s, w, n, e]: [number, number, number, number]) {
 	const height = (n - s) * 111;
 	const width = (e - w) * 111 * Math.cos((((s + n) / 2) * Math.PI) / 180);
 	return { height, width, sqkm: Math.max(1, Math.round(height * width)) };

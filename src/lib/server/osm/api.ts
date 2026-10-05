@@ -80,7 +80,7 @@ const toElement = (e: RawElement): OsmElement => ({
 	members: e.members,
 });
 
-export const parseRef = (ref: string) => {
+const parseRef = (ref: string) => {
 	const [type, id] = ref.split("/");
 	if ((type !== "node" && type !== "way" && type !== "relation") || !/^\d+$/.test(id))
 		throw new OsmError(`"${ref}" is not an OSM object reference`, null);
