@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { presetById } from "../presets";
 import type { Row } from "../types";
-import { openedForSure, personalMailbox, schoolAddress } from "./education";
+import { personalMailbox } from "./mailbox";
+import { schoolAddress } from "./school-address";
 
 describe("Annuaire de l'éducation preset", () => {
 	const edu = presetById("annuaire-education");
@@ -356,16 +357,6 @@ describe("schoolAddress", () => {
 		for (const code_postal of ["75116", "69126", "13127", "20167", "38113"])
 			expect(at({ code_postal })?.postcode).toBe(code_postal);
 		expect(at({ code_postal: "69321", adresse_3: "69321 LYON CEDEX 07" })?.postcode).toBe("");
-	});
-});
-
-describe("openedForSure", () => {
-	it("trusts a register date only after the bulk entries, and never a merged primaire's", () => {
-		expect(openedForSure("1965-05-01", "lycée")).toBe(false);
-		expect(openedForSure("1977-03-08", "élémentaire")).toBe(false);
-		expect(openedForSure("2023-09-01", "maternelle")).toBe(true);
-		expect(openedForSure("2017-09-01", "primaire")).toBe(false);
-		expect(openedForSure("", null)).toBe(false);
 	});
 });
 

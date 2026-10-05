@@ -1,7 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
+import { functions } from "../fr/functions";
 import { compile } from "./compile";
 import { evaluate } from "./evaluate";
 import { type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
@@ -190,6 +192,24 @@ describe("evaluate", () => {
 		expect(evaluate(p, [row({ note: "2", free: "x" })])?.tags.map((t) => t.key)).toEqual(["fee"]);
 	});
 
+	it("takes from a function only the key its tag names, unless the tag ends in *", () => {
+		const m = mapping({
+			tags: {
+				"addr:street": { function: "any.thing/address", reads: ["note"], conf: 0.8, group: "addr" },
+				"addr:city": { function: "any.thing/address", reads: ["note"], conf: 0.9, group: "addr" },
+				fee: { value: "free", conf: 0.5 },
+			},
+		});
+		const functions = {
+			"any.thing/address": () => ({ "addr:street": "Rue A", "addr:city": "Lyon" }),
+		};
+		const tags = evaluate(program(m), [row({})], functions)?.tags;
+		expect(tags?.map((t) => [t.key, t.value, t.conf, t.group])).toEqual([
+			["addr:street", "Rue A", 0.8, "addr"],
+			["addr:city", "Lyon", 0.9, "addr"],
+		]);
+	});
+
 	it("names the rule that failed when evaluating it throws", () => {
 		const m = mapping({
 			tags: { x: { value: "string(double(note))", conf: 0.5 }, f: { value: "free", conf: 0.5 } },
@@ -253,6 +273,17 @@ mapping: XX:thing
 columns: [ident, gratis, spare]
 rename: { ident: id, gratis: free }
 ${extra}`;
+
+	it("registers every function the school mapping names", () => {
+		const school = mappingSchema.parse(
+			parse(
+				readFileSync(join(import.meta.dirname, "../../../../../mappings/fr/school.yaml"), "utf8"),
+			),
+		);
+		const named = Object.values(school.tags).flatMap((t) => ("function" in t ? [t.function] : []));
+		expect(named.length).toBeGreaterThan(0);
+		for (const name of named) expect(functions).toHaveProperty([name]);
+	});
 
 	it("passes every file the app ships", () => {
 		const reports = validate(join(import.meta.dirname, "../../../../.."));

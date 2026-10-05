@@ -18,6 +18,8 @@ inputs:
   opening_date: the date the establishment opened, YYYY-MM-DD
   state: open or closed, in words
   street: the address line holding the housenumber and street
+  address_line_2: the next address line, where a CEDEX or a postal box may be written
+  address_line_3: the line after it
   postcode: the postcode
   city: the commune's name
   lat: latitude, WGS84
@@ -73,7 +75,7 @@ tags:
     value: 'siret14.matches(r"^\d{14}$") ? siret14 : ""'
     conf: 0.95
   phone:
-    value: 'phoneFr.matches(r"^\+33 [67]") ? "" : phoneFr'
+    value: 'mobile(phoneFr) ? "" : phoneFr'
     conf: 0.85
     rule: Written as FR:Key:phone does. A mobile is left out.
   website:
@@ -89,7 +91,11 @@ tags:
     value: 'said != "" && (bySiren == "" || bySiren == said) ? said : ""'
     conf: 0.9
     rule: From the stated status, unless the SIRET's first digit says otherwise.
-  addr:*: { function: fr/address, reads: [street, postcode, city], conf: 0.8, fill: true }
+  # One function answers all four; each tag takes its own key and states its own confidence.
+  addr:housenumber: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], conf: 0.8, fill: true, group: addr }
+  addr:street: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], conf: 0.8, fill: true, group: addr }
+  addr:postcode: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], conf: 0.85, fill: true, group: addr }
+  addr:city: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], conf: 0.85, fill: true, group: addr }
 
 examples:
   - about: a primaire, public, with a landline
@@ -112,3 +118,15 @@ examples:
     rows:
       - { id: 0690005E, nature_code: "151" }
     expect: null
+  - about: the name quieted from capitals, a role mailbox kept, a CEDEX postcode dropped from the address
+    rows:
+      - { id: 0690006F, name: "COLLEGE JEAN MOULIN", kind: Collège, nature_code: "340", email: "secretariat@college-moulin.fr", street: "12  bd PINEL", address_line_3: "69321 LYON CEDEX 07", postcode: "69321", city: "Lyon 3e  Arrondissement" }
+    expect: { amenity: school, school:FR: collège, name: Collège Jean Moulin, ref:UAI: 0690006F, email: "secretariat@college-moulin.fr", addr:housenumber: "12", addr:street: Boulevard PINEL, addr:city: Lyon }
+  - about: a person's mailbox, and an address that is not a street, are left out
+    rows:
+      - { id: 0690007G, name: Ecole Les Prés, kind: Ecole, nature_code: "151", has_elementaire: "1", email: "audrey.lagane@lespetitesfamilles.fr", street: "Lieu-dit Les Prés", postcode: "69100", city: Villeurbanne }
+    expect: { amenity: school, school:FR: élémentaire, name: École Les Prés, ref:UAI: 0690007G }
+  - about: a phone at an overseas mobile prefix is a mobile too
+    rows:
+      - { id: 9740001A, kind: Collège, nature_code: "340", phone: "0692 12 34 56" }
+    expect: { amenity: school, school:FR: collège, ref:UAI: 9740001A }

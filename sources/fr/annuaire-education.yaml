@@ -1,66 +1,153 @@
 format: 1
 source: fr/annuaire-education
 mapping: FR:school
-# 27 of the file's 71 columns, the ones the current preset reads plus a few known unread ones; the rest are listed before this source ships.
 columns:
   - identifiant_de_l_etablissement
   - nom_etablissement
   - type_etablissement
-  - code_nature
-  - libelle_nature
-  - ecole_maternelle
-  - ecole_elementaire
   - statut_public_prive
-  - siren_siret
-  - telephone
-  - web
-  - mail
-  - date_ouverture
-  - etat
   - adresse_1
   - adresse_2
   - adresse_3
   - code_postal
+  - code_commune
   - nom_commune
+  - code_departement
+  - code_academie
+  - code_region
+  - ecole_maternelle
+  - ecole_elementaire
+  - voie_generale
+  - voie_technologique
+  - voie_professionnelle
+  - telephone
+  - fax
+  - web
+  - mail
+  - restauration
+  - hebergement
+  - ulis
+  - apprentissage
+  - segpa
+  - section_arts
+  - section_cinema
+  - section_theatre
+  - section_sport
+  - section_internationale
+  - section_europeenne
+  - lycee_agricole
+  - lycee_militaire
+  - lycee_des_metiers
+  - post_bac
+  - appartenance_education_prioritaire
+  - greta
+  - siren_siret
+  - fiche_onisep
+  - position
+  - type_contrat_prive
+  - libelle_departement
+  - libelle_academie
+  - libelle_region
+  - coordx_origine
+  - coordy_origine
+  - epsg_origine
+  - nom_circonscription
   - latitude
   - longitude
   - precision_localisation
+  - date_ouverture
+  - date_maj_ligne
+  - etat
+  - ministere_tutelle
+  - multi_uai
+  - rpi_concentre
+  - rpi_disperse
+  - code_nature
+  - libelle_nature
+  - code_type_contrat_prive
+  - pial
   - etablissement_mere
   - type_rattachement_etablissement_mere
-  - restauration
-  - ulis
-  - fiche_onisep
+  - code_circonscription
+  - code_zone_animation_pedagogique
+  - libelle_zone_animation_pedagogique
+  - code_bassin_formation
+  - libelle_bassin_formation
+  - etat_etablissement
+  - numero_siren_siret
+  - site_web
 
 rename:
   identifiant_de_l_etablissement: id
   nom_etablissement: name
   type_etablissement: kind
-  code_nature: nature_code
+  statut_public_prive: status
+  adresse_1: street
+  adresse_2: address_line_2
+  adresse_3: address_line_3
+  code_postal: postcode
+  nom_commune: city
   ecole_maternelle: has_maternelle
   ecole_elementaire: has_elementaire
-  statut_public_prive: status
-  siren_siret: siret
   telephone: phone
   web: website
   mail: email
-  date_ouverture: opening_date
-  etat: state
-  adresse_1: street
-  code_postal: postcode
-  nom_commune: city
+  siren_siret: siret
   latitude: lat
   longitude: lon
+  date_ouverture: opening_date
+  etat: state
+  code_nature: nature_code
 
 ignored:
-  libelle_nature: the label of code_nature
-  adresse_2: "GAP: the mapping has one street input; the preset reads three address lines"
-  adresse_3: "GAP: same"
-  precision_localisation: "GAP: read for a reviewer note"
-  etablissement_mere: "GAP: a section housed in its parent is skipped, which needs another record's rows"
-  type_rattachement_etablissement_mere: "GAP: same"
+  code_commune: not read by the school mapping yet
+  code_departement: not read by the school mapping yet
+  code_academie: not read by the school mapping yet
+  code_region: not read by the school mapping yet
+  voie_generale: not read by the school mapping yet
+  voie_technologique: not read by the school mapping yet
+  voie_professionnelle: not read by the school mapping yet
+  fax: not read by the school mapping yet
   restauration: no OSM key for a school canteen
+  hebergement: not read by the school mapping yet
   ulis: no documented OSM key
+  apprentissage: not read by the school mapping yet
+  segpa: not read by the school mapping yet
+  section_arts: not read by the school mapping yet
+  section_cinema: not read by the school mapping yet
+  section_theatre: not read by the school mapping yet
+  section_sport: not read by the school mapping yet
+  section_internationale: not read by the school mapping yet
+  section_europeenne: not read by the school mapping yet
+  lycee_agricole: not read by the school mapping yet
+  lycee_militaire: not read by the school mapping yet
+  lycee_des_metiers: not read by the school mapping yet
+  post_bac: not read by the school mapping yet
+  appartenance_education_prioritaire: not read by the school mapping yet
+  greta: not read by the school mapping yet
   fiche_onisep: "todo: ask the tagging researcher"
+  position: the point as an object, which the preset's position falls back to when latitude and longitude are empty
+  type_contrat_prive: not read by the school mapping yet
+  libelle_departement: not read by the school mapping yet
+  libelle_academie: not read by the school mapping yet
+  libelle_region: not read by the school mapping yet
+  coordx_origine: the point in the source's own projection
+  coordy_origine: the point in the source's own projection
+  epsg_origine: the projection of coordx_origine
+  nom_circonscription: not read by the school mapping yet
+  date_maj_ligne: not read by the school mapping yet
+  ministere_tutelle: not read by the school mapping yet
+  multi_uai: not read by the school mapping yet
+  rpi_concentre: not read by the school mapping yet
+  rpi_disperse: not read by the school mapping yet
+  libelle_nature: the label of code_nature; only quoted as the evidence of amenity
+  code_type_contrat_prive: not read by the school mapping yet
+  pial: not read by the school mapping yet
+  code_circonscription: not read by the school mapping yet
+  code_zone_animation_pedagogique: not read by the school mapping yet
+  libelle_zone_animation_pedagogique: not read by the school mapping yet
+  code_bassin_formation: not read by the school mapping yet
+  libelle_bassin_formation: not read by the school mapping yet
 
 overrides:
   tags:
@@ -72,6 +159,20 @@ overrides:
         Only from 1978 on (earlier dates are this register's bulk entries) and never for a primaire
         (the date is a merger's).
 
+steps:
+  - name: fr.annuaire-education/aliases
+    why: Older exports spell three columns otherwise; each is read where the current one is empty.
+    reads: [etat_etablissement, numero_siren_siret, site_web]
+  - name: fr.annuaire-education/sections
+    why: A SEGPA, or a section housed in its parent establishment, is not a place of its own, which takes the parent's rows.
+    reads: [type_rattachement_etablissement_mere, code_nature, etablissement_mere, adresse_1, code_postal]
+  - name: fr.annuaire-education/sites
+    why: One UAI over several sites comes as several rows; the main one is the row whose address is at the point, and the others' phone and website are values OSM may hold as well.
+    reads: [adresse_1, code_postal, latitude, longitude, nom_etablissement, telephone, web]
+  - name: fr.annuaire-education/precision
+    why: A point the directory gives only roughly is a line for the reviewer.
+    reads: [precision_localisation]
+
 examples:
   - about: the same primaire as the mapping's first example, through the Annuaire's own columns; the override drops its date
     rows:
@@ -81,3 +182,23 @@ examples:
     rows:
       - { identifiant_de_l_etablissement: 0690002B, type_etablissement: Collège, code_nature: "340", statut_public_prive: Public, date_ouverture: "1992-09-01" }
     expect: { amenity: school, school:FR: collège, ref:UAI: 0690002B, operator:type: public, start_date: "1992-09-01" }
+  - about: a register date before 1978 is a bulk entry, and a primaire's is a merger's
+    rows:
+      - { identifiant_de_l_etablissement: 0690003C, type_etablissement: Ecole, code_nature: "152", ecole_maternelle: "0", ecole_elementaire: "1", date_ouverture: "1977-03-08" }
+    expect: { amenity: school, school:FR: élémentaire, ref:UAI: 0690003C }
+  - about: a maternelle opened in 2023 keeps its date
+    rows:
+      - { identifiant_de_l_etablissement: 0690004D, type_etablissement: Ecole, code_nature: "151", ecole_maternelle: "1", ecole_elementaire: "0", date_ouverture: "2023-09-01" }
+    expect: { amenity: school, school:FR: maternelle, ref:UAI: 0690004D, start_date: "2023-09-01" }
+  - about: a primaire opened after 1978 gets no date, since it is a merger's
+    rows:
+      - { identifiant_de_l_etablissement: 0690005E, type_etablissement: Ecole, code_nature: "151", ecole_maternelle: "1", ecole_elementaire: "1", date_ouverture: "2017-09-01" }
+    expect: { amenity: school, school:FR: primaire, ref:UAI: 0690005E }
+  - about: an empty date gives none
+    rows:
+      - { identifiant_de_l_etablissement: 0690006F, type_etablissement: Collège, code_nature: "340", date_ouverture: "" }
+    expect: { amenity: school, school:FR: collège, ref:UAI: 0690006F }
+  - about: a date not written as year-month-day gives none
+    rows:
+      - { identifiant_de_l_etablissement: 0690007G, type_etablissement: Collège, code_nature: "340", date_ouverture: "09/1992" }
+    expect: { amenity: school, school:FR: collège, ref:UAI: 0690007G }

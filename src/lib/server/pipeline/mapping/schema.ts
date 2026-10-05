@@ -21,6 +21,7 @@ const common = {
 	rule: z.string().optional(),
 	unless: z.strictObject({ key: z.string(), value: z.string() }).optional(),
 	mappedWithin: z.number().int().positive().optional(),
+	group: z.string().optional(),
 };
 
 const expressionTag = z.strictObject({ value: z.string(), ...common });

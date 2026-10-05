@@ -1,5 +1,5 @@
 import { Environment } from "@marcbachmann/cel-js";
-import { phoneFR } from "../fr/text";
+import { mobileFR, phoneFR } from "../fr/text";
 import { truthy, website } from "../row";
 
 export type Checked =
@@ -52,6 +52,7 @@ function baseEnvironment(): Environment {
 		.registerFunction("phone(string, string): string", (raw: string, country: string) =>
 			country === "33" ? (phoneFR(raw) ?? "") : "",
 		)
+		.registerFunction("mobile(string): bool", (v: string) => mobileFR(v))
 		.registerFunction(
 			receiver("imatches", "bool", ["pattern"], (s, re) => new RegExp(re, "i").test(s)),
 		)

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { parse } from "yaml";
 import type { ZodType } from "zod";
+import { functions } from "../fr/functions";
 import { compile, type Program, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
 import { type Example, type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
@@ -52,7 +53,7 @@ function runExamples(
 	for (const [i, example] of examples.entries()) {
 		const label = `example ${i + 1} (${example.about})`;
 		try {
-			const got = evaluate(program, example.rows.map(toInputs));
+			const got = evaluate(program, example.rows.map(toInputs), functions);
 			const gotTags = got && Object.fromEntries(got.tags.map((t) => [t.key, t.value]));
 			const tagsOk = stable(gotTags) === stable(example.expect);
 			const notesOk = got === null || stable(got.notes) === stable(example.notes ?? []);

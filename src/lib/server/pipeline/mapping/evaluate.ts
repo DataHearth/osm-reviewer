@@ -9,6 +9,7 @@ export interface EvaluatedTag {
 	addOnly: boolean;
 	unless?: { k: string; v: string };
 	mappedWithin?: number;
+	group?: string;
 	/** The mapping inputs the rule read; `Program.columnOf` names the columns they came from. */
 	reads: string[];
 }
@@ -66,7 +67,7 @@ export function evaluate(
 		const addOnly = typeof fill === "boolean" ? fill : !!run(fill, `tags.${key}.fill`);
 		const unlessValue = unless ? String(run(unless, `tags.${key}.unless.value`)) : null;
 		for (const [k, v] of Object.entries(made)) {
-			if (v === "") continue;
+			if (v === "" || (!key.endsWith("*") && k !== key)) continue;
 			tags.push({
 				key: k,
 				value: v,
@@ -75,6 +76,7 @@ export function evaluate(
 				addOnly,
 				unless: tag.unless && unlessValue ? { k: tag.unless.key, v: unlessValue } : undefined,
 				mappedWithin: tag.mappedWithin,
+				group: tag.group,
 				reads,
 			});
 		}
