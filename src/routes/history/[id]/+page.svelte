@@ -34,7 +34,7 @@ const c = $derived(data.changeset);
 		<div class="px-[18px] py-7 text-[13px] text-muted">
 			{c.result === "ok"
 				? "No objects recorded for this changeset."
-				: "Nothing was written — its candidates stayed staged."}
+				: "No objects recorded — its candidates stayed staged."}
 		</div>
 	{/each}
 </section>

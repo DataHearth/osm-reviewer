@@ -15,7 +15,7 @@ const cols = "md:grid md:grid-cols-[130px_96px_1fr_130px_92px] md:items-baseline
 			<span>CHANGESET</span><span>WHEN</span><span>COMMENT</span><span>OBJECTS</span><span>RESULT</span>
 		</div>
 
-		{#each rows as h (h.url)}
+		{#each rows as h (h.href)}
 			<a
 				href={h.href}
 				class="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-line-row px-[14px] py-[11px] text-[12.5px] hover:bg-line-soft hover:no-underline md:gap-0 md:px-4 md:py-2.5 {cols}"

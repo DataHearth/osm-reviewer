@@ -121,5 +121,5 @@ test("a failed changeset opens with what went wrong", async ({ page }) => {
 	await page.getByText(FAILED_CHANGESET.comment).click();
 	await expect(page).toHaveURL(`/history/${FAILED_CHANGESET.id}`);
 	await expect(page.getByText(FAILED_CHANGESET.error)).toBeVisible();
-	await expect(page.getByText("Nothing was written — its candidates stayed staged.")).toBeVisible();
+	await expect(page.getByText("No objects recorded — its candidates stayed staged.")).toBeVisible();
 });
