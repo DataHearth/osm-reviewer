@@ -1,6 +1,6 @@
 <script lang="ts">
-// The candidate's location, on live OSM tiles. Nearby POIs are drawn as grey
-// dots so a duplicate-looking cluster is visible before accepting a new node.
+// The candidate's location, on live OSM tiles. Its nearby objects are only known
+// by label, so the tiles are what show a cluster around it, not markers.
 
 import type { LayerGroup, Map as LeafletMap } from "leaflet";
 import { onMount } from "svelte";
@@ -12,12 +12,6 @@ let { class: cls = "" }: { class?: string } = $props();
 let el = $state<HTMLDivElement | null>(null);
 let m: { L: Leaflet; map: LeafletMap; layer: LayerGroup } | null = null;
 let drawnFor: string | null = null;
-
-const OFFSETS = [
-	[0.00035, 0.0004],
-	[-0.0003, 0.00055],
-	[0.0002, -0.0006],
-];
 
 onMount(() => {
 	let dead = false;
@@ -59,15 +53,6 @@ function draw() {
 			fillColor: token("--accent"),
 			fillOpacity: 1,
 		}).addTo(layer);
-		for (const [dlat, dlon] of OFFSETS) {
-			L.circleMarker([c.lat + dlat, c.lon + dlon], {
-				radius: 4,
-				color: token("--bg"),
-				weight: 1,
-				fillColor: token("--faint"),
-				fillOpacity: 1,
-			}).addTo(layer);
-		}
 	}
 	map.invalidateSize();
 }

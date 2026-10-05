@@ -30,25 +30,3 @@ export function darkMap(L: Leaflet, el: HTMLElement, opts: import("leaflet").Map
 	if (pane) pane.style.filter = DARK_TILES;
 	return map;
 }
-
-/**
- * A plausible-looking commune outline: a closed ring around `center` whose
- * radius wobbles deterministically with `seed`. Stands in for the real
- * relation geometry, which the pipeline fetches on the first run.
- */
-export function ring(center: [number, number], km: number, seed: number): [number, number][] {
-	const n = 30;
-	const out: [number, number][] = [];
-	const kx = 1 / (111 * Math.cos((center[0] * Math.PI) / 180));
-	for (let i = 0; i < n; i++) {
-		const a = (i / n) * Math.PI * 2;
-		const r =
-			km *
-			(0.8 +
-				0.16 * Math.sin(a * 2.3 + seed) +
-				0.1 * Math.sin(a * 4.1 + seed * 1.7) +
-				0.05 * Math.sin(a * 7.3 + seed));
-		out.push([center[0] + (r / 111) * Math.cos(a), center[1] + r * kx * Math.sin(a)]);
-	}
-	return out;
-}

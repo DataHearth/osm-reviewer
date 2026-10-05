@@ -10,9 +10,10 @@ import type {
 	Map as LeafletMap,
 	LeafletMouseEvent,
 	Polygon,
+	PolylineOptions,
 } from "leaflet";
 import { onMount } from "svelte";
-import { darkMap, ensureLeaflet, type Leaflet, ring, token } from "$lib/leaflet";
+import { darkMap, ensureLeaflet, type Leaflet, token } from "$lib/leaflet";
 import type { AreaDraft } from "$lib/schemas/area";
 import { review } from "$lib/stores/review.svelte";
 
@@ -59,6 +60,24 @@ onMount(() => {
 		m = null;
 	};
 });
+
+type Bbox = [number, number, number, number];
+
+/**
+ * A relation is drawn as the bounding box it is stored as — the box the pipeline reads
+ * and matches over — since its real outline is never fetched. None stored, no shape.
+ */
+function bboxShape(L: Leaflet, bbox: Bbox | null | undefined, style: PolylineOptions) {
+	if (!bbox) return null;
+	const [s, w, n, e] = bbox;
+	return L.rectangle(
+		[
+			[s, w],
+			[n, e],
+		],
+		style,
+	);
+}
 
 function shapeStyle(ink: string, dashed: boolean, fill = 0.1) {
 	return {
@@ -108,7 +127,9 @@ function draw() {
 		const all = review.areas;
 		const key =
 			"all|" +
-			all.map((a) => `${a.id}:${review.radiusOf(a)}:${review.paused[a.id] ? "p" : "a"}`).join(",");
+			all
+				.map((a) => `${a.id}:${review.radiusOf(a)}:${a.bbox}:${review.paused[a.id] ? "p" : "a"}`)
+				.join(",");
 		if (drawnKey !== key) {
 			drawnKey = key;
 			layer.clearLayers();
@@ -118,15 +139,18 @@ function draw() {
 				const sh =
 					a.def === "radius"
 						? L.circle(a.center, { radius: review.radiusOf(a), ...shapeStyle(ink, true) })
-						: L.polygon(ring(a.center, a.km ?? 6, a.center[1]), shapeStyle(ink, false));
-				sh.addTo(layer);
+						: bboxShape(L, a.bbox, shapeStyle(ink, false));
 				const show = (e?: LeafletMouseEvent) =>
 					showCard(a.id, e?.latlng ?? L.latLng(a.center[0], a.center[1]), e);
-				sh.on("click", show).on("dblclick", () => {
-					review.areaId = a.id;
-					review.draft = null;
-					review.areaCard = null;
-				});
+				if (sh) {
+					sh.addTo(layer);
+					sh.on("click", show).on("dblclick", () => {
+						review.areaId = a.id;
+						review.draft = null;
+						review.areaCard = null;
+					});
+					shapes.push(sh);
+				}
 				L.circleMarker(a.center, {
 					radius: 3,
 					color: token("--bg"),
@@ -136,7 +160,6 @@ function draw() {
 				})
 					.addTo(layer)
 					.on("click", show);
-				shapes.push(sh);
 			}
 			if (shapes.length) {
 				let b = shapes[0].getBounds();
@@ -153,8 +176,8 @@ function draw() {
 	const center = d ? (d.mode === "radius" ? d.center : d.picked?.center) : a?.center;
 	if (!center) return;
 	const radius = d ? d.radius : a ? review.radiusOf(a) : 2500;
-	const km = d ? (d.picked ? d.picked.km : 0) : (a?.km ?? 0);
-	const key = [d ? "draft" : a?.id, mode, center[0], center[1], radius, km].join("|");
+	const bbox = d ? d.picked?.bbox : a?.bbox;
+	const key = [d ? "draft" : a?.id, mode, center[0], center[1], radius, bbox].join("|");
 	if (drawnKey !== key) {
 		drawnKey = key;
 		layer.clearLayers();
@@ -162,11 +185,8 @@ function draw() {
 		const shape =
 			mode === "radius"
 				? L.circle(center, { radius: radius || 2500, ...shapeStyle(ink, true, 0.12) })
-				: L.polygon(
-						ring(center as [number, number], km || 6, center[1]),
-						shapeStyle(ink, false, 0.12),
-					);
-		shape.addTo(layer);
+				: bboxShape(L, bbox, shapeStyle(ink, false, 0.12));
+		shape?.addTo(layer);
 		L.circleMarker(center, {
 			radius: 3,
 			color: token("--bg"),
@@ -174,7 +194,8 @@ function draw() {
 			fillColor: ink,
 			fillOpacity: 1,
 		}).addTo(layer);
-		map.fitBounds(shape.getBounds(), { padding: [26, 26] });
+		if (shape) map.fitBounds(shape.getBounds(), { padding: [26, 26] });
+		else map.setView(center, 12);
 	}
 	map.invalidateSize();
 }
