@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type Db } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import { users } from "./db/schema";
-import { deleteUser, setDisabled, setRole } from "./users";
+import { deleteUser, emailLocked, setDisabled, setRole } from "./users";
 
 let dir: string;
 let db: Db;
@@ -42,5 +42,13 @@ describe("the last enabled admin", () => {
 		expect(setDisabled(db, "b", true)).toBe(false);
 		expect(deleteUser(db, "b")).toBe("last admin");
 		expect(enabledAdmins()).toEqual(["b"]);
+	});
+});
+
+describe("emailLocked", () => {
+	it("locks a reviewer's address only while single sign-on is on", () => {
+		expect(emailLocked({ role: "reviewer" }, true)).toBe(true);
+		expect(emailLocked({ role: "reviewer" }, false)).toBe(false);
+		expect(emailLocked({ role: "admin" }, true)).toBe(false);
 	});
 });

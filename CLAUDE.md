@@ -97,7 +97,9 @@ how a session starts; it refuses on its own.
 disables the gate). An account is matched on the provider's `sub`, stored in
 `sso_subject`; an existing row is linked by address once, and only when the provider
 marks the address verified, or anyone able to edit their own email there could take over
-a local account. Nobody matched means a new reviewer is created on the spot. Every refusal
+a local account. Nobody matched means a new reviewer is created on the spot. For the same
+reason a reviewer cannot change their own address while SSO is on (`emailLocked`): naming
+someone's address before their first sign-in would share their account. Every refusal
 travels back to `/login` as `?sso=<reason>`, which the load turns into the form's one
 error line.
 

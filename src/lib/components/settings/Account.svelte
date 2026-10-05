@@ -65,12 +65,18 @@ const failure = $derived(
 			{#if $errors.name}<span class="text-[11px] text-bad">{$errors.name[0]}</span>{/if}
 		</Field>
 
-		<Field label="email" hint="Used to sign in and, if email notifications are on, as the reply-to address.">
+		<Field
+			label="email"
+			hint={data.emailLocked
+				? "Single sign-on links accounts by address, so only an admin can change it."
+				: "Used to sign in and, if email notifications are on, as the reply-to address."}
+		>
 			<input
 				class="{INPUT} max-w-[320px] max-md:min-h-[44px]"
 				type="email"
 				name="email"
 				spellcheck="false"
+				readonly={data.emailLocked}
 				bind:value={$form.email}
 			/>
 			{#if $errors.email}<span class="text-[11px] text-bad">{$errors.email[0]}</span>{/if}

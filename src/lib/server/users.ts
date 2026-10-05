@@ -36,6 +36,13 @@ export function listUsers(db: Db): ManagedUser[] {
 }
 
 /** Whether another account holds the address, in any case; `except` is the account asking. */
+/**
+ * An SSO sign-in is linked to the local account holding its address, so while SSO is on an
+ * account naming its own address could wait for someone else's first sign-in and share their
+ * account. An admin can create an account under any address anyway.
+ */
+export const emailLocked = (user: { role: Role }, ssoOn: boolean) => ssoOn && user.role !== "admin";
+
 export const emailTaken = (db: Db, email: string, except?: string) =>
 	!!db
 		.select({ id: users.id })
