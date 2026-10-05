@@ -79,14 +79,6 @@ export function addressQuery(line: string, postcode: string, city: string): stri
 	return postcode && q.includes(postcode) ? q : [q, postcode, city].filter(Boolean).join(" ");
 }
 
-/**
- * Whether a postcode is a place's rather than a CEDEX mail route, which the address lines do
- * not always say (69321, 31506). La Poste gives places codes ending in 0, except the
- * arrondissements of Paris, Lyon and Marseille and the overseas departments.
- */
-export const placePostcode = (cp: string) =>
-	/^\d{4}0$|^750\d\d$|^6900\d$|^130\d\d$|^9[78]\d{3}$/.test(cp);
-
 /** A housenumber as Lyon's and Toulouse's mappers write it: "74 bis", not the address base's "74bis". */
 export const spacedNumber = (s: string) =>
 	compactNumber(s).replace(

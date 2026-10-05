@@ -4,7 +4,7 @@ import { houseNumber, tokens } from "../text";
 import type { ProposedTag, Row } from "../types";
 import { addressBase } from "./ban";
 import { bare, schoolName } from "./school-name";
-import { addressQuery, expandStreet, phoneFR, placePostcode, spacedNumber } from "./text";
+import { addressQuery, expandStreet, phoneFR, spacedNumber } from "./text";
 
 /** Directory natures that are offices, not places anyone is taught. */
 const NOT_A_SCHOOL = /^(service administratif|information et orientation)$/i;
@@ -72,10 +72,9 @@ export function schoolAddress(r: Row) {
 	const street = m ? m[2] : line;
 	if (!STREET.test(street)) return null;
 	const mail = `${str(r, "adresse_2")} ${str(r, "adresse_3")}`;
-	const postcode =
-		/cedex|\bbp\b|\bcs ?\d/i.test(mail) || !placePostcode(str(r, "code_postal"))
-			? ""
-			: str(r, "code_postal");
+	// A CEDEX code the lines do not flag (69321) only costs the address base its first try,
+	// which the retry with the commune alone recovers.
+	const postcode = /cedex|\bbp\b|\bcs ?\d/i.test(mail) ? "" : str(r, "code_postal");
 	const city = str(r, "nom_commune")
 		.replace(/\s+/g, " ")
 		.replace(/ \d+(?:er|e|ème)? arrondissement$/i, "");

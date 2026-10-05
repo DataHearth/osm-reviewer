@@ -262,18 +262,22 @@ describe("schoolAddress", () => {
 		expect(at({ adresse_1: "1 citéJardin" })).toBeNull();
 	});
 	it("keeps a housenumber range whole and asks for its first number", () => {
-		const range = at({ adresse_1: "20-28 rue Louis Auguste Blanqui", code_postal: "69921" });
+		const range = at({ adresse_1: "20-28 rue Louis Auguste Blanqui" });
 		expect(range).toMatchObject({
 			number: "20-28",
-			query: "20 rue Louis Auguste Blanqui Toulouse",
+			query: "20 rue Louis Auguste Blanqui 31000 Toulouse",
 		});
 	});
-	it("keeps a note out of the street and a mail route out of the postcode", () => {
+	it("keeps a note out of the street", () => {
 		expect(at({ adresse_1: "12 rue de la Solidarité (site Ariane)" })?.street).toBe(
 			"Rue de la Solidarité",
 		);
-		expect(at({ code_postal: "69321" })?.postcode).toBe("");
 		expect(at({ code_postal: "69005" })?.postcode).toBe("69005");
+	});
+	it("keeps a commune's postcode that does not end in 0 unless the lines say CEDEX", () => {
+		for (const code_postal of ["75116", "69126", "13127", "20167", "38113"])
+			expect(at({ code_postal })?.postcode).toBe(code_postal);
+		expect(at({ code_postal: "69321", adresse_3: "69321 LYON CEDEX 07" })?.postcode).toBe("");
 	});
 });
 
