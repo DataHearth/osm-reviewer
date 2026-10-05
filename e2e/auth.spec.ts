@@ -55,3 +55,16 @@ test("signing out clears the session and a guarded route bounces again", async (
 	await page.goto("/settings");
 	await expect(page).toHaveURL("/login?redirectTo=%2Fsettings");
 });
+
+test("a signed-out post to a review action is refused, whichever action it names", async ({
+	request,
+	baseURL,
+}) => {
+	for (const action of ["accept", "reject", "undo", "rebase"]) {
+		const res = await request.post(`/review?/${action}`, {
+			headers: { origin: baseURL as string },
+			form: { id: "c1" },
+		});
+		expect(res.status(), action).toBe(401);
+	}
+});

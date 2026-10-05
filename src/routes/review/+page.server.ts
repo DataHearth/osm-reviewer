@@ -1,5 +1,5 @@
 import { fail } from "@sveltejs/kit";
-import { message, superValidate } from "sveltekit-superforms";
+import { message, type SuperValidated, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 
 import { parseQueueQuery } from "$lib/schemas/queue";
@@ -24,46 +24,41 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 	return { ...queue, linked, osmBase: osm.url, acceptForm, rejectForm };
 };
 
+/** A refusal is the reviewer's to read on the form; anything else is a fault. */
+function refusable<T extends Record<string, unknown>>(form: SuperValidated<T>, run: () => void) {
+	try {
+		run();
+	} catch (e) {
+		if (e instanceof RefusedError) return message(form, e.message, { status: 409 });
+		throw e;
+	}
+	return { form };
+}
+
 export const actions: Actions = {
 	accept: async ({ request, locals }) => {
 		const user = requireUser(locals);
 		const form = await superValidate(request, zod4(acceptSchema), { id: "accept" });
 		if (!form.valid) return fail(400, { form });
-		try {
-			accept(db, user.id, form.data.id, form.data);
-		} catch (e) {
-			if (e instanceof RefusedError) return message(form, e.message, { status: 409 });
-			throw e;
-		}
-		return { form };
+		return refusable(form, () => accept(db, user.id, form.data.id, form.data));
 	},
 
 	reject: async ({ request, locals }) => {
 		const user = requireUser(locals);
 		const form = await superValidate(request, zod4(candidateSchema), { id: "reject" });
 		if (!form.valid) return fail(400, { form });
-		try {
-			reject(db, user.id, form.data.id);
-		} catch (e) {
-			if (e instanceof RefusedError) return message(form, e.message, { status: 409 });
-			throw e;
-		}
-		return { form };
+		return refusable(form, () => reject(db, user.id, form.data.id));
 	},
 
-	undo: async ({ request }) => {
+	undo: async ({ request, locals }) => {
+		requireUser(locals);
 		const form = await superValidate(request, zod4(candidateSchema));
 		if (!form.valid) return fail(400, { form });
-		try {
-			undo(db, form.data.id);
-		} catch (e) {
-			if (e instanceof RefusedError) return message(form, e.message, { status: 409 });
-			throw e;
-		}
-		return { form };
+		return refusable(form, () => undo(db, form.data.id));
 	},
 
-	rebase: async ({ request }) => {
+	rebase: async ({ request, locals }) => {
+		requireUser(locals);
 		const form = await superValidate(request, zod4(candidateSchema));
 		if (!form.valid) return fail(400, { form });
 		rebase(db, form.data.id);
