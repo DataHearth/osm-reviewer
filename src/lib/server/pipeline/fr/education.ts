@@ -1,10 +1,10 @@
 import { fill, type Preset, Tags } from "../preset";
 import { findCoords, str, truthy, website } from "../row";
-import { houseNumber, spacedNumber, tokens } from "../text";
+import { houseNumber, tokens } from "../text";
 import type { ProposedTag, Row } from "../types";
 import { addressBase } from "./ban";
 import { bare, schoolName } from "./school-name";
-import { addressQuery, expandStreet, phoneFR, placePostcode } from "./text";
+import { addressQuery, expandStreet, phoneFR, placePostcode, spacedNumber } from "./text";
 
 /** Directory natures that are offices, not places anyone is taught. */
 const NOT_A_SCHOOL = /^(service administratif|information et orientation)$/i;

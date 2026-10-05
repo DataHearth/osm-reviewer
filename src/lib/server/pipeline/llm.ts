@@ -2,6 +2,7 @@ import OpeningHours from "opening_hours";
 import { z } from "zod";
 import { OSM_MAX } from "$lib/changeset";
 import { llm } from "$lib/server/config";
+import { PHONE_FORMAT } from "./fr/text";
 import { request } from "./http";
 import { allowedBy } from "./tagfilter";
 import { PipelineError, type ProposedTag } from "./types";
@@ -54,7 +55,7 @@ const SYSTEM = [
 	"You propose OpenStreetMap tags for one place from the text of a source about it.",
 	"Only propose a tag the text states outright; never infer, never guess, never use outside knowledge.",
 	"For every tag give a confidence between 0 and 1 and `quote`: the exact words from the text you relied on, copied character for character.",
-	"Use OSM tag keys and OSM value conventions (opening_hours syntax with English day abbreviations and PH off for public holidays, +33 phone numbers, lowercase yes/no).",
+	`Use OSM tag keys and OSM value conventions (opening_hours syntax with English day abbreviations and PH off for public holidays, ${PHONE_FORMAT}, lowercase yes/no).`,
 	"Never derive one tag from another: no website from an email domain, no brand from the name — brand is only a chain or franchise.",
 	"A phone number or website belongs to the place itself, not to a head office, a web designer or a neighbouring business.",
 	"If the text says nothing useful, return no tags.",

@@ -1,3 +1,4 @@
+import { POINT_FIELDS, TRUE_WORDS } from "./fr/words";
 import { openingHours as parsedHours } from "./llm";
 import type { Row } from "./types";
 
@@ -12,7 +13,8 @@ export function str(row: Row, ...names: string[]): string {
 	return "";
 }
 
-export const truthy = (v: string) => /^(true|1|oui|yes|vrai)$/i.test(v);
+const TRUE = new RegExp(`^(true|1|yes|${TRUE_WORDS.join("|")})$`, "i");
+export const truthy = (v: string) => TRUE.test(v);
 
 export function coord(lat: unknown, lon: unknown): [number, number] | null {
 	const a = Number(lat);
@@ -34,7 +36,7 @@ export function findCoords(row: Row): [number, number] | null {
 		const c = coord(row[la], row[lo]);
 		if (c) return c;
 	}
-	for (const f of ["position", "geo_point_2d", "geom", "geopoint", "coordonnees", "geometry"]) {
+	for (const f of ["position", "geo_point_2d", "geom", "geopoint", ...POINT_FIELDS, "geometry"]) {
 		const v = row[f];
 		if (v && typeof v === "object") {
 			const o = v as Record<string, unknown>;

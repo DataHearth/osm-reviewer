@@ -1,3 +1,5 @@
+import { STOP } from "./fr/words";
+
 export function normaliseName(s: string): string {
 	return (
 		s
@@ -11,22 +13,6 @@ export function normaliseName(s: string): string {
 			.trim()
 	);
 }
-
-const STOP = new Set([
-	"le",
-	"la",
-	"les",
-	"l",
-	"de",
-	"du",
-	"des",
-	"d",
-	"et",
-	"the",
-	"of",
-	"au",
-	"aux",
-]);
 
 export const tokens = (s: string) =>
 	new Set(
@@ -55,9 +41,6 @@ export const houseNumber = (s: string) =>
 		.toLowerCase()
 		.replace(/(^|-)0+(?=\d)/g, "$1");
 
-/** A housenumber as Lyon's and Toulouse's mappers write it: "74 bis", not the address base's "74bis". */
-export const spacedNumber = (s: string) =>
-	houseNumber(s).replace(/(\d)(bis|ter|quater|quinquies)$/, "$1 $2");
 /**
  * An identifier keeps its meaning without its separators: mappers write `FR*TLS*P31555019`
  * where a registry writes `FRTLSP31555019`, and case varies.

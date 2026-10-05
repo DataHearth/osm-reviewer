@@ -1,3 +1,4 @@
+import { LINK_HINTS } from "./fr/words";
 import { request, sleep } from "./http";
 import { parseMatching, type Selector } from "./tagfilter";
 import { PipelineError } from "./types";
@@ -130,7 +131,7 @@ export function htmlToText(html: string): string {
 	return (text + (ld.length ? `\n\nStructured data: ${ld.join("\n")}` : "")).slice(0, TEXT_LIMIT);
 }
 
-const HINT = /contact|horaire|hours|infos?|pratique|acc[eè]s|about|a-propos|qui-sommes/i;
+const HINT = new RegExp(`contact|hours|infos?|about|${LINK_HINTS.join("|")}`, "i");
 
 export function sameHostLinks(html: string, base: URL): string[] {
 	const out = new Set<string>();

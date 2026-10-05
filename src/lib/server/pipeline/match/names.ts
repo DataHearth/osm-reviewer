@@ -1,3 +1,5 @@
+import { communeOf } from "../fr/text";
+import { GENERIC, LEGAL_TAIL, TRADING_AS } from "../fr/words";
 import { nameSimilarity, normaliseName, tokens } from "../text";
 import type { Extraction, OsmElement } from "../types";
 
@@ -16,13 +18,6 @@ export const whoOf = (x: Partial<Pick<Extraction, "tags">>) =>
 	(x.tags ?? []).filter((t) => WHO.includes(t.k)).map((t) => t.v);
 
 export const whoOn = (tags: Record<string, string>) => WHO.map((k) => tags[k]).filter(Boolean);
-
-/** What a company tacks onto its name in one register and not another: "Power Dot France" is Powerdot. */
-const LEGAL_TAIL =
-	/( (france|fr|sas|sasu|sa|sarl|eurl|snc|cpo|gmbh|bv|ltd|group|groupe|partner network|network))+$/;
-
-/** A company's trade name as mappers write it, under the name a registry gives it. */
-const TRADING_AS: Record<string, string> = { alize: "bouygues" };
 
 const company = (s: string) => {
 	const c = normaliseName(s).replace(LEGAL_TAIL, "").replace(/ /g, "");
@@ -52,23 +47,6 @@ export const whoSimilarity = (x: Partial<Pick<Extraction, "tags">>, e: OsmElemen
 export const whoAgrees = (x: Partial<Pick<Extraction, "tags">>, e: OsmElement) =>
 	(whoSimilarity(x, e) ?? 0) >= NAME_MATCH;
 
-/** Words that say what an object is or its status, not which one it is. */
-const GENERIC = new Set([
-	"borne",
-	"bornes",
-	"recharge",
-	"station",
-	"stations",
-	"charging",
-	"irve",
-	"electrique",
-	"vehicules",
-	"prive",
-	"privee",
-	"public",
-	"publique",
-]);
-
 type Named = Pick<Extraction, "name"> & Partial<Pick<Extraction, "tags" | "addr">>;
 
 /**
@@ -76,7 +54,7 @@ type Named = Pick<Extraction, "name"> & Partial<Pick<Extraction, "tags" | "addr"
  * "INSEEC Toulouse" for sharing "Toulouse".
  */
 function communeWords(x: Named, e: OsmElement): Set<string> {
-	const commune = /.*\d{5}\s*(\D.*)$/.exec(x.addr ?? "")?.[1] ?? "";
+	const commune = communeOf(x.addr ?? "");
 	const city = x.tags?.find((t) => t.k === "addr:city")?.v ?? "";
 	const theirs = e.tags["addr:city"] ?? e.tags["contact:city"] ?? "";
 	return new Set([commune, city, theirs].flatMap((s) => [...tokens(s)]));

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { ID_FIELDS } from "./fr/words";
 import type { Preset } from "./preset";
 import { detectPreset, presetById } from "./presets";
 import { findCoords, str } from "./row";
@@ -18,8 +19,7 @@ export const hash = (s: string) => createHash("sha1").update(s).digest("hex").sl
 const genericReader: Reader = {
 	preset: null,
 	keyField: null,
-	key: (r) =>
-		str(r, "id", "recordid", "record_id", "identifiant", "uai") || `h:${hash(JSON.stringify(r))}`,
+	key: (r) => str(r, "id", "recordid", "record_id", ...ID_FIELDS) || `h:${hash(JSON.stringify(r))}`,
 	position: findCoords,
 };
 

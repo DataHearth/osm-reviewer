@@ -1,8 +1,9 @@
 import { ban } from "$lib/server/config";
 import { getJson } from "../http";
 import type { AddressBase } from "../preset";
-import { houseNumber, spacedNumber, tokens } from "../text";
+import { houseNumber, tokens } from "../text";
 import type { Extraction, ProposedTag } from "../types";
+import { spacedNumber } from "./text";
 
 /** Below this the base matched another street of a similar name. */
 const MIN_SCORE = 0.7;

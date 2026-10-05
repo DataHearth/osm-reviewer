@@ -5,6 +5,7 @@ import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import type { SourceRecord } from "$lib/types";
 import { refreshConflicts } from "./conflicts";
+import { NAME_FIELDS } from "./fr/words";
 import { inArea } from "./geo";
 import { askModel, modelLabel, vetTags } from "./llm";
 import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./match/find";
@@ -87,7 +88,7 @@ async function extract(
 	return {
 		key: rec.key,
 		url: rec.url,
-		name: rec.element?.tags.name || str(row, "nom", "name", "title") || rec.key,
+		name: rec.element?.tags.name || str(row, ...NAME_FIELDS, "name", "title") || rec.key,
 		addr: rec.element?.tags["addr:street"] ?? "",
 		lat: pos[0],
 		lon: pos[1],

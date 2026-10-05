@@ -1,3 +1,4 @@
+import { houseNumber, normaliseName } from "../text";
 export function phoneFR(raw: string): string | null {
 	let d = raw.replace(/\(0\)/, "").replace(/[\s.\-()]/g, "");
 	if (d.startsWith("+33")) d = `0${d.slice(3)}`;
@@ -85,3 +86,18 @@ export function addressQuery(line: string, postcode: string, city: string): stri
  */
 export const placePostcode = (cp: string) =>
 	/^\d{4}0$|^750\d\d$|^6900\d$|^130\d\d$|^9[78]\d{3}$/.test(cp);
+
+/** A housenumber as Lyon's and Toulouse's mappers write it: "74 bis", not the address base's "74bis". */
+export const spacedNumber = (s: string) =>
+	houseNumber(s).replace(/(\d)(bis|ter|quater|quinquies)$/, "$1 $2");
+
+/** `+33 5 61…` and `05 61…` are the same line. */
+export const digits = (s: string) => s.replace(/\D/g, "").replace(/^(0033|33)(?=\d{9}$)/, "0");
+
+export const fold = (s: string) => normaliseName(s.replace(/&/g, " et "));
+
+/** What follows the postcode in an address line. */
+export const communeOf = (addr: string) => /.*\d{5}\s*(\D.*)$/.exec(addr)?.[1] ?? "";
+
+/** How the model is told to write a phone number. */
+export const PHONE_FORMAT = "+33 phone numbers";
