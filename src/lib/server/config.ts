@@ -97,9 +97,12 @@ export const pipeline = {
 	enabled: process.env.PIPELINE_ENABLED !== "false",
 };
 
-/** Unset `dir` means no periodic backup. `keep` is how many snapshots stay on disk. */
+/**
+ * Unset `dir` means no periodic backup. `keep` is how many snapshots stay on disk, and
+ * never fewer than the one just taken: 0 would prune every snapshot as it is written.
+ */
 export const backup = {
 	dir: process.env.BACKUP_DIR || undefined,
 	intervalHours: int(process.env.BACKUP_INTERVAL_HOURS, 24),
-	keep: int(process.env.BACKUP_KEEP, 7),
+	keep: Math.max(1, int(process.env.BACKUP_KEEP, 7)),
 };

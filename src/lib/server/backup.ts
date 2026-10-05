@@ -55,6 +55,24 @@ function newestMtime(dir: string) {
 	}
 }
 
+/** A timer's delay is a signed 32-bit count of ms; Node fires a longer one after 1 ms. */
+const MAX_DELAY_MS = 2 ** 31 - 1;
+
+/**
+ * Runs `fn` at `due`, then every `every` ms. An interval longer than a timer can hold
+ * (BACKUP_INTERVAL_HOURS ≥ 597) is waited out in capped steps, checking the clock each time.
+ */
+export function scheduleEvery(due: number, every: number, fn: () => void) {
+	const wait = () => {
+		if (Date.now() >= due) {
+			fn();
+			due = Date.now() + every;
+		}
+		setTimeout(wait, Math.min(due - Date.now(), MAX_DELAY_MS)).unref();
+	};
+	wait();
+}
+
 /**
  * The first snapshot waits out whatever is left of the interval since the newest one on
  * disk, so a restart loop does not fill the directory.
@@ -63,14 +81,7 @@ export function startBackups(db: Db) {
 	const { dir, intervalHours, keep } = config;
 	if (!dir || intervalHours <= 0) return;
 	const every = intervalHours * HOUR_MS;
-	const tick = () => void runBackup(db, dir, keep);
-	setTimeout(
-		() => {
-			tick();
-			setInterval(tick, every).unref();
-		},
-		Math.max(0, newestMtime(dir) + every - Date.now()),
-	).unref();
+	scheduleEvery(newestMtime(dir) + every, every, () => void runBackup(db, dir, keep));
 }
 
 export function backupHealth(): MetricRow {

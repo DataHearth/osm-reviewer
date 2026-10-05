@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { pruneSnapshots, snapshotName, snapshots } from "./backup";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { pruneSnapshots, scheduleEvery, snapshotName, snapshots } from "./backup";
 
 describe("snapshots", () => {
 	it("names sort chronologically and pruning keeps the newest", () => {
@@ -17,5 +17,24 @@ describe("snapshots", () => {
 		} finally {
 			rmSync(dir, { recursive: true });
 		}
+	});
+});
+
+describe("scheduleEvery", () => {
+	afterEach(() => vi.useRealTimers());
+
+	it("waits out an interval longer than a timer can hold instead of firing at once", () => {
+		vi.useFakeTimers();
+		const hour = 3_600_000;
+		const every = 600 * hour;
+		const fn = vi.fn();
+		scheduleEvery(Date.now() + every, every, fn);
+
+		vi.advanceTimersByTime(every - hour);
+		expect(fn).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(hour);
+		expect(fn).toHaveBeenCalledTimes(1);
+		vi.advanceTimersByTime(every);
+		expect(fn).toHaveBeenCalledTimes(2);
 	});
 });
