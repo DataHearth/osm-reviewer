@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { OSM_MAX } from "$lib/changeset";
-import { llm } from "$lib/server/config";
+import { llm, osmRead } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import type { SourceRecord } from "$lib/types";
 import { refreshConflicts } from "./conflicts";
 import { NAME_FIELDS } from "./fr/words";
 import { inArea } from "./geo";
+import { getJson } from "./http";
 import { askModel, modelLabel, vetTags } from "./llm";
 import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./match/find";
 import { closureOps, newOps, type TagOp, unchangedTags } from "./match/ops";
@@ -167,6 +168,26 @@ async function readRecords(source: SourceRow, input: AreaInput, allow: string[])
 }
 
 /** Each record with the OSM object it is, or none, and what the run fetched to tell. */
+/**
+ * Overpass says when an object's current version was saved, not when it was first mapped.
+ * For the few dated records matched to an object edited since, version 1 is read from the
+ * OSM API; a read that fails leaves the day unknown, and the date unwritten.
+ */
+async function readFirstMappings(matched: { x: Extraction; el: OsmElement | null }[]) {
+	for (const { x, el } of matched) {
+		const dated = x.tags.find((t) => t.k === "start_date" && t.mappedWithin !== undefined);
+		if (!dated || !el || el.version === 1 || el.firstMapped) continue;
+		try {
+			const first = await getJson<{ elements: { timestamp?: string }[] }>(
+				`${osmRead.url}/api/0.6/${el.type}/${el.id}/1.json`,
+			);
+			el.firstMapped = first.elements[0]?.timestamp;
+		} catch {
+			// Unknown is a valid answer here.
+		}
+	}
+}
+
 async function matchRecords(
 	source: SourceRow,
 	area: AreaRow,
@@ -263,6 +284,7 @@ export async function processArea(
 	const { read, errors, failedKeys, unchanged, withheld } = await readRecords(source, input, allow);
 	const { matched, fetched, elements, refIndex, shared, byElement, twins, outside } =
 		await matchRecords(source, area, input, read);
+	await readFirstMappings(matched);
 	const far: FarMatch[] = [];
 	// Every key the source's whole read holds, every area's: a school of the next area is still listed.
 	const listed = input.listed && new Set([...input.listed.values()].flatMap((keys) => [...keys]));

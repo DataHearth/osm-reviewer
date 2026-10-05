@@ -41,6 +41,12 @@ export interface ProposedTag {
 	 * object carrying another one (the owner's SIREN) says the value names someone else.
 	 */
 	unless?: { k: string; v: string };
+	/**
+	 * For a date that is the current operator's rather than the place's: how many days before
+	 * it the object may have been mapped and the date still be when the place opened. Mapped
+	 * longer before, the place opened earlier and the date is a re-commissioning.
+	 */
+	mappedWithin?: number;
 }
 
 export interface Extraction {
@@ -98,6 +104,8 @@ export interface OsmElement {
 	user?: string;
 	/** When this version was saved (ISO); at version 1, the day the object was first mapped. */
 	timestamp?: string;
+	/** The day version 1 was saved, read from the OSM API for an object edited since. */
+	firstMapped?: string;
 	lat: number;
 	lon: number;
 	/** A way's or a relation's bounding box; `lat`/`lon` are its centre. */

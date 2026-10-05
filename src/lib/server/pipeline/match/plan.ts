@@ -19,7 +19,6 @@ import {
 const SITE_COUNTS = /^(capacity|socket:.+)$/;
 
 /** No object was mapped before OpenStreetMap began. */
-const OSM_BEGAN = "2004-08-09";
 
 /** A connector's power is the same whichever record states it; how many there are is not. */
 const isCount = (o: TagOp) => SITE_COUNTS.test(o.k) && (o.op === "del" || !o.k.endsWith(":output"));
@@ -99,10 +98,17 @@ export function planUpdate(
 	// A group's object (a primaire and its collège, a cité scolaire) opened once for each of them.
 	if (others.length || sharedByOthers(el, x.refs) || campus(el.tags))
 		leave((o) => o.k === "start_date");
-	// A place mapped before the date the source gives it opened earlier, or opened again; when
-	// it was first mapped is known only at version 1, and certain only before OSM existed.
-	const firstMapped = el.version === 1 ? el.timestamp?.slice(0, 10) : undefined;
-	leave((o) => o.k === "start_date" && o.v >= OSM_BEGAN && !(firstMapped && o.v <= firstMapped));
+	// Where the source's date may be a re-commissioning, an object mapped long before it says
+	// so; not knowing when it was first mapped, the date is not written.
+	const within = x.tags.find((t) => t.k === "start_date")?.mappedWithin;
+	if (within !== undefined) {
+		const mapped = el.version === 1 ? el.timestamp : el.firstMapped;
+		leave(
+			(o) =>
+				o.k === "start_date" &&
+				!(mapped && Date.parse(o.v) - Date.parse(mapped.slice(0, 10)) <= within * 86_400_000),
+		);
+	}
 	// Nor does one of its establishments give it a single level.
 	if (campus(el.tags)) leave((o) => o.k === LEVEL);
 	const housed = housedInLycee(x, el.tags);

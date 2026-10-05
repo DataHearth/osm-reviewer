@@ -27,6 +27,18 @@ import { addressQuery, digits, mobileFR, phoneFR } from "./text";
  */
 const LINK_M = 400;
 
+/**
+ * A station is often mapped while it is being installed: Basso Cambo 56 days before its date,
+ * B&M Saint-Orens 19. One mapped years before (Ramonville, 20 months) was re-declared by a
+ * new operator, and the registry kept no trace of when it first opened.
+ *
+ * ponytail: the day a mapper first drew the object stands in for an opening date the registry
+ * no longer holds. It is a proxy, wrong for a station mapped long before it opened and blind
+ * to one nobody had mapped. The real date is in older versions of the consolidated file
+ * (data.gouv.fr keeps them) or the operator's earlier declarations: mine those instead.
+ */
+const MAPPED_BEFORE_OPENING_DAYS = 90;
+
 /** What `prise_type_autre` covers: every connector the schema has no column of its own for. */
 const OTHER_SOCKETS = [
 	"socket:type1",
@@ -685,7 +697,11 @@ export const irve: Preset = {
 				return !!at && distance(at[0], at[1], pos[0], pos[1]) <= LINK_M;
 			}),
 		);
-		if (since) fill(t.add("start_date", since, 0.7, "date_mise_en_service", since));
+		if (since) {
+			const dated = t.add("start_date", since, 0.7, "date_mise_en_service", since);
+			fill(dated);
+			if (dated) dated.mappedWithin = MAPPED_BEFORE_OPENING_DAYS;
+		}
 		// A site merged from stations of several owners (an AC car park and the DC units another
 		// company owns beside it) has no one owner.
 		const owner = str(first, "nom_amenageur");

@@ -76,6 +76,14 @@ export const osm = {
 	clientSecret: process.env.OSM_CLIENT_SECRET || undefined,
 };
 
+/**
+ * Where an object's own history is read. Never the upload target: `OSM_URL` defaults to the
+ * sandbox, whose objects are not the ones Overpass answers with.
+ */
+export const osmRead = {
+	url: base(process.env.OSM_READ_URL, "https://api.openstreetmap.org"),
+};
+
 export const overpass = {
 	url: process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter",
 };

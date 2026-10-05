@@ -243,8 +243,10 @@ station its own name calls DC (`Borne DC`, `rapide`) that ticks no DC connector,
 hours where a day's spans overlap (a day named again after `;` or `,` is one split day), no `network` that is the site's
 own name, no `owner` where a site's stations name different owners or the object's
 `owner:ref:FR:SIREN` is another's, no school `start_date` from the register's bulk entries or a
-merged primaire, and no `start_date` on an update later than the day the object was first mapped
-(known only at version 1; a date before OSM began always stands). The
+merged primaire, and no station `start_date` on an object first mapped more than 90 days before it: the
+registry's date is its current operator's, so that one is a re-commissioning (version 1 is read
+from `OSM_READ_URL` for an object edited since; unknown means no date). This is a stand-in:
+the real opening date is in older versions of the consolidated file, still to be mined. The
 directory's medico-social institutes become `amenity=social_facility` (the main tag of one
 already mapped is left alone), its sections housed in a parent establishment are skipped (a
 SEGPA however it is attached, a lycée's SEP or SEGT attached as an annex at its parent's

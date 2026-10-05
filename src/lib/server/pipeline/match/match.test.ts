@@ -1924,11 +1924,11 @@ describe("schools of the fifth audit", () => {
 });
 
 describe("a commissioning date and the object's own history", () => {
-	const dated = (since: string) => ({
+	const dated = (since: string, own = false) => ({
 		lat: 45.7,
 		lon: 4.8,
 		name: "",
-		tags: [tag("start_date", since)],
+		tags: [{ ...tag("start_date", since), mappedWithin: own ? undefined : 90 }],
 		refs: {},
 	});
 	const station = (version: number, timestamp: string) => ({
@@ -1939,15 +1939,24 @@ describe("a commissioning date and the object's own history", () => {
 	const dates = (since: string, e: OsmElement) =>
 		planUpdate(dated(since), e, [e]).ops.map((o) => o.v);
 
-	it("proposes no start_date later than the day the object was first mapped", () => {
+	it("takes an operator's date for a re-commissioning where the object was mapped long before it", () => {
 		// cf7c327bb58: node/9405205339, first mapped 2022-01-09, commissioned 2023-12-18.
 		expect(dates("2023-12-18", station(1, "2022-01-09T10:12:00Z"))).toEqual([]);
+		// c4e33ef15fb: Basso Cambo, mapped 56 days before it opened.
+		expect(dates("2023-05-30", station(1, "2023-04-04T09:00:00Z"))).toEqual(["2023-05-30"]);
 		expect(dates("2021-11-30", station(1, "2022-01-09T10:12:00Z"))).toEqual(["2021-11-30"]);
-		// c5301f472db: node/12029214826 at version 4, saved 2026-04-19: when it was first
-		// mapped is not known, and a date after 2004 could be later.
-		expect(dates("2026-03-11", station(4, "2026-04-19T08:00:00Z"))).toEqual([]);
-		expect(dates("2023-03-11", station(4, "2026-04-19T08:00:00Z"))).toEqual([]);
-		expect(dates("1985-09-01", station(4, "2026-04-19T08:00:00Z"))).toEqual(["1985-09-01"]);
+		// c5301f472db: node/12029214826, at version 4: its first day is the OSM API's to give.
+		const edited = station(4, "2026-04-19T08:00:00Z");
+		expect(dates("2026-03-11", edited)).toEqual([]);
+		expect(dates("2026-03-11", { ...edited, firstMapped: "2024-07-02T07:30:00Z" })).toEqual([]);
+		expect(dates("2024-08-01", { ...edited, firstMapped: "2024-07-02T07:30:00Z" })).toEqual([
+			"2024-08-01",
+		]);
+	});
+
+	it("leaves a date that is the place's own alone, whenever the object was mapped", () => {
+		const school = planUpdate(dated("2005-09-01", true), station(8, "2024-08-22T10:00:00Z"), []);
+		expect(school.ops.map((o) => o.v)).toEqual(["2005-09-01"]);
 	});
 });
 
