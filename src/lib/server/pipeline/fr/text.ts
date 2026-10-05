@@ -1,4 +1,4 @@
-import { houseNumber, normaliseName } from "../text";
+import { compactNumber, normaliseName } from "../text";
 export function phoneFR(raw: string): string | null {
 	let d = raw.replace(/\(0\)/, "").replace(/[\s.\-()]/g, "");
 	if (d.startsWith("+33")) d = `0${d.slice(3)}`;
@@ -89,7 +89,10 @@ export const placePostcode = (cp: string) =>
 
 /** A housenumber as Lyon's and Toulouse's mappers write it: "74 bis", not the address base's "74bis". */
 export const spacedNumber = (s: string) =>
-	houseNumber(s).replace(/(\d)(bis|ter|quater|quinquies)$/, "$1 $2");
+	compactNumber(s).replace(
+		/(\d)(bis|ter|quater|quinquies)$/i,
+		(_, n: string, w: string) => `${n} ${w.toLowerCase()}`,
+	);
 
 /** `+33 5 61…` and `05 61…` are the same line. */
 export const digits = (s: string) => s.replace(/\D/g, "").replace(/^(0033|33)(?=\d{9}$)/, "0");

@@ -34,12 +34,11 @@ export function nameSimilarity(a: string, b: string, ignore: Set<string> = new S
 	return (2 * shared) / (ta.size + tb.size);
 }
 
-/** A housenumber as OSM writes it from a directory's: "07" is 7, "158 BIS" is 158bis. */
-export const houseNumber = (s: string) =>
-	s
-		.replace(/\s+/g, "")
-		.toLowerCase()
-		.replace(/(^|-)0+(?=\d)/g, "$1");
+/** A housenumber without its spaces and leading zeros, in its own case: "07" is 7, "12 B" is 12B. */
+export const compactNumber = (s: string) => s.replace(/\s+/g, "").replace(/(^|-)0+(?=\d)/g, "$1");
+
+/** A housenumber as two spellings of it compare: "158 BIS" is 158bis, "6A" is 6a. */
+export const houseNumber = (s: string) => compactNumber(s).toLowerCase();
 
 /**
  * An identifier keeps its meaning without its separators: mappers write `FR*TLS*P31555019`

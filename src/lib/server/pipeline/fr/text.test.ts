@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressQuery, expandStreet, phoneFR } from "./text";
+import { addressQuery, expandStreet, phoneFR, spacedNumber } from "./text";
 
 describe("expandStreet", () => {
 	it("writes out a street type where it stands and a title anywhere", () => {
@@ -10,6 +10,16 @@ describe("expandStreet", () => {
 		expect(expandStreet("11 ter Imp. Ste Anne")).toBe("11 ter Impasse Sainte Anne");
 		expect(expandStreet("Pl. St-Jean")).toBe("Place Saint-Jean");
 		expect(expandStreet("2 rue Générale")).toBe("2 rue Générale");
+	});
+});
+
+describe("spacedNumber", () => {
+	it("keeps a letter suffix in the source's case and writes bis and ter spaced, in lowercase", () => {
+		expect(spacedNumber("6A")).toBe("6A");
+		expect(spacedNumber("12 B")).toBe("12B");
+		expect(spacedNumber("12b")).toBe("12b");
+		expect(spacedNumber("074BIS")).toBe("74 bis");
+		expect(spacedNumber("3 Ter")).toBe("3 ter");
 	});
 });
 
