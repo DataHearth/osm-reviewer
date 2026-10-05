@@ -155,13 +155,31 @@ function pipelineWorker(db: Db): MetricRow {
 	];
 }
 
+/**
+ * `fn`'s answer, asked again only once it is `ms` old. Holding the promise rather than the
+ * row also lets requests that arrive while a probe is out share it.
+ */
+export function cachedFor<T>(ms: number, fn: () => Promise<T>): () => Promise<T> {
+	let last: { at: number; answer: Promise<T> } | null = null;
+	return () => {
+		if (!last || Date.now() - last.at >= ms) last = { at: Date.now(), answer: fn() };
+		return last.answer;
+	};
+}
+
+// The /server load reruns every 3 s while a run is going (RunButton's invalidateAll), and
+// each rerun would otherwise send both probes to hosts that are not ours.
+const PROBE_TTL_MS = 60_000;
+const osmApiCached = cachedFor(PROBE_TTL_MS, osmApi);
+const identityProviderCached = cachedFor(PROBE_TTL_MS, identityProvider);
+
 /** Rows that read a fixed value are features with nothing behind them yet: no dot, no tone. */
 export async function health(db: Db): Promise<MetricRow[]> {
 	return [
 		pipelineWorker(db),
-		await osmApi(),
+		await osmApiCached(),
 		sourceHealth(db),
-		await identityProvider(),
+		await identityProviderCached(),
 		disk(),
 		backupHealth(),
 	];
