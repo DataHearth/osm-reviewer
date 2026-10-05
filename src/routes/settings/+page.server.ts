@@ -5,7 +5,7 @@ import { zod4 } from "sveltekit-superforms/adapters";
 import { z } from "zod";
 import { accountSchema, keysSchema, osmSchema, passwordSchema } from "$lib/schemas/settings";
 import { hashPassword, verifyPassword } from "$lib/server/auth/password";
-import { osm as osmConfig, sso } from "$lib/server/config";
+import { osm as osmConfig, ssoShown } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { users } from "$lib/server/db/schema";
 import { CREATED_BY } from "$lib/server/instance";
@@ -18,6 +18,7 @@ import {
 	setOsmConnected,
 } from "$lib/server/settings";
 import { requireUser } from "$lib/server/user";
+import { emailTaken } from "$lib/server/users";
 import type { Actions, PageServerLoad } from "./$types";
 
 const disconnectSchema = z.object({ connected: z.literal(false) });
@@ -42,13 +43,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		osmProblem: url.searchParams.get("osm"),
 		session: { at: locals.session?.at ?? "—", via: locals.session?.via ?? "password" },
 		user: { ...user, ssoOnly: user.ssoOnly === true },
-		sso: {
-			enabled: sso.enabled,
-			provider: sso.provider,
-			host: sso.host,
-			clientId: sso.clientId,
-			scopes: sso.scopes,
-		},
+		sso: ssoShown,
 	};
 };
 
@@ -57,8 +52,7 @@ export const actions: Actions = {
 		const user = requireUser(locals);
 		const form = await superValidate(request, zod4(accountSchema));
 		if (!form.valid) return fail(400, { form });
-		const clash = await db.query.users.findFirst({ where: (u) => eq(u.email, form.data.email) });
-		if (clash && clash.id !== user.id)
+		if (emailTaken(db, form.data.email, user.id))
 			return message(form, "That address is already in use.", { status: 409 });
 		saveAccount(db, user.id, form.data);
 		return { form };

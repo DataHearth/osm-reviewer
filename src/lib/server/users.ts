@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { count, eq, sql } from "drizzle-orm";
+import { and, count, eq, ne, sql } from "drizzle-orm";
 import { stamp } from "$lib/format";
 import type { NewUserForm } from "$lib/schemas/settings";
 import { hashPassword } from "$lib/server/auth/password";
@@ -35,11 +35,17 @@ export function listUsers(db: Db): ManagedUser[] {
 		}));
 }
 
-export const emailTaken = (db: Db, email: string) =>
+/** Whether another account holds the address, in any case; `except` is the account asking. */
+export const emailTaken = (db: Db, email: string, except?: string) =>
 	!!db
 		.select({ id: users.id })
 		.from(users)
-		.where(eq(sql`lower(${users.email})`, email.toLowerCase()))
+		.where(
+			and(
+				eq(sql`lower(${users.email})`, email.toLowerCase()),
+				except ? ne(users.id, except) : undefined,
+			),
+		)
 		.get();
 
 /** An empty password makes an SSO-only account, which links on its first sign-in by address. */
