@@ -246,16 +246,72 @@ describe("accept", () => {
 		]);
 	});
 
-	it("rebases only a candidate in conflict", () => {
+	const head = (tags: Record<string, string>) => async () => ({
+		type: "node" as const,
+		id: 1,
+		version: 4,
+		tags,
+	});
+	const conflict = (id: string) =>
+		db.update(t.candidates).set({ headVersion: 3 }).where(eq(t.candidates.id, id)).run();
+
+	it("rebases only a candidate in conflict", async () => {
 		const { id } = candidate();
-		expect(() => rebase(db, id)).toThrow(RefusedError);
-		db.update(t.candidates).set({ headVersion: 4 }).where(eq(t.candidates.id, id)).run();
-		rebase(db, id);
+		await expect(rebase(db, id, head({}))).rejects.toThrow(RefusedError);
+	});
+
+	it("reads the proposal again against the object a rebase finds", async () => {
+		const { id } = candidate();
+		conflict(id);
+		// The mapper moved the street themselves and wrote another postcode.
+		await rebase(
+			db,
+			id,
+			head({
+				amenity: "school",
+				"addr:street": "Rue X",
+				"addr:postcode": "31500",
+				"addr:housenumber": "2",
+			}),
+		);
 		expect(db.select().from(t.candidates).get()).toMatchObject({
 			version: 4,
 			baseVersion: 4,
 			headVersion: null,
+			unchangedTags: [
+				{ k: "amenity", v: "school" },
+				{ k: "addr:street", v: "Rue X" },
+				{ k: "addr:housenumber", v: "2" },
+			],
 		});
+		expect(db.select().from(t.tags).all()).toMatchObject([
+			{ op: "mod", k: "addr:postcode", v: "31000", was: "31500", pair: null },
+		]);
+	});
+
+	it("drops a candidate whose every write the object already carries", async () => {
+		const { id } = candidate();
+		accept(db, "u", id, {
+			...none,
+			tags: db
+				.select()
+				.from(t.tags)
+				.all()
+				.map((x) => x.position),
+		});
+		conflict(id);
+		await rebase(
+			db,
+			id,
+			head({
+				amenity: "school",
+				"addr:street": "Rue X",
+				"addr:postcode": "31000",
+				"addr:housenumber": "2",
+			}),
+		);
+		expect(db.select().from(t.candidates).all()).toEqual([]);
+		expect(db.select().from(t.decisions).all()).toEqual([]);
 	});
 });
 

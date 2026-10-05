@@ -1,8 +1,11 @@
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { AreaDraft } from "$lib/schemas/area";
 import type { SourceDraft } from "$lib/schemas/source";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import { fetchElements } from "$lib/server/osm/api";
+import type { OsmElement } from "$lib/server/osm/osmchange";
+import { unchangedTags } from "$lib/server/pipeline/match/ops";
 import { RefusedError } from "$lib/server/review";
 
 /** Every write below runs either directly or inside a transaction. */
@@ -146,19 +149,103 @@ export function removeArea(db: Db, id: string) {
 	db.delete(t.areas).where(eq(t.areas.id, id)).run();
 }
 
+type Write = { op: "add" | "mod" | "del"; k: string; v: string; was: string | null };
+
+/** A write as it stands against the object's tags today, or nothing where they already say it. */
+function against<T extends Write>(rows: T[], tags: Record<string, string>): T[] {
+	return rows.flatMap((r) => {
+		const cur = tags[r.k];
+		if (r.op === "del") return cur === undefined ? [] : [{ ...r, v: cur }];
+		if (cur === r.v) return [];
+		return [
+			{ ...r, op: cur === undefined ? ("add" as const) : ("mod" as const), was: cur ?? null },
+		];
+	});
+}
+
+const readHead = async (ref: string) => (await fetchElements("", [ref])).get(ref);
+
 /**
- * Taking the upstream version as the new base is what resolving a conflict means:
- * `headVersion` back to null is the schema's own definition of "no conflict".
+ * Resolving a conflict reads every proposed write again against the object as it is now:
+ * what the other mapper already wrote is dropped, an add over a value they set becomes a
+ * mod that shows it, and the rest of the object's tags are today's. A staged decision is
+ * read again the same way. A candidate left with nothing to write is gone, as it would
+ * never have been queued.
  */
-export function rebase(db: Db, candidateId: string) {
-	const rebased = db
-		.update(t.candidates)
-		.set({
-			baseVersion: sql`${t.candidates.headVersion}`,
-			version: sql`${t.candidates.headVersion}`,
-			headVersion: null,
-		})
-		.where(and(eq(t.candidates.id, candidateId), isNotNull(t.candidates.headVersion)))
-		.run();
-	if (!rebased.changes) throw new RefusedError("no version conflict to rebase.");
+export async function rebase(db: Db, candidateId: string, read = readHead) {
+	const conflicted = () => {
+		const c = db.select().from(t.candidates).where(eq(t.candidates.id, candidateId)).all()[0];
+		if (!c || c.headVersion === null || !c.osmId)
+			throw new RefusedError("no version conflict to rebase.");
+		return { ...c, osmId: c.osmId };
+	};
+	const { osmId } = conflicted();
+	let head: OsmElement | undefined;
+	try {
+		head = await read(osmId);
+	} catch (e) {
+		throw new RefusedError(
+			`could not read ${osmId} from OSM — ${e instanceof Error ? e.message : String(e)}`,
+		);
+	}
+	if (!head) throw new RefusedError(`${osmId} no longer exists on OSM — reject its candidate.`);
+	const { tags, version } = head;
+
+	db.transaction((tx) => {
+		conflicted();
+		const proposed = tx.select().from(t.tags).where(eq(t.tags.candidateId, candidateId)).all();
+		const kept = against(proposed, tags);
+		const keptKeys = new Set(kept.map((p) => p.k));
+		const decision = tx
+			.select()
+			.from(t.decisions)
+			.where(and(eq(t.decisions.candidateId, candidateId), t.STAGED))
+			.all()[0];
+		const decided = decision
+			? tx.select().from(t.decisionTags).where(eq(t.decisionTags.candidateId, candidateId)).all()
+			: [];
+		const stillDecided = against(decided, tags);
+
+		if (decision && !stillDecided.length)
+			tx.delete(t.decisions).where(eq(t.decisions.candidateId, candidateId)).run();
+		if (!kept.length && !stillDecided.length) {
+			tx.delete(t.candidates).where(eq(t.candidates.id, candidateId)).run();
+			return;
+		}
+
+		for (const p of proposed) {
+			const now = kept.find((x) => x.id === p.id);
+			if (!now) tx.delete(t.tags).where(eq(t.tags.id, p.id)).run();
+			else
+				tx.update(t.tags)
+					.set({
+						op: now.op,
+						v: now.v,
+						was: now.was,
+						// A move whose other half the mapper already made is a plain write now.
+						pair: now.pair && keptKeys.has(now.pair) ? now.pair : null,
+					})
+					.where(eq(t.tags.id, p.id))
+					.run();
+		}
+		for (const d of decided) {
+			const where = and(eq(t.decisionTags.candidateId, candidateId), eq(t.decisionTags.k, d.k));
+			const now = stillDecided.find((x) => x.k === d.k);
+			if (!now) tx.delete(t.decisionTags).where(where).run();
+			else tx.update(t.decisionTags).set({ op: now.op, v: now.v, was: now.was }).where(where).run();
+		}
+		tx.delete(t.candidateConflictTags)
+			.where(eq(t.candidateConflictTags.candidateId, candidateId))
+			.run();
+		tx.update(t.candidates)
+			.set({
+				baseVersion: version,
+				version,
+				headVersion: null,
+				conflictWho: null,
+				unchangedTags: unchangedTags(tags, keptKeys),
+			})
+			.where(eq(t.candidates.id, candidateId))
+			.run();
+	});
 }

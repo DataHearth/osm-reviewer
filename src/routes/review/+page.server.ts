@@ -25,9 +25,12 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 };
 
 /** A refusal is the reviewer's to read on the form; anything else is a fault. */
-function refusable<T extends Record<string, unknown>>(form: SuperValidated<T>, run: () => void) {
+async function refusable<T extends Record<string, unknown>>(
+	form: SuperValidated<T>,
+	run: () => void | Promise<void>,
+) {
 	try {
-		run();
+		await run();
 	} catch (e) {
 		if (e instanceof RefusedError) return message(form, e.message, { status: 409 });
 		throw e;
