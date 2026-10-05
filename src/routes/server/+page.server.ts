@@ -3,6 +3,7 @@ import { message, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 import { areaDraftSchema, areaIdSchema, areaPausedSchema } from "$lib/schemas/area";
 import {
+	type NotifForm,
 	newUserSchema,
 	notifSchema,
 	userDisabledSchema,
@@ -12,6 +13,7 @@ import {
 import { sourceDraftSchema, sourceEnabledSchema, sourceIdSchema } from "$lib/schemas/source";
 import { pipeline, sso, ssoShown } from "$lib/server/config";
 import { db } from "$lib/server/db";
+import { redact } from "$lib/server/diagnostics";
 import { health, instanceFacts, release } from "$lib/server/instance";
 import {
 	applyAreaDraft,
@@ -44,7 +46,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		loadAreas(db),
 		superValidate(zod4(sourceDraftSchema)),
 		superValidate(zod4(areaDraftSchema)),
-		loadNotif(db).then((v) => superValidate(v, zod4(notifSchema), { errors: false })),
+		// Nobody but an admin can save the pane, so nobody else needs its secrets to fill it.
+		loadNotif(db).then((v) =>
+			superValidate(admin ? v : (redact(v) as NotifForm), zod4(notifSchema), { errors: false }),
+		),
 		superValidate(zod4(newUserSchema)),
 	]);
 

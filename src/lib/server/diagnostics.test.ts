@@ -18,6 +18,15 @@ describe("redact", () => {
 		});
 	});
 
+	it("leaves nothing secret in the notification settings a reviewer is shown", () => {
+		const shown = redact({
+			ntfy: { on: true, server: "https://bot:pw@ntfy.lan", topic: "osm" },
+			webhook: { on: true, url: "https://hooks.lan/in", secret: "hmac-key" },
+			email: { on: true, to: "ops@lan", relay: "smtp://alerts:hunter2@mail.lan:587" },
+		});
+		expect(JSON.stringify(shown)).not.toMatch(/pw|hmac-key|hunter2/);
+	});
+
 	it("strips credentials out of URLs", () => {
 		expect(stripCredentials("smtps://me:pw@mail.lan:465")).toBe("smtps://[redacted]@mail.lan:465");
 		expect(stripCredentials("smtp://smtp.lan:587")).toBe("smtp://smtp.lan:587");
