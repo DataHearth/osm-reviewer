@@ -397,9 +397,10 @@ export const irve: Preset = {
 		t.add("amenity", "charging_station", 0.95, "id_station_itinerance");
 		// Registry names are legal entities and shouting brands ("TotalEnergies Marketing
 		// France", "Reveo"), so they fill a gap but never replace what a mapper wrote.
-		const operator = str(first, "nom_operateur") || str(first, "nom_amenageur");
+		const operatorField = str(first, "nom_operateur") ? "nom_operateur" : "nom_amenageur";
+		const operator = str(first, operatorField);
 		const network = str(first, "nom_enseigne");
-		fill(t.add("operator", operator, 0.85, "nom_operateur"));
+		fill(t.add("operator", operator, 0.85, operatorField));
 		// An older declaration's station or owner can be what the newest calls its network
 		// (Howdens on ZEENCO's 366F-Toulouse, whose owner was "Howdens Toulouse"), but an owner that
 		// was its own operator ("ENGIE Vianeo" twice) is the network's company, not a host.

@@ -725,6 +725,18 @@ describe("IRVE preset", () => {
 		).toBe("Howdens");
 	});
 
+	it("quotes the owner's field for an operator read from it", () => {
+		const x = irve.extract(
+			[irveRow({ nom_operateur: "", nom_amenageur: "Toulouse Métropole" })],
+			"u",
+		);
+		expect(x?.tags.find((t) => t.k === "operator")).toMatchObject({
+			v: "Toulouse Métropole",
+			path: "nom_amenageur",
+			parts: [{ text: "nom_amenageur: " }, { text: "Toulouse Métropole" }],
+		});
+	});
+
 	it("proposes no owner written as a web slug", () => {
 		const owner = (nom_amenageur: string) =>
 			irve.extract([irveRow({ nom_amenageur })], "u")?.tags.find((t) => t.k === "owner")?.v;
