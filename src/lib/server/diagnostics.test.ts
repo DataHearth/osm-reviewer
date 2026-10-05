@@ -31,4 +31,13 @@ describe("redact", () => {
 		expect(stripCredentials("smtps://me:pw@mail.lan:465")).toBe("smtps://[redacted]@mail.lan:465");
 		expect(stripCredentials("smtp://smtp.lan:587")).toBe("smtp://smtp.lan:587");
 	});
+
+	it("strips up to the last @ of the authority, with or without a scheme", () => {
+		expect(stripCredentials("smtp://alerts@corp.example:hunter2@mail.corp.example:587")).toBe(
+			"smtp://[redacted]@mail.corp.example:587",
+		);
+		expect(stripCredentials("user:pass@mail.lan:587")).toBe("[redacted]@mail.lan:587");
+		expect(stripCredentials("https://ntfy.lan/topic@x")).toBe("https://ntfy.lan/topic@x");
+		expect(stripCredentials("ops@corp.example")).toBe("ops@corp.example");
+	});
 });

@@ -7,9 +7,17 @@ import { loadNotif } from "$lib/server/settings";
 const REDACTED = "[redacted]";
 const SECRET_KEY = /secret|key|token|password|credential/i;
 
-/** `smtp://user:pass@host` keeps its host and loses the credentials. */
-export const stripCredentials = (value: string) =>
-	value.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/i, `$1${REDACTED}@`);
+/**
+ * `smtp://user:pass@host`, or a bare `user:pass@host:587`, keeps its host and loses the
+ * credentials. Everything up to the authority's last `@` goes, since a user name may
+ * itself be an address. Without a scheme only a userinfo with a `:` is one, so an email
+ * address is left alone.
+ */
+export function stripCredentials(value: string) {
+	const found = /^([a-z][a-z0-9+.-]*:\/\/)?([^/?#\s]*)@/i.exec(value);
+	if (!found || (!found[1] && !found[2].includes(":"))) return value;
+	return `${found[1] ?? ""}${REDACTED}@${value.slice(found[0].length)}`;
+}
 
 /** Redacts by key name, so a secret added to the config later is covered without a list to update. */
 export function redact(value: unknown, key = ""): unknown {
