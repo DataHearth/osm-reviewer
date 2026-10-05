@@ -7,6 +7,12 @@ export const SIRET_NAME = "SIRET";
 /** A school's level, as OSM France writes it (FR:Key:school:FR). */
 export const LEVEL = "school:FR";
 
+/** The `ce.<UAI>@ac-…` mailbox an académie gives every school, which names its establishment too. */
+export const ACADEMIE_MAIL = /^ce\.(\d{7}[a-z])@ac-/i;
+
+/** Ids that name one establishment or organisation: another one on an object is never replaced. */
+export const ESTABLISHMENT_IDS = [UAI, SIRET];
+
 /** An ENT, a school's pupil-and-parent login portal, which never replaces its public site. */
 export const LOGIN_PORTAL = /(^|\.)ent\./;
 

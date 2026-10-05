@@ -7,6 +7,14 @@ import { spacedNumber } from "./text";
 
 /** Below this the base matched another street of a similar name. */
 const MIN_SCORE = 0.7;
+
+/**
+ * A half-named street costs the base's score what it costs: "25 rue Rebatel" finds 25 Rue
+ * Docteur Rebatel at 0.68, "12 rue Hénon" 12 Rue Jacques-Louis Hénon at 0.56. Down to this, a
+ * hit on the source's own housenumber of a street holding all its words is that address;
+ * "82 rue Hénon Lyon", at 0.499, is not taken.
+ */
+const NUMBER_AND_STREET_SCORE = 0.5;
 const TIMEOUT_MS = 10_000;
 
 interface Feature {
@@ -34,12 +42,26 @@ async function ask(q: string): Promise<Feature | null> {
 	const url = `${ban.url}/search/?${new URLSearchParams({ q, limit: "1" })}`;
 	const hit = (await getJson<{ features?: Feature[] }>(url, { timeoutMs: TIMEOUT_MS }))
 		.features?.[0];
-	const sure =
-		hit && hit.properties.score >= MIN_SCORE && /^(housenumber|street)$/.test(hit.properties.type)
-			? hit
-			: null;
-	cache.set(q, sure);
-	return sure;
+	const sure = hit && /^(housenumber|street)$/.test(hit.properties.type) && confident(hit, q);
+	cache.set(q, sure ? hit : null);
+	return sure ? hit : null;
+}
+
+/** The housenumber a question starts with: "12", "12bis", "6a". */
+const ASKED_NUMBER = /^\s*(\d+(?:\s*(?:bis|ter|quater|[a-z]))?)(?![a-z])/i;
+
+function confident(hit: Feature, q: string): boolean {
+	const p = hit.properties;
+	if (p.score >= MIN_SCORE) return true;
+	const asked = ASKED_NUMBER.exec(q)?.[1];
+	return (
+		p.score >= NUMBER_AND_STREET_SCORE &&
+		p.type === "housenumber" &&
+		!!asked &&
+		!!p.housenumber &&
+		houseNumber(asked) === houseNumber(p.housenumber) &&
+		sameStreet(p, q, true)
+	);
 }
 
 const POSTCODE = /\b\d{5}\b\s*/;

@@ -46,6 +46,12 @@ describe("schoolName", () => {
 		);
 	});
 
+	it("capitalises a name already written with its accent", () => {
+		expect(schoolName("Ecole élémentaire privée hors contrat Ecole la boétie")).toBe(
+			"École élémentaire privée École la Boétie",
+		);
+	});
+
 	it("drops a capital typed twice and lowers a particle in mid-name", () => {
 		expect(schoolName("Iinstitut médico éducatif CHU La Grave")).toBe(
 			"Institut médico éducatif CHU La Grave",

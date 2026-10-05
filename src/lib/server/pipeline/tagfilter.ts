@@ -71,12 +71,16 @@ const LOOKALIKES: Record<string, Selector[]> = {
 export const lookalikeSelectors = (tags: { k: string; v: string }[]) =>
 	mergeSelectors(...tags.map((t) => LOOKALIKES[`${t.k}=${t.v}`] ?? []));
 
+/** Places a bare school building may stand for: a school, or an institute's classrooms. */
+const IN_SCHOOL_BUILDINGS = [...SCHOOLS, "social_facility"];
+
 /**
  * Whether an object may be a `k=v` place mapped as something else. A school building with no
  * name is matched by nothing, so it is only ever seen here.
  */
 export function lookalike(k: string, v: string, tags: Record<string, string>): boolean {
-	if (k === "amenity" && SCHOOLS.includes(v) && schoolBuilding(tags) && !tags.name) return true;
+	if (k === "amenity" && IN_SCHOOL_BUILDINGS.includes(v) && schoolBuilding(tags) && !tags.name)
+		return true;
 	return (LOOKALIKES[`${k}=${v}`] ?? []).some((s) => selects(s, tags));
 }
 

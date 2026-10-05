@@ -144,7 +144,10 @@ server calls is configuration rather than code:
   `BAN_URL` (the national address base, asked once per school or station address, and once more
   without the postcode when that misses: a proposed address takes its spelling when the base
   names the same street, or is dropped whole, with a bis or ter housenumber written spaced as
-  local mappers do; a school's point more than 1 km from its housenumber moves there unless
+  local mappers do; a hit scored under 0.7 still counts down to 0.5 when it is the source's own
+  housenumber on a street holding all the source street's words ("rue Rebatel" in Rue Docteur
+  Rebatel), and an address the base found only by its street is written only on an object
+  within 150 m of the base's point for it; a school's point more than 1 km from its housenumber moves there unless
   something matches it where it stands or the base found another street, and a record moved out
   of the area is dropped and counted in the run's message. A station's point moves (100 m) only
   when the registry gives it to four decimals or fewer: a precise one stays, is matched at its
@@ -236,13 +239,17 @@ CCS and CHAdeMO, where the registry holds cabinet totals), a type 2 point whose
 hours where a day's spans overlap (a day named again after `;` is one split day), no `network` that is the site's
 own name, no school `start_date` from the register's bulk entries or a merged primaire. The
 directory's medico-social institutes become `amenity=social_facility` (the main tag of one
-already mapped is left alone), its sections housed in a parent establishment are skipped, and
-"hors contrat" is dropped from school names, since OSM has no key for it and mappers drop it.
-A school's address is the directory's line as the national address base reads it: street,
+already mapped is left alone), its sections housed in a parent establishment are skipped (a
+SEGPA however it is attached, a lycée's SEP or SEGT attached as an annex at its parent's
+address), and "hors contrat" is dropped from school names, since OSM has no key for it and
+mappers drop it. A UAI's rows count as several sites only where their addresses or points
+differ. A school's address is the directory's line as the national address base reads it: street,
 postcode and city in its spelling, the housenumber (a range "20-28" included) the directory's,
-or no address at all when the base is not sure or names another street. A person's mailbox
-(first.last, or a single word that is neither a role nor the school's name, place or domain)
-and a mobile are left out, and counted in the run's message. Phones are written as FR:Key:phone
+or no address at all when the base is not sure or names another street; a street spelling a
+day out ("Onze Novembre") is the mapper's "11 Novembre". A person's mailbox (first.last, or a
+single word that is neither a role nor the school's name, place or domain), a webmail mailbox
+naming neither the school, its place nor a role, and a mobile are left out, and counted in the
+run's message. Phones are written as FR:Key:phone
 does: `+33 4 …`, an 08 number national (`08 06 14 15 00`), an overseas one under its own code
 (`+262 262 …`). A charging site is read from
 each station's newest declaration, with notes, fee and accessibility read over every
@@ -265,31 +272,42 @@ patterns and its confidence clears the floor, which is also capped.
 Matching asks Overpass once per area for the source's `matching` selector plus whatever main
 tag the records carry (a filter written for `amenity=school` still finds a post-bac `amenity=college`), then
 matches by shared ref (`ref:EU:EVSE`, `ref:UAI`, `ref:FR:SIRET`) before distance and name.
-Refs compare without `*`, spaces or case. An EVSE id's part after the operator code stands
+Refs compare without `*`, spaces or case, and a `ref:UAI` or SIRET an object holds for another
+establishment is never replaced: a banner names both ids. An EVSE id's part after the operator code stands
 alone (a pool id surviving a change of operator) only when it holds a letter, and then only
 within 150 m: Toulouse's networks all number stations `P<INSEE code><n>`, so a digits-only part
 names a different operator's station across town. A ref several records carry (one organisation's
 SIRET) decides nothing; an object carrying another `ref:UAI` (or another school's `ce.<UAI>@`
 mailbox) is never the match, nor by name or distance is a station carrying only another
 operator's EVSE ids. An id on an object that is no longer the place (a `disused:`/`was:` main
-tag, a construction site, another main key) settles nothing. An unnamed object matches within
+tag, a construction site, another main key) settles nothing, and its name or position does not
+either. A school building carrying the UAI stays the match over grounds named for a campus
+that also hold another establishment. A post-bac school matched to an object named as a lycée
+is a section housed in it: its `amenity` is left alone, with a banner line; one only tagged
+`school:FR=lycée` becomes a college with a line saying so. An unnamed object matches within
 15 m, or within 50 m when its operator, network or brand agrees, and another operator's sign
 counts against an object, as does a poor fit of capacity, connectors and power class; an object
 two records match without ids goes to the one that fits it. The network's own station within
 25 m whose connectors fit is matched under a renumbered pool id, with a banner. A match more than
-500 m from both the source's point and the address base's gets no address, contacts or SIRET (and
-nothing at all on an object mapped as no place); one left with nothing to write is counted in the
+500 m from both the source's point and the address base's gets no address, contacts, SIRET or
+`start_date` (and nothing at all on an object mapped as no place); one left with nothing to write is counted in the
 run's message and listed in the diagnostics bundle. The fetch adds anything carrying a `ref:UAI`, a school's
 kin (`college`, `university`), a school mapped only as `building=school|college|university`
 (matched by name, the update adding the amenity; never matched unnamed), and a ~220 m margin
 round the box. Lookalikes that must never be matched are fetched for the banner only:
 `man_made=charge_point` beside stations, `healthcare=centre` and `amenity=clinic` beside
-institutes. The commune's words count for nothing in a name match. What matching cannot settle
+institutes (and an unnamed school building, as beside schools). The commune's words count for
+nothing in a name match. What matching cannot settle
 is not guessed: a "new" POI with an object of its kind within 150 m (300 m when its operator or
-address agrees), a match more than 150 m away, a match whose site is mapped as several objects
-or whose id another object also carries, an object several records matched (whose counts are
-then left out), two "new" records of a run on one spot, SIRET or address, a school carrying another UAI at the
-record's address, phone or email, and a point moved to
+address agrees), a match more than 150 m away (naming what of its kind stands within 50 m of the
+source's point), a match whose site is mapped as several objects
+or whose id another object also carries (one carrying the UAI more than 25 m off is named as
+such, not counted into the site), an object of its kind 25–150 m off the match under its name
+or the same name spelt a little otherwise, or a groupe scolaire at its address, an object several
+records matched (whose counts, and an académie mailbox, are then left out), an object no longer
+the place carrying the id a match adds, two "new" records of a run on one spot, SIRET or
+address, a school carrying another UAI at the record's address, phone or email, a school within
+50 m of a "new" one carrying a UAI the source's whole read does not list, and a point moved to
 its address each get a line in the candidate's `warning`, which the review screen shows as a
 "Check" banner.
 Candidates upsert on `(source_id, source_record_key)`; a record whose `content_hash` is

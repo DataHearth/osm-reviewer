@@ -103,10 +103,83 @@ describe("placeAddress", () => {
 	it("proposes no address at all without a confident match", async () => {
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => answer(0.65)),
+			vi.fn(async () => answer(0.45)),
 		);
 		const x = await placeAddress(school("miss"));
 		expect(values(x)).toEqual({ "ref:UAI": "0310001A" });
+	});
+
+	it("takes a hit under the score floor on the source's own housenumber of a street holding all its words", async () => {
+		// The base's answers to these questions, as asked on 05-10-2026.
+		const base: Record<string, [number, string, string, string, number, number]> = {
+			"25 rue Rebatel 69003 Lyon": [
+				0.6775,
+				"25",
+				"Rue Docteur Rebatel",
+				"69003",
+				4.872465,
+				45.747544,
+			],
+			"12 rue Hénon 69004 Lyon": [
+				0.563,
+				"12",
+				"Rue Jacques-Louis Hénon",
+				"69004",
+				4.831052,
+				45.779595,
+			],
+			"4 impasse Roger Brechan 69003 Lyon": [
+				0.6968,
+				"4",
+				"Passage Roger Bréchan",
+				"69003",
+				4.866877,
+				45.751081,
+			],
+			"82 rue Hénon Lyon": [0.4994, "82", "Rue Jacques-Louis Hénon", "69004", 4.821889, 45.779662],
+		};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string) => {
+				const q = new URL(url).searchParams.get("q") ?? "";
+				const [score, housenumber, street, postcode, lon, lat] = base[q];
+				return answer(score, {
+					housenumber,
+					street,
+					postcode,
+					city: "Lyon",
+					name: `${housenumber} ${street}`,
+					label: `${housenumber} ${street} ${postcode} Lyon`,
+					lon,
+					lat,
+				});
+			}),
+		);
+		const placed = async (q: string, number: string, street: string) =>
+			values(
+				await placeAddress({
+					...school(""),
+					tags: [
+						tag("addr:housenumber", number),
+						tag("addr:street", street),
+						tag("addr:city", "Lyon"),
+					],
+					geocode: { q, farM: 1000 },
+				}),
+			);
+		expect(await placed("25 rue Rebatel 69003 Lyon", "25", "rue Rebatel")).toEqual({
+			"addr:housenumber": "25",
+			"addr:street": "Rue Docteur Rebatel",
+			"addr:postcode": "69003",
+			"addr:city": "Lyon",
+		});
+		expect(await placed("12 rue Hénon 69004 Lyon", "12", "rue Hénon")).toMatchObject({
+			"addr:street": "Rue Jacques-Louis Hénon",
+		});
+		expect(
+			await placed("4 impasse Roger Brechan 69003 Lyon", "4", "impasse Roger Brechan"),
+		).toMatchObject({ "addr:street": "Passage Roger Bréchan" });
+		expect(await placed("82 rue Hénon Lyon", "82", "rue Hénon")).toEqual({});
 	});
 
 	it("takes the base's street type, but no address from a street of another name", async () => {

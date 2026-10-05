@@ -91,6 +91,34 @@ Settled after the code bug hunt (on `main` 2026-10-05). Where a line here differ
 - A mapper's socket output is read in its own unit (W, kW, kVA) before power classes are compared.
 - A candidate whose OSM object moved on is flagged in conflict whatever its banner says; one accepted during a run is not rewritten; a record that moves to another area is taken over by it in the same run.
 
-Known gaps, deliberately not done: mention them only as a count, do not analyse them. This list replaces any earlier one: a stale UAI on an object that shares no address, phone, email or SIRET with the record (never matched, and not named by the "Another establishment" banner line); point-inside-area containment; street names not verified against OSM highways; no banner when a fill-only value contradicts the source; an IRVE operator, owner or network written as the registry spells it (capitals, legal names); operator:email / charge / maxheight not proposed.
+Settled after the fifth audit (schools). Where a line here differs from one above, this one wins.
+
+Addresses:
+- A hit of the address base scored from 0.5 up to 0.7 counts when it is the source's own housenumber on a street holding every word of the source's street ("rue Rebatel" in Rue Docteur Rebatel, "impasse Roger Brechan" as Passage Roger Bréchan); under 0.5 it never does. Schools and stations alike.
+- An address the base found by its street only is written only on an object within 150 m of the base's point for that street; housenumber hits keep the 500 m rule.
+- A street spelling a day out ("Rue du Onze Novembre 1918") is the mapper's "Rue du 11 Novembre 1918" (days 1–31, "premier"/"1er"), and the mapper's spelling stays.
+- A match more than 500 m off gets no `start_date` either, so one left with only that is counted as a far match.
+
+Matching and banners:
+- A `ref:UAI` or `ref:FR:SIRET` the object already holds with another id is never replaced: no op, and a banner line names the object's id and the record's.
+- On an object other records share, a `ce.<UAI>@ac-…` mailbox is left out with the UAI ("Left out, since another record…").
+- No level op of any kind on a campus object (`school:FR` mod included).
+- A school building carrying the record's UAI stays the match when the grounds around it are named for a campus and another establishment's object (another UAI) stands within 100 m of their centre.
+- An object no longer the place (closed, being built, repurposed) is not matched by name or distance either; the record becomes "new" and its banner names the object.
+- A post-bac record (`amenity=college`) matched to an object named as a lycée ("Lycée …") proposes no `amenity` op: a banner line says the post-bac section is housed in the lycée. An object only tagged `school:FR=lycée` under another name (Billières, Limayrac) keeps the school→college mod and its line.
+- Namesake banner: besides an exact name, an id-less same-kind object 25–150 m off whose name scores ≥ 0.8 against the matched one's with the same school-kind words ("privé"/"privée", "Baptiste"/"Jean-Baptiste"); and a groupe scolaire of the same proper name when it carries the record's housenumber and street, or no other establishment (another UAI's object, another matched record) shares its proper name.
+- A same-UAI object more than 25 m from the match is named on its own line ("Another object carrying this UAI is …"), not counted into "Same site may be mapped as N objects". EVSE ids are unchanged.
+- An update whose object does not carry the record's id names an object no longer the place that does ("carries this record's id, but it is mapped as disused…").
+- A match more than 150 m from the source's point names the nearest object of its kind within 50 m of that point.
+- Institutes get the unnamed `building=school` lookalike banner too.
+- A "new" school names every object of its kind within 50 m carrying a UAI the source's whole read (every area of the run) does not list: "… carries UAI X, which the directory no longer lists". Never matched. One farther off stays unnamed.
+
+Education preset:
+- A webmail mailbox is proposed only when a part of it names the school, its place or a role ("gorge.de.loup@", "ecole.juive.de.lyon@"); any other ("sophiejery@", "fatemi60@") is withheld and counted.
+- A lycée's SEP (334) or SEGT (335) attached as a geographic annex at its parent's address is skipped, like a SEGPA; annexes elsewhere (lycées professionnels, STS, IME) stay.
+- "The directory lists this UAI at N sites" counts distinct addresses and points; repeated rows of one site say nothing.
+- An accented name written in lower case gets its capital ("la boétie" → "la Boétie").
+
+Known gaps, deliberately not done: mention them only as a count, do not analyse them. This list replaces any earlier one: a stale UAI on an object more than 50 m from a "new" record that shares no address, phone, email or SIRET with it (never matched, and named by no banner line), and one the run's read cannot judge (a directory row with no position is not read); point-inside-area containment; street names not verified against OSM highways; no banner when a fill-only value contradicts the source; an IRVE operator, owner or network written as the registry spells it (capitals, legal names); operator:email / charge / maxheight not proposed.
 
 Every fix above is in the running code. Report anything still wrong, regressions from these fixes included.

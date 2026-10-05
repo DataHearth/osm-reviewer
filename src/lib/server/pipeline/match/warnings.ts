@@ -1,10 +1,19 @@
 import { SCHOOLS } from "../fr/kinds";
-import { campus, groundsOf, lyceeMadeCollege, maternelleAs, otherPlace } from "../fr/school";
-import { SIRET, SIRET_NAME, siretOf, UAI } from "../fr/tags";
+import {
+	campus,
+	groundsOf,
+	kindWords,
+	lyceeMadeCollege,
+	maternelleAs,
+	otherPlace,
+	properName,
+	uaisOn,
+} from "../fr/school";
+import { ESTABLISHMENT_IDS, SIRET, SIRET_NAME, siretOf, UAI } from "../fr/tags";
 import { fold } from "../fr/text";
 import { distance, metres } from "../geo";
 import { lookalike, sameKind, schoolBuilding } from "../tagfilter";
-import { nameSimilarity } from "../text";
+import { ids, nameSimilarity } from "../text";
 import { type Extraction, type OsmElement, osmRef } from "../types";
 import { evseTag, otherBorne, otherStation, stationFit } from "./charging";
 import { notThePlace } from "./find";
@@ -19,8 +28,9 @@ import {
 	whoSimilarity,
 } from "./names";
 import { MAIN, mainOf, type TagOp } from "./ops";
-import { DUPLICATE_RADIUS_M, LAT_PREFILTER, SPLIT_RADIUS_M } from "./radii";
+import { DUPLICATE_RADIUS_M, LAT_PREFILTER, MATCH_RADIUS_M, SPLIT_RADIUS_M } from "./radii";
 import { refHits, SITE_REFS } from "./refs";
+import { sameValue } from "./values";
 
 const NEARBY_RADIUS_M = 300;
 
@@ -112,15 +122,11 @@ function duplicates(
 	refIndex: Map<string, OsmElement[]>,
 	shared: Set<string>,
 	matchedBy: MatchedBy,
+	listed?: Set<string>,
 ): string[] {
 	const main = mainOf(x);
 	if (!main) return [];
-	const stale = refHits(x, refIndex, shared).flatMap(({ e, d }) => {
-		const why = notThePlace(e, main);
-		return why
-			? [`${label(e, d)} carries this record's id, but ${why}: check where the place is now`]
-			: [];
-	});
+	const stale = retiredHolders(x, null, refIndex, shared);
 	const at = addressOf(tagsOf(x));
 	const reach = (e: OsmElement, d: number) =>
 		d <= DUPLICATE_RADIUS_M ||
@@ -148,7 +154,60 @@ function duplicates(
 		});
 	const sibling = siblingOf(x, els, matchedBy);
 	if (sibling) out.push(sibling);
-	return [...out, ...stale];
+	return [...out, ...stale, ...unlisted(x, points, els, listed)];
+}
+
+/** Objects other than `el` carrying the record's id that are no longer the place. */
+function retiredHolders(
+	x: Placed,
+	el: OsmElement | null,
+	refIndex: Map<string, OsmElement[]>,
+	shared: Set<string>,
+): string[] {
+	const main = mainOf(x);
+	return refHits(x, refIndex, shared).flatMap(({ e, d }) => {
+		const why = e !== el && notThePlace(e, main);
+		return why
+			? [`${label(e, d)} carries this record's id, but ${why}: check where the place is now`]
+			: [];
+	});
+}
+
+/**
+ * How near a "new" school an object of its kind carrying a UAI the directory no longer lists
+ * is named: Lyon's Olympe de Gouges maternelle stands 13 m from the record it may have become.
+ */
+const UNLISTED_REACH_M = 50;
+
+/**
+ * Objects of the record's kind beside it whose UAI the source's whole read does not list:
+ * the place before a new UAI, or one closed since. Never the match, since the id is not the
+ * record's; the reviewer decides.
+ */
+function unlisted(
+	x: Placed,
+	points: Pick<Extraction, "lat" | "lon">[],
+	els: OsmElement[],
+	listed?: Set<string>,
+): string[] {
+	const main = mainOf(x);
+	if (!listed || !main || !x.refs[UAI]) return [];
+	return els
+		.filter((e) => sameKind(main.k, main.v, e.tags))
+		.map((e) => ({
+			e,
+			uais: [...new Set(uaisOn(e))],
+			d: Math.min(...points.map((p) => distance(p.lat, p.lon, e.lat, e.lon))),
+		}))
+		.filter(
+			({ uais, d }) =>
+				d <= UNLISTED_REACH_M && uais.length > 0 && !uais.some((id) => listed.has(id)),
+		)
+		.sort((a, b) => a.d - b.d)
+		.map(
+			({ e, uais, d }) =>
+				`${osmRef(e)}${e.tags.name ? ` “${e.tags.name}”` : ""} ${Math.round(d)} m away carries UAI ${uais.join(", ")}, which the directory no longer lists`,
+		);
 }
 
 const contactOf = (tags: Record<string, string>) =>
@@ -211,6 +270,21 @@ export function farFromAddress(x: Located, el: OsmElement): number | null {
 	return d > FAR_FROM_ADDRESS_M ? d : null;
 }
 
+/**
+ * Where the address base found the street but not the housenumber, its point is somewhere on
+ * the street: an object farther than this from it may stand on another street altogether.
+ */
+const STREET_REACH_M = 150;
+
+/** Whether `el` is too far from the only point the address base gave, a street's, to take its address. */
+export function offStreet(x: Located, el: OsmElement): boolean {
+	return (
+		!!x.onStreet &&
+		!x.atAddress &&
+		distance(x.onStreet.lat, x.onStreet.lon, el.lat, el.lon) > STREET_REACH_M
+	);
+}
+
 /** A point kept where the source puts it is worth a line when its housenumber is this far. */
 const ADDRESS_AWAY_M = 100;
 
@@ -237,18 +311,40 @@ export function matchWarnings(
 	refIndex: Map<string, OsmElement[]> = new Map(),
 	shared: Set<string> = new Set(),
 	matchedBy: MatchedBy = new Map(),
+	listed?: Set<string>,
 ): string[] {
-	if (!el) return [...addressAway(x), ...duplicates(x, els, refIndex, shared, matchedBy)];
+	if (!el) return [...addressAway(x), ...duplicates(x, els, refIndex, shared, matchedBy, listed)];
 	const out: string[] = [];
 	const main = mainOf(x);
 	const far = farFromAddress(x, el);
 	const d = distance(x.lat, x.lon, el.lat, el.lon);
+	// Matched far off, by its id most likely: what stands where the source puts it may be the place now.
+	const here =
+		d > DUPLICATE_RADIUS_M
+			? (kinOf(x, null, els)?.kin ?? []).find(
+					(k) => k.d <= MATCH_RADIUS_M && osmRef(k.e) !== osmRef(el),
+				)
+			: undefined;
+	const standing = here
+		? `; ${osmRef(here.e)}${here.e.tags.name ? ` “${here.e.tags.name}”` : ""} stands ${Math.round(here.d)} m from the source's point`
+		: "";
 	if (far)
 		out.push(
-			`Matched to ${osmRef(el)}${el.tags.name ? ` “${el.tags.name}”` : ""}, ${metres(far)} from where the source and the address base place it: the place may have moved, or the id on this object may be stale, so its address, contacts and ${SIRET_NAME} are left out`,
+			`Matched to ${osmRef(el)}${el.tags.name ? ` “${el.tags.name}”` : ""}, ${metres(far)} from where the source and the address base place it: the place may have moved, or the id on this object may be stale, so its address, contacts, ${SIRET_NAME} and opening date are left out${standing}`,
 		);
 	else if (d > DUPLICATE_RADIUS_M)
-		out.push(`Matched to ${label(el, d)} from the source's point: check it is this place`);
+		out.push(
+			`Matched to ${label(el, d)} from the source's point${standing}: check it is this place`,
+		);
+	for (const k of ESTABLISHMENT_IDS) {
+		const ours = x.tags.find((t) => t.k === k)?.v;
+		if (ours && el.tags[k] && !sameValue(k, ours, el.tags[k]))
+			out.push(
+				`OSM has ${k}=${el.tags[k]} where the source says ${ours}: left alone, since it may be another establishment's; check which is right`,
+			);
+	}
+	if (!refHits(x, refIndex, shared).some((h) => h.e === el))
+		out.push(...retiredHolders(x, el, refIndex, shared));
 	if (otherStation(el, x.refs)) out.push(`OSM carries the operator's other id ${evseTag(el)}`);
 	const gone = notThePlace(el, main);
 	if (gone)
@@ -266,10 +362,16 @@ export function matchWarnings(
 			`OSM maps this school only as building=${el.tags.building}: amenity=${amenity.v} is added to the building`,
 		);
 	const split = splitParts(x, el, els, refIndex, shared, matchedBy);
-	if (split.length)
+	// A school's UAI on an object well off this one is another site of it, or a stale copy: not
+	// a part of this site.
+	const ours = new Set(ids(x.refs[UAI] ?? ""));
+	const apart = split.filter((k) => k.d > SPLIT_RADIUS_M && uaisOn(k.e).some((id) => ours.has(id)));
+	const site = split.filter((k) => !apart.includes(k));
+	if (site.length)
 		out.push(
-			`Same site may be mapped as ${split.length + 1} objects (also ${split.map((k) => label(k.e, k.d)).join("; ")}): what is written here would land on this one only`,
+			`Same site may be mapped as ${site.length + 1} objects (also ${site.map((k) => label(k.e, k.d)).join("; ")}): what is written here would land on this one only`,
 		);
+	for (const k of apart) out.push(`Another object carrying this UAI is ${label(k.e, k.d)}`);
 	const twin = namesake(x, el, els, split, matchedBy);
 	if (twin && main)
 		out.push(
@@ -280,9 +382,11 @@ export function matchWarnings(
 
 /**
  * An object of the record's kind under the matched one's own name a little off it, too far to
- * be part of its site: the place may be mapped twice. A name merely alike is a sister school
- * ("École maternelle Jean Mermoz" beside the élémentaire), and a groupe scolaire around it
- * holds it rather than repeats it.
+ * be part of its site: the place may be mapped twice. So is one carrying no id under that name
+ * spelt a little otherwise ("privé" for "privée", "Baptiste" for "Jean-Baptiste"), but a name
+ * of another kind of school is a sister school ("École maternelle Jean Mermoz" beside the
+ * élémentaire). A groupe scolaire around the school holds it rather than repeats it, unless it
+ * stands at the record's own address or holds no other establishment.
  */
 function namesake(
 	x: Placed,
@@ -291,15 +395,39 @@ function namesake(
 	split: { e: OsmElement }[],
 	matchedBy: MatchedBy,
 ): { e: OsmElement; d: number } | undefined {
-	const named = (e: OsmElement) =>
-		el.tags.name ? fold(e.tags.name) === fold(el.tags.name) : (nameScore(x, e) ?? 0) >= WHOLE_NAME;
+	const ours = el.tags.name ?? x.name;
+	const at = addressOf(tagsOf(x));
+	const holdsOthers = (e: OsmElement) =>
+		els.some(
+			(o) =>
+				otherPlace(o, x.refs) &&
+				properName(o.tags.name ?? "") === properName(e.tags.name) &&
+				distance(o.lat, o.lon, e.lat, e.lon) <= DUPLICATE_RADIUS_M,
+		) ||
+		[...matchedBy.values()]
+			.flat()
+			.some((o) => o.key !== x.key && properName(o.name) === properName(e.tags.name));
+	const named = (e: OsmElement) => {
+		if (campus(e.tags))
+			return (
+				!!properName(e.tags.name) &&
+				properName(e.tags.name) === properName(ours) &&
+				((!!at && addressOf(e.tags) === at) || !holdsOthers(e))
+			);
+		if (!el.tags.name) return (nameScore(x, e) ?? 0) >= WHOLE_NAME;
+		return (
+			fold(e.tags.name) === fold(el.tags.name) ||
+			(!uaisOn(e).length &&
+				nameSimilarity(e.tags.name, el.tags.name) >= WHOLE_NAME &&
+				kindWords(e.tags.name) === kindWords(el.tags.name))
+		);
+	};
 	return (kinOf(x, el, els)?.kin ?? []).find(
 		({ e, d }) =>
 			d > SPLIT_RADIUS_M &&
 			d <= DUPLICATE_RADIUS_M &&
 			!!e.tags.name &&
 			named(e) &&
-			!campus(e.tags) &&
 			!split.some((s) => s.e === e) &&
 			!otherStation(e, x.refs) &&
 			!matchedElsewhere(e, x, matchedBy).length,

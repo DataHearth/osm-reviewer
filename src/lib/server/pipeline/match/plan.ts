@@ -1,4 +1,4 @@
-import { campus, groundsOf, sharedByOthers } from "../fr/school";
+import { campus, groundsOf, housedInLycee, sharedByOthers } from "../fr/school";
 import { LEVEL, SIRET } from "../fr/tags";
 import type { OsmElement } from "../types";
 import { evseTag, pointsOn } from "./charging";
@@ -10,6 +10,7 @@ import {
 	type MatchedBy,
 	matchedElsewhere,
 	modWarnings,
+	offStreet,
 	type Placed,
 	splitParts,
 } from "./warnings";
@@ -76,13 +77,17 @@ export function planUpdate(
 	}
 	const far = farFromAddress(x, el);
 	const before = ops.length;
+	// The place there may be another than the record's, so the record's date is not its own.
 	// Far off and mapped as no place at all, the object is a building that kept the id: what
 	// the place is, its name and its level would land there as much as its address would.
 	if (far)
 		leave(
-			MAIN.some((k) => el.tags[k]) ? reachedAt : (o) => reachedAt(o) || !o.k.startsWith("ref:"),
+			MAIN.some((k) => el.tags[k])
+				? (o) => reachedAt(o) || o.k === "start_date"
+				: (o) => reachedAt(o) || !o.k.startsWith("ref:"),
 		);
 	const farOut = far && ops.length < before ? far : undefined;
+	if (offStreet(x, el)) leave((o) => o.group === "addr");
 	const main = mainOf(x);
 	if (groundsOf(x, el, els)) leave((o) => o.k === "amenity" || o.k === "name");
 	// A place closed, being built or turned into something else is not reopened on the
@@ -92,7 +97,12 @@ export function planUpdate(
 	if (others.length || sharedByOthers(el, x.refs) || campus(el.tags))
 		leave((o) => o.k === "start_date");
 	// Nor does one of its establishments give it a single level.
-	if (campus(el.tags)) leave((o) => o.k === LEVEL && o.op === "add");
+	if (campus(el.tags)) leave((o) => o.k === LEVEL);
+	const housed = housedInLycee(x, el.tags);
+	if (housed) {
+		leave((o) => o.k === "amenity");
+		notes.push(housed);
+	}
 	// Several establishments on one object (a cité scolaire) each propose their own phone,
 	// SIRET or UAI for it; whichever a reviewer accepted last would win.
 	const disputed = disputedOps(ops, others, el.tags);

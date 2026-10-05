@@ -72,7 +72,8 @@ const spellings = (w: string, lower: string): [string, string][] => [
 
 const UNACCENTED = new Map([
 	...ACCENTED.flatMap((w) => spellings(w, w.toLowerCase())),
-	...ACCENTED_NAMES.flatMap((w) => spellings(w, w)),
+	// A name written with its accent but no capital ("la boétie") gets its capital all the same.
+	...ACCENTED_NAMES.flatMap((w): [string, string][] => [...spellings(w, w), [w.toLowerCase(), w]]),
 ]);
 
 const UNACCENTED_WORD = new RegExp(

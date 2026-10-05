@@ -12,9 +12,15 @@ export interface Preset {
 	position(row: Row): [number, number] | null;
 	/**
 	 * `rows` are every row that shares the key; `url` is the record's own address; `gaps`, for
-	 * a key at several sites, how far each row's address lies from its point (`addressGaps`).
+	 * a key at several sites, how far each row's address lies from its point (`addressGaps`);
+	 * `rowsOf`, another key's rows in the same read, where it has any.
 	 */
-	extract(rows: Row[], url: string, gaps?: Map<Row, number>): Extraction | null;
+	extract(
+		rows: Row[],
+		url: string,
+		gaps?: Map<Row, number>,
+		rowsOf?: (key: string) => Row[] | undefined,
+	): Extraction | null;
 	/** The country's address base, for a preset whose records carry a `geocode`. */
 	address?: AddressBase;
 	/** What to ask the address base for one row's own address, for a key at several sites. */

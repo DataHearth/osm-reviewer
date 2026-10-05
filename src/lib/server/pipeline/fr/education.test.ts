@@ -139,6 +139,47 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(edu.extract([row(segpa)], "u")).toBeNull();
 	});
 
+	it("proposes nothing for a lycée's section attached as an annex at its parent's address", () => {
+		const segt = row({
+			identifiant_de_l_etablissement: "0312884S",
+			nom_etablissement:
+				"Section d'enseignement général et technologique du Lycée professionnel privé Sainte-Marie Saint-Sernin",
+			type_etablissement: "Lycée",
+			adresse_1: "19  BOULEVARD ARMAND DUPORTAL",
+			code_postal: "31000",
+			nom_commune: "Toulouse",
+			code_nature: 335,
+			etablissement_mere: "0311219G",
+			type_rattachement_etablissement_mere: "ANNEXE GEOGRAPHIQUE",
+		});
+		const parent = (adresse_1: string) => (key: string) =>
+			key === "0311219G"
+				? [row({ identifiant_de_l_etablissement: "0311219G", adresse_1, code_postal: "31000" })]
+				: undefined;
+		expect(edu.extract([segt], "u", undefined, parent("19 boulevard Armand Duportal"))).toBeNull();
+		expect(edu.extract([segt], "u", undefined, parent("2 rue du Chairedon"))).not.toBeNull();
+		expect(edu.extract([segt], "u")).not.toBeNull();
+	});
+
+	it("says a UAI is at several sites only when its rows give several addresses or points", () => {
+		const vignal = {
+			identifiant_de_l_etablissement: "0692165D",
+			adresse_1: "18 rue de Margnolles",
+			code_postal: "69300",
+			nom_commune: "Caluire-et-Cuire",
+			latitude: 45.784119189357156,
+			longitude: 4.835362407983091,
+			code_nature: 312,
+		};
+		const college = row({ ...vignal, nom_etablissement: "Collège Élie Vignal" });
+		const lycee = row({
+			...vignal,
+			nom_etablissement: "Lycée Élie Vignal",
+			type_etablissement: "Lycée",
+		});
+		expect(edu.extract([college, lycee], "u")?.notes).toEqual([]);
+	});
+
 	it("proposes nothing for an office that is not a school", () => {
 		expect(edu.extract([row({ type_etablissement: "Service Administratif" })], "u")).toBeNull();
 		expect(edu.extract([row({ type_etablissement: "" })], "u")).toBeNull();
@@ -173,6 +214,43 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(keys).not.toContain("phone");
 		expect(x?.withheld).toBe(2);
 		expect(edu.extract([row({ mail: "contact@ecole-jaures.fr" })], "u")?.withheld).toBe(0);
+	});
+
+	it("proposes a webmail mailbox naming the school or its place, and withholds the others", () => {
+		const email = (over: Row) => {
+			const x = edu.extract([row(over)], "u");
+			return [x?.tags.find((t) => t.k === "email")?.v, x?.withheld];
+		};
+		expect(
+			email({
+				nom_etablissement: "Ecole professionnelle privée Atelier d'Apprentissage de Gorge de Loup",
+				adresse_1: "105  AVENUE SIDOINE APOLLINAIRE",
+				nom_commune: "Lyon 9e  Arrondissement",
+				mail: "gorge.de.loup@wanadoo.fr",
+			}),
+		).toEqual(["gorge.de.loup@wanadoo.fr", 0]);
+		expect(
+			email({
+				nom_etablissement: "Collège de l'école Juive de Lyon",
+				adresse_1: "40 rue Alexandre Boutin",
+				nom_commune: "Villeurbanne",
+				mail: "ecole.juive.de.lyon@wanadoo.fr",
+			}),
+		).toEqual(["ecole.juive.de.lyon@wanadoo.fr", 0]);
+		expect(
+			email({
+				nom_etablissement: "Ecole secondaire privée La Fourmi",
+				adresse_1: "16 rue JEAN DESPARMET",
+				nom_commune: "Lyon 8e  Arrondissement",
+				mail: "sophiejery@gmail.com",
+			}),
+		).toEqual([undefined, 1]);
+		expect(
+			email({
+				nom_etablissement: "Ecole élémentaire privée des Savoirs Partagés",
+				mail: "fatemi60@orange.fr",
+			}),
+		).toEqual([undefined, 1]);
 	});
 
 	it("proposes no operator:type where the SIREN and the directory's status disagree", () => {

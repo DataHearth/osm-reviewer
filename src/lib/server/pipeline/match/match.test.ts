@@ -6,7 +6,15 @@ import { closureOps, contextTags, disputedOps, newOps, unchangedTags, updateOps 
 import { planUpdate } from "./plan";
 import { indexRefs, sharedRefs } from "./refs";
 import { sameValue } from "./values";
-import { matchWarnings, modWarnings, nearbyLabels, splitParts, twinWarnings } from "./warnings";
+import {
+	type MatchedBy,
+	matchWarnings,
+	modWarnings,
+	nearbyLabels,
+	type Placed,
+	splitParts,
+	twinWarnings,
+} from "./warnings";
 
 const el = (
 	id: number,
@@ -420,7 +428,35 @@ describe("updateOps", () => {
 
 	it("never replaces a list of ids that already holds the record's", () => {
 		expect(updateOps([tag("ref:UAI", "0692864N")], { "ref:UAI": "0692864N;0690053H" })).toEqual([]);
-		expect(updateOps([tag("ref:UAI", "0692864N")], { "ref:UAI": "0690053H" })).toHaveLength(1);
+	});
+
+	it("never replaces another establishment's UAI or SIRET, and says which the object carries", () => {
+		const calandreta = {
+			lat: 43.57643348998152,
+			lon: 1.389875951209224,
+			name: "Collège Calandreta del País Tolzan",
+			tags: [
+				tag("amenity", "school"),
+				tag("ref:UAI", "0312885T"),
+				tag("ref:FR:SIRET", "79441405200025"),
+			],
+			refs: { "ref:UAI": "0312885T", "ref:FR:SIRET": "79441405200025" },
+		};
+		const way = {
+			...el(517299654, 43.5762399, 1.3895452, {
+				amenity: "school",
+				"contact:email": "ce.0312885T@ac-toulouse.fr",
+				name: "Collège Calandreta del País Tolzan",
+				"ref:FR:SIRET": "79441405200025",
+				"ref:UAI": "0312123P",
+				"school:FR": "collège",
+			}),
+			type: "way" as const,
+		};
+		expect(updateOps(calandreta.tags, way.tags)).toEqual([]);
+		expect(matchWarnings(calandreta, way, [way])).toContain(
+			"OSM has ref:UAI=0312123P where the source says 0312885T: left alone, since it may be another establishment's; check which is right",
+		);
 	});
 });
 
@@ -696,8 +732,8 @@ describe("matchWarnings", () => {
 		const c = el(3, 45.7007, 4.8, { "ref:FR:SIRET": "21690266800013" });
 		const idx = indexRefs([a, b, c], ["ref:UAI", "ref:FR:SIRET"]);
 		expect(splitParts(louis, a, [a, b, c], idx).map((k) => k.e.id)).toEqual([2]);
-		expect(matchWarnings(louis, a, [a, b, c], idx)[0]).toMatch(
-			/^Same site may be mapped as 2 objects \(also node\/2 “Bâtiment Maternelle”, 78 m away/,
+		expect(matchWarnings(louis, a, [a, b, c], idx)[0]).toBe(
+			"Another object carrying this UAI is node/2 “Bâtiment Maternelle”, 78 m away",
 		);
 		const shared = sharedRefs([louis, { refs: { "ref:UAI": "0693634A" } }]);
 		expect(splitParts(louis, a, [a, b, c], idx, shared)).toEqual([]);
@@ -885,7 +921,7 @@ describe("far from the record's address", () => {
 		expect(plan.ops).toEqual([]);
 		expect(plan.far).toBeCloseTo(3892, -1);
 		expect(matchWarnings(x, far, [far])[0]).toMatch(
-			/^Matched to node\/1, 3.9 km from where the source and the address base place it: .* so its address, contacts and SIRET are left out$/,
+			/^Matched to node\/1, 3.9 km from where the source and the address base place it: .* so its address, contacts, SIRET and opening date are left out$/,
 		);
 		const near = el(2, 45.703, 4.8, { amenity: "school" });
 		expect(planUpdate(x, near, [near]).ops).toHaveLength(3);
@@ -1152,6 +1188,475 @@ describe("records sharing an object", () => {
 	});
 });
 
+const way = (id: number, lat: number, lon: number, tags: Record<string, string>): OsmElement => ({
+	...el(id, lat, lon, tags),
+	type: "way",
+});
+
+describe("schools of the fifth audit", () => {
+	const school = (
+		key: string,
+		lat: number,
+		lon: number,
+		name: string,
+		tags: ProposedTag[] = [],
+		refs: Record<string, string> = {},
+	) => ({
+		key,
+		lat,
+		lon,
+		name,
+		tags: [tag("amenity", "school"), tag("ref:UAI", key), ...tags],
+		refs: { "ref:UAI": key, ...refs },
+	});
+
+	it("leaves out an académie mailbox on an object other records share, as it does the UAI", () => {
+		const elementaire = school(
+			"0693595H",
+			45.73584384498814,
+			4.877736697534625,
+			"École élémentaire privée La Fourmi",
+			[
+				tag("ref:FR:SIRET", "39853414900016"),
+				tag("email", "ce.0693595h@ac-lyon.fr"),
+				tag("operator:type", "private"),
+			],
+		);
+		const secondaire = school("0694738A", 45.7358, 4.8777, "École secondaire privée La Fourmi", [
+			tag("ref:FR:SIRET", "39853414900016"),
+			tag("operator:type", "private"),
+		]);
+		const fourmi = el(10128104663, 45.7359741, 4.8776588, {
+			amenity: "school",
+			name: "La Fourmi",
+			operator: "Association La Fourmi",
+			phone: "+33478002753",
+			"school:FR": "élémentaire",
+		});
+		const byIt: MatchedBy = new Map([["node/10128104663", [elementaire, secondaire]]]);
+		const plan = planUpdate(elementaire, fourmi, [fourmi], new Map(), new Set(), byIt);
+		expect(plan.ops.map((o) => o.k)).toEqual(["ref:FR:SIRET", "operator:type"]);
+		expect(plan.notes).toContain(
+			"Left out, since another record on this object says otherwise: ref:UAI, email",
+		);
+	});
+
+	it("changes no campus's level, not even one it already gives", () => {
+		const jaures = school(
+			"0692980P",
+			45.78596927286488,
+			4.8326481445030955,
+			"École élémentaire d'application Jean Jaurès",
+			[tag("school:FR", "élémentaire")],
+		);
+		const groupe = way(50550987, 45.7862193, 4.8326592, {
+			"addr:housenumber": "1",
+			amenity: "school",
+			name: "Groupe scolaire Jean Jaurès",
+			"operator:type": "public",
+			"ref:UAI": "0692980P",
+			"school:FR": "primaire",
+		});
+		expect(planUpdate(jaures, groupe, [groupe]).ops).toEqual([]);
+	});
+
+	it("keeps the building carrying the UAI over campus grounds that hold another school", () => {
+		const college = school(
+			"0690541N",
+			45.71394688779167,
+			4.801924593049579,
+			"Collège Notre-Dame du Bon Conseil",
+			[tag("school:FR", "collège")],
+		);
+		const grounds = way(172887509, 45.7136567, 4.8011051, {
+			amenity: "school",
+			landuse: "education",
+			name: "École et collège privés Notre-Dame du Bon Conseil",
+			"operator:type": "private",
+		});
+		const building = way(77882228, 45.7136455, 4.801044, {
+			building: "school",
+			name: "Collège privé Notre-Dame du Bon Conseil",
+			"ref:UAI": "0690541N",
+			"school:FR": "collège",
+		});
+		const ecole = el(13745144141, 45.7133648, 4.8015771, {
+			amenity: "school",
+			name: "École primaire privée Notre-Dame du Bon Conseil",
+			"ref:UAI": "0692078J",
+			"school:FR": "primaire",
+		});
+		const all = [grounds, building, ecole];
+		expect(findMatch(college, all, indexRefs(all, ["ref:UAI"]))?.id).toBe(77882228);
+		const alone = [grounds, building];
+		expect(findMatch(college, alone, indexRefs(alone, ["ref:UAI"]))?.id).toBe(172887509);
+	});
+
+	it("names a namesake spelt a little otherwise just past the site, never a sister school", () => {
+		const immaculee = school(
+			"0692130R",
+			45.7577256069601,
+			4.890675315243371,
+			"École primaire privée Immaculée-Conception",
+		);
+		const node = el(13391567972, 45.7577256, 4.8906753, {
+			amenity: "school",
+			name: "École primaire privée Immaculée-Conception",
+			"ref:UAI": "0692130R",
+			"school:FR": "primaire",
+		});
+		const prive = el(11727675958, 45.7574989, 4.8906427, {
+			amenity: "school",
+			name: "École primaire privé Immaculée Conception",
+			"operator:type": "private",
+		});
+		expect(matchWarnings(immaculee, node, [node, prive])).toEqual([
+			"Possible duplicate of this object: amenity=school is also mapped at node/11727675958 “École primaire privé Immaculée Conception”, 25 m away",
+		]);
+		const lasalle = school(
+			"0690671E",
+			45.77167247354931,
+			4.830230362921922,
+			"Lycée Aux Lazaristes - La Salle site Croix-Rousse",
+		);
+		const neyret = way(926303377, 45.7718058, 4.828743, {
+			amenity: "school",
+			name: "Lycée privé Jean-Baptiste de La Salle",
+			"ref:UAI": "0690671E",
+		});
+		const baptiste = way(85639099, 45.7718058, 4.8284091, {
+			amenity: "school",
+			building: "school",
+			name: "Lycée privé Baptiste de La Salle",
+		});
+		expect(matchWarnings(lasalle, neyret, [neyret, baptiste])).toContain(
+			"Possible duplicate of this object: amenity=school is also mapped at way/85639099 “Lycée privé Baptiste de La Salle”, 26 m away",
+		);
+		const sister = {
+			...prive,
+			tags: { amenity: "school", name: "École maternelle privée Immaculée Conception" },
+		};
+		expect(matchWarnings(immaculee, node, [node, sister])).toEqual([]);
+	});
+
+	it("names a groupe scolaire at the record's own address as a possible duplicate", () => {
+		const anthonioz = school(
+			"0312921G",
+			43.600507097619634,
+			1.4061176505136046,
+			"École primaire publique Geneviève de Gaulle Anthonioz",
+			[
+				tag("school:FR", "primaire"),
+				tag("addr:housenumber", "7"),
+				tag("addr:street", "Rue Marie de Gournay"),
+			],
+		);
+		const node = el(14211912401, 43.6010745, 1.4061731, {
+			amenity: "school",
+			"contact:email": "ce.0312921G@ac-toulouse.fr",
+			name: "École primaire publique Geneviève De Gaulle Anthonioz",
+			"school:FR": "primaire",
+		});
+		const groupe = way(970882424, 43.6009052, 1.4058581, {
+			"addr:city": "Toulouse",
+			"addr:housenumber": "7",
+			"addr:street": "Rue Marie de Gournay",
+			amenity: "school",
+			name: "Groupe scolaire Geneviève de Gaulle-Anthonioz",
+			"school:FR": "primaire",
+		});
+		expect(matchWarnings(anthonioz, node, [node, groupe])).toEqual([
+			"Possible duplicate of this object: amenity=school is also mapped at way/970882424 “Groupe scolaire Geneviève de Gaulle-Anthonioz”, 32 m away",
+		]);
+	});
+
+	it("names an object carrying the id an update adds that is no longer the place", () => {
+		const bellecour = school(
+			"0693401X",
+			45.755501306299095,
+			4.832248988580168,
+			"École technologique privée Arts Appliqués Bellecour",
+		);
+		const college = el(7538342444, 45.7553422, 4.8322696, {
+			amenity: "college",
+			name: "Bellecour École",
+		});
+		const disused = el(2635330079, 45.7588385, 4.8312753, {
+			"disused:amenity": "school",
+			"ref:UAI": "0693401X",
+		});
+		const all = [college, disused];
+		expect(matchWarnings(bellecour, college, all, indexRefs(all, ["ref:UAI"]))).toContain(
+			"node/2635330079, 379 m away carries this record's id, but it is mapped as disused:amenity=school: check where the place is now",
+		);
+	});
+
+	it("leaves no opening date on a match far from where the record is, so it is counted", () => {
+		const isitech = {
+			...school(
+				"0694215G",
+				45.735335038494476,
+				4.839704721611926,
+				"École tech sup privée Isitech Partner Formation Partner Sup'",
+				[{ ...tag("start_date", "2014-05-27"), addOnly: true }],
+			),
+			tags: [
+				tag("amenity", "college"),
+				tag("ref:UAI", "0694215G"),
+				{ ...tag("start_date", "2014-05-27"), addOnly: true },
+			],
+		};
+		const node = el(9386319476, 45.7281147, 4.8231537, {
+			amenity: "college",
+			name: "Isitech",
+			"ref:UAI": "0694215G",
+		});
+		const plan = planUpdate(isitech, node, [node]);
+		expect(plan.ops).toEqual([]);
+		expect(plan.far).toBeGreaterThan(1500);
+	});
+
+	it("reads a street's day spelt out or in digits as the same street", () => {
+		expect(sameValue("addr:street", "Rue du Onze Novembre 1918", "Rue du 11 Novembre 1918")).toBe(
+			true,
+		);
+		expect(sameValue("addr:street", "Rue du Dix-Sept Juin", "Rue du 17 Juin")).toBe(true);
+		expect(sameValue("addr:street", "Rue du 11 Novembre 1918", "Rue du 8 Mai 1945")).toBe(false);
+		const address = [
+			tag("addr:housenumber", "11"),
+			tag("addr:street", "Rue du Onze Novembre 1918"),
+			tag("addr:postcode", "31300"),
+			tag("addr:city", "Toulouse"),
+		].map((t) => ({ ...t, group: "addr" }));
+		const vidal = { amenity: "university", "addr:street": "Rue du 11 Novembre 1918" };
+		expect(updateOps(address, vidal).map((o) => o.k)).toEqual([
+			"addr:housenumber",
+			"addr:postcode",
+			"addr:city",
+		]);
+	});
+
+	it("matches nothing being built by name or distance, and names it", () => {
+		const pompidou = school(
+			"0693474B",
+			45.75984486472076,
+			4.86749302368711,
+			"École élémentaire Pompidou",
+			[tag("school:FR", "élémentaire")],
+		);
+		const site = way(440129348, 45.7596511, 4.8674324, {
+			landuse: "construction",
+			name: "École élémentaire Pompidou",
+			opening_date: "2027-09-01",
+			"ref:UAI": "0693474B",
+			"school:FR": "élémentaire",
+		});
+		const idx = indexRefs([site], ["ref:UAI"]);
+		const now = Date.UTC(2026, 9, 5);
+		expect(findMatch(pompidou, [site], idx, new Set(), now)).toBeNull();
+		expect(matchWarnings(pompidou, null, [site], idx).join("\n")).toMatch(
+			/way\/440129348 “École élémentaire Pompidou”, 22 m away carries this record's id, but it is under construction \(opening_date=2027-09-01\)/,
+		);
+	});
+
+	it("says another object far off carries the UAI rather than counting it into the site", () => {
+		const anatole = school(
+			"0691056Y",
+			45.75274472015958,
+			4.888241620724171,
+			"École maternelle Anatole France",
+		);
+		const here = el(2865851197, 45.7527898, 4.8883687, {
+			amenity: "school",
+			name: "École maternelle Anatole France",
+			"ref:UAI": "0691056Y",
+		});
+		const far = el(1422083143, 45.7682779, 4.8821887, {
+			amenity: "school",
+			name: "École maternelle Anatole France",
+			"ref:UAI": "0691056Y",
+		});
+		const all = [here, far];
+		expect(matchWarnings(anatole, here, all, indexRefs(all, ["ref:UAI"]))).toEqual([
+			"Another object carrying this UAI is node/1422083143 “École maternelle Anatole France”, 1788 m away",
+		]);
+	});
+
+	it("sees an unnamed school building beside an institute as a possible duplicate", () => {
+		const ditep = {
+			lat: 45.7303986425007,
+			lon: 4.832871750576011,
+			name: "DITEP Gerland",
+			tags: [tag("amenity", "social_facility"), tag("ref:UAI", "0692636R")],
+			refs: { "ref:UAI": "0692636R" },
+		};
+		const building = way(44637225, 45.7304472, 4.832622, { building: "school" });
+		expect(matchWarnings(ditep, null, [building])).toEqual([
+			"Possible duplicate: building=school already mapped at way/44637225, 20 m away",
+		]);
+	});
+
+	it("names what stands at the source's point when the match lies far from it", () => {
+		const luizet = school(
+			"0693676W",
+			45.77648482113171,
+			4.887378361222313,
+			"École élémentaire Croix Luizet",
+		);
+		const old = el(1847438224, 45.7785759, 4.8852293, {
+			amenity: "school",
+			name: "École primaire Croix-Luizet",
+			"ref:UAI": "0693676W",
+		});
+		const transitoire = way(1232435076, 45.7767157, 4.88741, {
+			amenity: "school",
+			building: "school",
+			name: "École élémentaire transitoire Croix Luizet",
+		});
+		const all = [old, transitoire];
+		expect(matchWarnings(luizet, old, all, indexRefs(all, ["ref:UAI"]))).toContain(
+			"Matched to node/1847438224 “École primaire Croix-Luizet”, 286 m away from the source's point; way/1232435076 “École élémentaire transitoire Croix Luizet” stands 26 m from the source's point: check it is this place",
+		);
+	});
+
+	it("names a school beside a new record whose UAI the directory no longer lists", () => {
+		const pasteur = school(
+			"0691164R",
+			45.727692295756434,
+			4.883773380549234,
+			"École maternelle Louis Pasteur",
+		);
+		const olympe = el(2625598241, 45.7278137, 4.8837744, {
+			amenity: "school",
+			name: "École maternelle Olympe de Gouges",
+			"ref:UAI": "0691782M",
+		});
+		const listed = new Set(["0691164R"]);
+		const lines = (x: Placed, els: OsmElement[], keys: Set<string>) =>
+			matchWarnings(x, null, els, new Map(), new Set(), new Map(), keys);
+		expect(lines(pasteur, [olympe], listed)).toContain(
+			"node/2625598241 “École maternelle Olympe de Gouges” 13 m away carries UAI 0691782M, which the directory no longer lists",
+		);
+		expect(lines(pasteur, [olympe], new Set([...listed, "0691782M"]))).toEqual([]);
+		const junior = school(
+			"0692883J",
+			45.73406424527903,
+			4.877125736695358,
+			"École primaire privée bilingue Junior School",
+		);
+		const international = el(2003488786, 45.7340495, 4.8772571, {
+			amenity: "school",
+			name: "École primaire privée Junior School International",
+			"ref:UAI": "0693360C",
+		});
+		const maternelle = el(2849212411, 45.734142, 4.8769844, {
+			amenity: "school",
+			name: "École maternelle privée bilingue Junior School",
+			"ref:UAI": "0693606V",
+		});
+		expect(
+			lines(junior, [international, maternelle], new Set(["0692883J"])).filter((l) =>
+				l.includes("no longer lists"),
+			),
+		).toEqual([
+			"node/2003488786 “École primaire privée Junior School International” 10 m away carries UAI 0693360C, which the directory no longer lists",
+			"node/2849212411 “École maternelle privée bilingue Junior School” 14 m away carries UAI 0693606V, which the directory no longer lists",
+		]);
+		const plaine = school(
+			"0690332L",
+			45.74237946862848,
+			4.782119509979755,
+			"École primaire La Plaine",
+		);
+		const far = way(470098874, 45.742958, 4.7849025, {
+			amenity: "school",
+			name: "École primaire publique la Plaine",
+			"ref:UAI": "0690333M",
+		});
+		expect(lines(plaine, [far], new Set(["0690332L"]))).toEqual([]);
+	});
+
+	it("leaves a lycée a school when a post-bac section housed in it is matched to it", () => {
+		const saliege = {
+			lat: 43.60412513198991,
+			lon: 1.4951799762460685,
+			name: "Campus Saliège",
+			tags: [
+				tag("amenity", "college"),
+				tag("ref:UAI", "0312408Z"),
+				{ ...tag("addr:street", "Rue Georges Bernanos"), addOnly: true, group: "addr" },
+			],
+			refs: { "ref:UAI": "0312408Z" },
+		};
+		const lycee = way(221477354, 43.6032362, 1.4957088, {
+			"addr:city": "Balma",
+			"addr:housenumber": "3",
+			"addr:postcode": "31130",
+			amenity: "school",
+			name: "Lycée Privé Saliège",
+			"ref:UAI": "0312408Z",
+			"school:FR": "lycée",
+		});
+		const plan = planUpdate(saliege, lycee, [lycee]);
+		expect(plan.ops.map((o) => `${o.op} ${o.k}`)).toEqual(["add addr:street"]);
+		expect(plan.notes).toEqual([
+			"A post-bac section, “Campus Saliège”, is housed in this lycée (name=Lycée Privé Saliège): its amenity is left alone, so the object stays a school",
+		]);
+		const billieres = {
+			...saliege,
+			name: "École supérieure Billières - Lycée technologique privé",
+			tags: [tag("amenity", "college"), tag("ref:UAI", "0311186W")],
+			refs: { "ref:UAI": "0311186W" },
+		};
+		const named = el(13633987466, 43.6144608, 1.4427985, {
+			amenity: "school",
+			name: "École supérieure Billières - Lycée technologique privé",
+			"ref:UAI": "0311186W",
+			"school:FR": "lycée",
+		});
+		const kept = planUpdate(billieres, named, [named]);
+		expect(kept.ops.map((o) => `${o.op} ${o.k}`)).toEqual(["mod amenity"]);
+		expect(kept.notes.join("\n")).toMatch(/The object reads as a lycée \(school:FR=lycée\)/);
+	});
+
+	it("writes a street-only address only on an object near that street", () => {
+		const address = [
+			tag("addr:housenumber", "49"),
+			tag("addr:street", "Rue Lafontaine"),
+			tag("addr:postcode", "69100"),
+			tag("addr:city", "Villeurbanne"),
+		].map((t) => ({ ...t, group: "addr", addOnly: true }));
+		const prevert = {
+			...school(
+				"0692609L",
+				45.76072566829456,
+				4.878457372288534,
+				"École primaire Jacques Prévert",
+				[...address, tag("phone", "+33 4 78 68 73 10")],
+			),
+			onStreet: { lat: 45.760726, lon: 4.878457, label: "Rue Lafontaine 69100 Villeurbanne" },
+		};
+		const maternelle = way(526612513, 45.7639517, 4.8770989, {
+			amenity: "school",
+			name: "École maternelle Jacques Prévert",
+			"ref:UAI": "0692609L",
+		});
+		expect(planUpdate(prevert, maternelle, [maternelle]).ops.map((o) => o.k)).toEqual(["phone"]);
+		const tillion = {
+			...prevert,
+			lat: 45.74255126440812,
+			lon: 4.821088303456594,
+			onStreet: { lat: 45.742809, lon: 4.820254, label: "Rue Casimir Périer 69002 Lyon" },
+		};
+		const groupe = way(850927755, 45.7438245, 4.8195879, {
+			amenity: "school",
+			name: "Groupe scolaire Germaine Tillion",
+			"ref:UAI": "0692609L",
+		});
+		expect(planUpdate(tillion, groupe, [groupe]).ops.map((o) => o.k)).toContain("addr:street");
+	});
+});
+
 describe("one object, several establishments", () => {
 	const x = {
 		lat: 45.7,
@@ -1204,7 +1709,9 @@ describe("a duplicate of the matched object", () => {
 			"Possible duplicate of this object: amenity=college is also mapped at node/2 “ISPRA”, 67 m away",
 		]);
 		const group = el(3, 43.5511, 1.4868, { amenity: "school", name: "Groupe scolaire ISPRA" });
-		expect(matchWarnings(x, ispra, [ispra, group])).toEqual([]);
+		const lycee = { key: "L", name: "Lycée privé ISPRA", tags: [], refs: {} };
+		const byIt: MatchedBy = new Map([["node/9", [lycee]]]);
+		expect(matchWarnings(x, ispra, [ispra, group], new Map(), new Set(), byIt)).toEqual([]);
 	});
 });
 

@@ -1,4 +1,4 @@
-import { LEVEL, SIRET, UAI } from "../fr/tags";
+import { ACADEMIE_MAIL, ESTABLISHMENT_IDS, LEVEL, SIRET, UAI } from "../fr/tags";
 import { digits } from "../fr/text";
 import type { Extraction, ProposedTag } from "../types";
 import { sameUrl, sameValue } from "./values";
@@ -107,7 +107,11 @@ export function updateOps(proposed: ProposedTag[], current: Record<string, strin
 		if (elsewhere?.some((o) => current[o] && digits(current[o]) === digits(p.v))) continue;
 		const had = current[k];
 		if (had === undefined) ops.push({ ...p, k, op: "add", was: null });
-		else if (!addOnly(p) && ![p.v, ...(p.also ?? [])].some((v) => sameValue(p.k, v, had)))
+		else if (
+			!addOnly(p) &&
+			!ESTABLISHMENT_IDS.includes(k) &&
+			![p.v, ...(p.also ?? [])].some((v) => sameValue(p.k, v, had))
+		)
 			ops.push({ ...p, k, op: "mod", was: had });
 	}
 	const typed = ops.find((o) => /^socket:(?!unknown)[^:]+$/.test(o.k));
@@ -146,7 +150,9 @@ const agreeBetween = (k: string, a: string, b: string) =>
 
 /**
  * The operations among `ops` another record matched to the same object contradicts, compared
- * under the key the object would get each value under. A move or an address goes whole.
+ * under the key the object would get each value under. A move or an address goes whole, and
+ * an académie mailbox, which names one establishment as its UAI does, goes on any object
+ * other records share.
  */
 export function disputedOps(
 	ops: TagOp[],
@@ -156,9 +162,10 @@ export function disputedOps(
 	const direct = ops.filter(
 		(o) =>
 			o.op !== "del" &&
-			others.some((other) =>
-				other.tags.some((t) => keyOn(t.k, current) === o.k && !agreeBetween(t.k, t.v, o.v)),
-			),
+			((others.length > 0 && /^(contact:)?email$/.test(o.k) && ACADEMIE_MAIL.test(o.v)) ||
+				others.some((other) =>
+					other.tags.some((t) => keyOn(t.k, current) === o.k && !agreeBetween(t.k, t.v, o.v)),
+				)),
 	);
 	const groups = new Set(direct.map((o) => o.group).filter(Boolean));
 	const keys = new Set(direct.map((o) => o.k));

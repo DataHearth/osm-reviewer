@@ -6,15 +6,15 @@ import { MATCH_RADIUS_M, SPLIT_RADIUS_M } from "../match/radii";
 import type { RefScheme } from "../match/refs";
 import { sameValue } from "../match/values";
 import { sameKind, schoolBuilding } from "../tagfilter";
-import { ids, normaliseName } from "../text";
+import { ids, normaliseName, tokens } from "../text";
 import type { Extraction, OsmElement } from "../types";
-import { LEVEL, SIRET, sameLevel, UAI } from "./tags";
+import { ACADEMIE_MAIL, LEVEL, SIRET, sameLevel, UAI } from "./tags";
+import { GENERIC } from "./words";
 
 const UAI_KEYS = [UAI, "ref:FR:UAI"];
 
-/** The `ce.<UAI>@ac-…` mailbox an académie gives every school names its establishment too. */
 const mailUai = (e: OsmElement) =>
-	/^ce\.(\d{7}[a-z])@ac-/i.exec(e.tags["contact:email"] ?? e.tags.email ?? "")?.[1].toUpperCase();
+	ACADEMIE_MAIL.exec(e.tags["contact:email"] ?? e.tags.email ?? "")?.[1].toUpperCase();
 
 const uai: RefScheme = {
 	aliases: UAI_KEYS,
@@ -30,13 +30,18 @@ export const schemes: Record<string, RefScheme> = {
 	[SIRET]: { aliases: [SIRET, "siret"] },
 };
 
+/** Every UAI `e` carries, its académie mailbox's included. */
+export function uaisOn(e: OsmElement): string[] {
+	const theirs = UAI_KEYS.flatMap((k) => (e.tags[k] ? ids(e.tags[k]) : []));
+	const mail = mailUai(e);
+	return mail ? [...theirs, mail] : theirs;
+}
+
 /** Whether `e` is another establishment: it carries a UAI, and none of them is the record's. */
 export function otherPlace(e: OsmElement, refs: Record<string, string>): boolean {
 	if (!refs[UAI]) return false;
 	const ours = new Set(ids(refs[UAI]));
-	const theirs = UAI_KEYS.flatMap((k) => (e.tags[k] ? ids(e.tags[k]) : []));
-	const mail = mailUai(e);
-	if (mail) theirs.push(mail);
+	const theirs = uaisOn(e);
 	return theirs.length > 0 && !theirs.some((x) => ours.has(x));
 }
 
@@ -85,11 +90,31 @@ export function groundsOf(x: Findable, building: OsmElement, els: OsmElement[]):
 	);
 }
 
-/** Whether the grounds a matched school building stands in are this school's, not a neighbour's. */
-export function ownGrounds(x: Findable, grounds: OsmElement): boolean {
+/**
+ * How far from the centre of a campus's grounds another establishment still stands in or
+ * beside them. Only centres are known: Oullins' Notre-Dame du Bon Conseil école stands 50 m
+ * from the centre of the "École et collège" grounds it is part of.
+ */
+const CAMPUS_REACH_M = 100;
+
+/**
+ * Whether the grounds a matched school building stands in are this school's, not a
+ * neighbour's. Grounds named for a campus that also hold another establishment's object are
+ * the campus's: the building carrying the record's UAI is the record's own.
+ */
+export function ownGrounds(x: Findable, grounds: OsmElement, els: OsmElement[] = []): boolean {
 	const level = x.tags?.find((t) => t.k === LEVEL)?.v;
 	const theirs = grounds.tags[LEVEL];
+	const shared =
+		campus(grounds.tags) &&
+		els.some(
+			(e) =>
+				e !== grounds &&
+				otherPlace(e, x.refs) &&
+				distance(grounds.lat, grounds.lon, e.lat, e.lon) <= CAMPUS_REACH_M,
+		);
 	return (
+		!shared &&
 		!otherPlace(grounds, x.refs) &&
 		(!grounds.tags.name || (nameScore(x, grounds) ?? 0) >= NAME_MATCH) &&
 		(!level || !theirs || sameLevel(level, theirs))
@@ -125,6 +150,34 @@ export function campus(tags: Record<string, string>): boolean {
 	return new Set(name.split(" ").flatMap((w) => LEVEL_WORDS[w] ?? [])).size > 1;
 }
 
+/** Words of a school's name that say which kind of school it is, finer than `LEVEL_WORDS`. */
+const KIND_WORDS = new Set([
+	...Object.keys(LEVEL_WORDS),
+	"professionnel",
+	"technologique",
+	"polyvalent",
+	"general",
+	"agricole",
+	"superieur",
+	"groupe",
+	"scolaire",
+	"cite",
+]);
+
+/** The kind words of a name: "École maternelle X" and "École élémentaire X" are two schools. */
+export const kindWords = (name: string) =>
+	[...tokens(name)]
+		.filter((w) => KIND_WORDS.has(w))
+		.sort()
+		.join(" ");
+
+/** What is left of a school's name without its kind and status: "Geneviève de Gaulle Anthonioz". */
+export const properName = (name: string) =>
+	[...tokens(name)]
+		.filter((w) => !KIND_WORDS.has(w) && !GENERIC.has(w))
+		.sort()
+		.join(" ");
+
 /** A maternelle is often mapped as the kindergarten it looks like, under its own name. */
 export const maternelleAs = (x: Pick<Extraction, "name" | "tags">, e: OsmElement) =>
 	e.tags.amenity !== "kindergarten" ||
@@ -146,4 +199,18 @@ export function lyceeMadeCollege(
 				`The object reads as a lycée (${lycee}), which amenity=college would no longer say: check whether the post-bac school is mapped apart from it`,
 			]
 		: [];
+}
+
+/**
+ * A post-bac school whose object is named as a lycée is the lycée's STS or CPGE, housed in it:
+ * the object stays a school. One only tagged `school:FR=lycée`, often by an import reading the
+ * directory's type, keeps the college with `lyceeMadeCollege`'s line.
+ */
+export function housedInLycee(
+	x: Pick<Extraction, "name" | "tags">,
+	current: Record<string, string>,
+): string | null {
+	if (!x.tags.some((t) => t.k === "amenity" && t.v === "college")) return null;
+	if (!/^lycee\b/.test(normaliseName(current.name ?? ""))) return null;
+	return `A post-bac section, “${x.name}”, is housed in this lycée (name=${current.name}): its amenity is left alone, so the object stays a school`;
 }

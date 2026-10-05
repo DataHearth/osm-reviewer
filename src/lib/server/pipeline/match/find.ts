@@ -61,13 +61,15 @@ export function findMatch(
 		// A school building carrying the UAI within the grounds mapped as that same school: the
 		// grounds are the school, and the building only one of its blocks.
 		const grounds = groundsOf(x, byRef, els);
-		return grounds && ownGrounds(x, grounds) ? grounds : byRef;
+		return grounds && ownGrounds(x, grounds, els) ? grounds : byRef;
 	}
 
 	let best: { el: OsmElement; score: number } | null = null;
 	for (const e of els) {
 		if (otherPlace(e, x.refs)) continue;
 		if (Math.abs(e.lat - x.lat) > LAT_PREFILTER) continue;
+		// What its id cannot make the place, its name or position cannot either.
+		if (notThePlace(e, main, now)) continue;
 		const building = schoolBuilding(e.tags);
 		if (building && !e.tags.name) continue;
 		const d = distance(x.lat, x.lon, e.lat, e.lon);

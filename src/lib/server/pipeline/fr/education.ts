@@ -4,7 +4,7 @@ import { houseNumber, tokens } from "../text";
 import type { ProposedTag, Row } from "../types";
 import { addressBase } from "./ban";
 import { bare, schoolName } from "./school-name";
-import { addressQuery, expandStreet, mobileFR, phoneFR, spacedNumber } from "./text";
+import { addressQuery, expandStreet, fold, mobileFR, phoneFR, spacedNumber } from "./text";
 
 /** Directory natures that are offices, not places anyone is taught. */
 const NOT_A_SCHOOL = /^(service administratif|information et orientation)$/i;
@@ -105,7 +105,7 @@ export function openedForSure(date: string, level: string | null): boolean {
 /** Positions the directory gives to the building; anything coarser is worth a look. */
 const EXACT = /^(parfaite|num[ée]ro de rue)$/i;
 
-/** A school's address at a webmail provider is often a person's, which does not belong on the map. */
+/** A school's address at a webmail provider is as often a person's, which does not belong on the map. */
 const WEBMAIL =
 	/@(gmail|hotmail|outlook|live|yahoo|icloud|wanadoo|orange|free|laposte|sfr|neuf)\.[a-z.]+$/i;
 
@@ -150,6 +150,21 @@ export function personalMailbox(mail: string, name: string, place: string): bool
 }
 
 /**
+ * Whether a mailbox at a webmail provider names the school, its place or a role
+ * ("gorge.de.loup@", "ecole.juive.de.lyon@", "latourrose@"): there the domain says nothing,
+ * and a mailbox that names nothing ("fatemi60@", "esjb31@") may be someone's own.
+ */
+export function schoolMailbox(mail: string, name: string, place: string): boolean {
+	const [local] = bare(mail).toLowerCase().split("@");
+	const own = new Set([...tokens(name), ...tokens(place)]);
+	const inside = [...ROLE_WORDS, ...own].filter((w) => w.length >= WORD_INSIDE);
+	return local
+		.split(/[^a-z]+/)
+		.filter(Boolean)
+		.some((p) => ROLE_WORDS.has(p) || own.has(p) || inside.some((w) => p.includes(w)));
+}
+
+/**
  * The first digit of a SIREN says whose legal person it is: 1 the State, 2 a local authority
  * or public body (hospitals included). Where it disagrees with the directory's status (a
  * public hospital's school listed as private), neither is taken.
@@ -157,6 +172,35 @@ export function personalMailbox(mail: string, name: string, place: string): bool
 const publicBody = (siret: string) => (/^\d{14}$/.test(siret) ? /^[12]/.test(siret) : null);
 
 const SEGPA = "390";
+
+/** A lycée's vocational (SEP) and general-and-technological (SEGT) sections. */
+const LYCEE_SECTIONS = ["334", "335"];
+
+const sameLine = (a: Row, b: Row) =>
+	fold(str(a, "adresse_1")) === fold(str(b, "adresse_1")) &&
+	str(a, "code_postal") === str(b, "code_postal");
+
+/**
+ * A SEGPA or a lycée's section lives in its parent's buildings, with the parent's SIRET and
+ * switchboard: it is not a place of its own on the map. The directory attaches most as
+ * sections, a SEGPA sometimes as a geographic annex, and a SEGT too (Toulouse's Sainte-Marie
+ * Saint-Sernin, at its lycée's address); a lycée's annex elsewhere is a site of its own.
+ */
+function housedSection(r: Row, rowsOf?: (key: string) => Row[] | undefined): boolean {
+	if (/section/i.test(str(r, "type_rattachement_etablissement_mere"))) return true;
+	const nature = str(r, "code_nature");
+	if (nature === SEGPA) return true;
+	const parent = str(r, "etablissement_mere");
+	return (
+		LYCEE_SECTIONS.includes(nature) &&
+		!!parent &&
+		(rowsOf?.(parent) ?? []).some((p) => sameLine(p, r))
+	);
+}
+
+/** Two rows of a UAI at one address and point are the directory repeating itself, not two sites. */
+const placeOf = (r: Row) =>
+	[fold(str(r, "adresse_1")), str(r, "code_postal"), findCoords(r)?.join(",")].join("|");
 
 /** Addresses this close to the point are one site as far as the point can tell. */
 const ONE_ADDRESS_M = 100;
@@ -192,21 +236,13 @@ export const education: Preset = {
 	position: (r) => findCoords(r),
 	address: addressBase,
 	siteQuery: (r) => schoolAddress(r)?.query ?? null,
-	extract(rows, url, gaps) {
+	extract(rows, url, gaps, rowsOf) {
 		const r = mainSite(rows, gaps);
 		const pos = education.position(r);
 		const key = education.key(r);
 		if (!pos || !key) return null;
 		const kind = schoolKind(r);
-		// A SEGPA or a lycée's vocational section lives in its parent's buildings, with the
-		// parent's SIRET and switchboard: it is not a place of its own on the map, even where the
-		// directory attaches a SEGPA as a geographic annex rather than as a section.
-		if (
-			!kind ||
-			/section/i.test(str(r, "type_rattachement_etablissement_mere")) ||
-			str(r, "code_nature") === SEGPA
-		)
-			return null;
+		if (!kind || housedSection(r, rowsOf)) return null;
 		const t = new Tags(r);
 		const name = schoolName(str(r, "nom_etablissement"));
 		const state = str(r, "etat", "etat_etablissement");
@@ -247,6 +283,7 @@ export const education: Preset = {
 				str(r, "siren_siret", "numero_siren_siret"),
 			);
 		const at = schoolAddress(r);
+		const places = new Set(rows.map(placeOf)).size;
 		let withheld = 0;
 		const phoneOf = (row: Row) => phoneFR(str(row, "telephone"));
 		const phone = phoneOf(r);
@@ -263,8 +300,11 @@ export const education: Preset = {
 		const site = siteOf(r);
 		if (site) alsoAt(t.add("website", site, 0.8, "web"), rows, siteOf);
 		const mail = str(r, "mail");
-		if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail) && !WEBMAIL.test(mail)) {
-			if (personalMailbox(mail, name, `${str(r, "nom_commune")} ${str(r, "adresse_1")}`))
+		if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(mail)) {
+			const place = `${str(r, "nom_commune")} ${str(r, "adresse_1")}`;
+			if (
+				WEBMAIL.test(mail) ? !schoolMailbox(mail, name, place) : personalMailbox(mail, name, place)
+			)
 				withheld += 1;
 			else fill(t.add("email", mail, 0.8, "mail"));
 		}
@@ -316,9 +356,9 @@ export const education: Preset = {
 			>,
 			tags: t.list,
 			notes: [
-				...(rows.length > 1
+				...(places > 1
 					? [
-							`The directory lists this UAI at ${rows.length} sites; the details are ${str(r, "adresse_1")}'s, the main one`,
+							`The directory lists this UAI at ${places} sites; the details are ${str(r, "adresse_1")}'s, the main one`,
 						]
 					: []),
 				...(precision && !EXACT.test(precision)

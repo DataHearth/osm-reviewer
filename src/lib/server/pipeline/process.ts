@@ -32,7 +32,14 @@ import {
 	selectorsFromTags,
 	selects,
 } from "./tagfilter";
-import { type Extraction, type OsmElement, osmRef, PipelineError, type RawRecord } from "./types";
+import {
+	type Extraction,
+	type OsmElement,
+	osmRef,
+	PipelineError,
+	type RawRecord,
+	type Row,
+} from "./types";
 
 export type SourceRow = typeof t.sources.$inferSelect;
 export type AreaRow = typeof t.areas.$inferSelect;
@@ -81,13 +88,14 @@ async function extract(
 	rec: RawRecord,
 	reader: Reader | null,
 	allow: string[],
+	rowsOf: (key: string) => Row[] | undefined,
 ): Promise<Extraction | null> {
 	if (source.extractor === "deterministic") {
 		const preset = reader?.preset;
 		if (!preset) return null;
 		const gaps =
 			preset.siteQuery && rec.rows.length > 1 ? await addressGaps(rec.rows, preset) : undefined;
-		return preset.extract(rec.rows, rec.url, gaps);
+		return preset.extract(rec.rows, rec.url, gaps, rowsOf);
 	}
 
 	const row = rec.rows[0] ?? {};
@@ -131,13 +139,14 @@ async function readRecords(source: SourceRow, input: AreaInput, allow: string[])
 	let withheld = 0;
 
 	let failedInARow = 0;
+	const byKey = new Map(input.records.map((rec) => [rec.key, rec.rows]));
 	for (const rec of mergeSites(input.records, input.reader?.preset)) {
 		if (rec.unchanged) {
 			unchanged.push(rec.key);
 			continue;
 		}
 		try {
-			const raw = await extract(source, rec, input.reader, allow);
+			const raw = await extract(source, rec, input.reader, allow, (key) => byKey.get(key));
 			failedInARow = 0;
 			if (!raw) continue;
 			const x = (await input.reader?.preset?.address?.place(raw)) ?? raw;
@@ -255,6 +264,8 @@ export async function processArea(
 	const { matched, fetched, elements, refIndex, shared, byElement, twins, outside } =
 		await matchRecords(source, area, input, read);
 	const far: FarMatch[] = [];
+	// Every key the source's whole read holds, every area's: a school of the next area is still listed.
+	const listed = input.listed && new Set([...input.listed.values()].flatMap((keys) => [...keys]));
 
 	let cands = 0;
 	for (const { x, rec, el } of matched) {
@@ -304,7 +315,7 @@ export async function processArea(
 				...(el ? (x.absent ?? []).filter((k) => el.tags[k] !== undefined) : []).map(
 					(k) => `OSM has ${k}=${el?.tags[k]}, which the source says this place does not have`,
 				),
-				...matchWarnings(x, el, fetched, refIndex, shared, byElement),
+				...matchWarnings(x, el, fetched, refIndex, shared, byElement, listed),
 				...(twins.get(x.key) ?? []),
 				...others.map(
 					(o) => `Also matched by “${o.name}” (${o.key}), another candidate on this object`,

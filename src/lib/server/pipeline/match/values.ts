@@ -1,6 +1,7 @@
 import OpeningHours from "opening_hours";
 import { LOGIN_PORTAL, SAME_VALUE } from "../fr/tags";
 import { digits, fold } from "../fr/text";
+import { streetDigits } from "../fr/words";
 import { houseNumber, ids, values } from "../text";
 
 function url(s: string): { https: boolean; host: string; path: string } | null {
@@ -69,6 +70,7 @@ const OPERATOR_TYPE: Record<string, string> = {
 export function sameValue(key: string, a: string, b: string): boolean {
 	if (a === b) return true;
 	const k = key.replace(/^contact:/, "");
+	if (k === "addr:street" || k === "street") return streetDigits(fold(a)) === streetDigits(fold(b));
 	if (NAMES.includes(k)) return fold(a) === fold(b);
 	if (k === "opening_hours") return sameHours(a, b);
 	if (k.endsWith(":output")) return Number.parseFloat(a) === Number.parseFloat(b);
