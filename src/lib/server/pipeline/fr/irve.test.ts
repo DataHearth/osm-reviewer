@@ -853,6 +853,23 @@ describe("IRVE preset", () => {
 			).toBeUndefined();
 		});
 
+		it("gives a DC type no cabinet's total or watts as its output, and counts a type 2 in watts as a bay", () => {
+			for (const [field, power] of [
+				["prise_type_combo_ccs", "1242"],
+				["prise_type_combo_ccs", "50000"],
+				["prise_type_chademo", "600"],
+			])
+				expect(outputs([point(1, { [field]: "true", puissance_nominale: power })])).toEqual({
+					[field === "prise_type_chademo" ? "socket:chademo" : "socket:type2_combo"]: ["1", 0.9],
+				});
+			const rows = [
+				point(1, { prise_type_2: "true", puissance_nominale: "22000" }),
+				point(2, { prise_type_combo_ccs: "true", puissance_nominale: "50" }),
+			];
+			expect(capacity(rows)?.v).toBe("2");
+			expect(outputs(rows)["socket:type2:output"]).toBeUndefined();
+		});
+
 		it("gives an AC type no output once one of its points shares the power", () => {
 			const rows = [
 				point(1, { prise_type_2: "true", puissance_nominale: "22" }),

@@ -40,11 +40,15 @@ const OTHER_SOCKETS = [
  * What a connector can physically deliver: AC type 2 at 63 A three-phase, a domestic socket at
  * 16 A. Some operators declare a DC unit's power on its AC outlet too (150 kW on a type 2), and
  * one declares its type 2 points as domestic sockets at 7 kW; no output is better than those.
+ * Above 400 kW a DC power is a cabinet's or a site's total (RAIDEN's 1242 and 1500 kW), or
+ * watts (50000).
  */
 const MAX_KW: Record<string, number> = {
 	"socket:type2": 43.5,
 	"socket:type2_cable": 43.5,
 	"socket:typee": 3.7,
+	"socket:type2_combo": 400,
+	"socket:chademo": 400,
 };
 
 /** A registry's 22.08 is the 22 kW everyone writes; a real 7.4 or 3.7 keeps its decimal. */
@@ -366,15 +370,20 @@ export const irve: Preset = {
 			(counts[0].size > 1 || (counts[0].size === 1 && !counts[0].has(current[0].rows.length)));
 		// A DC cabinet's type 2 outlet is declared as a point of its own at the cabinet's power
 		// (180 kW), and is not a bay of its own. A station of type 2 points alone at that power
-		// is an AC station declared at its feed's power, and its points are bays.
+		// is an AC station declared at its feed's power, and its points are bays. A type 2 power
+		// over 1000 is watts (22000), which says nothing about a cabinet.
 		const withDc = new Set(rows.filter((r) => DC.some((f) => has(r, f))).map(stationKey));
+		const typeTwoKw = (r: Row) => {
+			const p = Number(str(r, "puissance_nominale"));
+			return p > 1000 ? p / 1000 : p;
+		};
 		const acOnDc = rows.filter(
 			(r) =>
 				withDc.has(stationKey(r)) &&
 				pointOf(r) &&
 				has(r, "prise_type_2") &&
 				kinds(r) === 1 &&
-				Number(str(r, "puissance_nominale")) > MAX_KW["socket:type2"],
+				typeTwoKw(r) > MAX_KW["socket:type2"],
 		).length;
 		const capacity = unsure
 			? 0
