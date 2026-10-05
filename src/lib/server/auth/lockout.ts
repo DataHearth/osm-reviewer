@@ -24,7 +24,7 @@ export function lockoutState(email: string): LockoutState {
 	return { locked: tries >= MAX_TRIES, triesLeft: Math.max(0, MAX_TRIES - tries) };
 }
 
-export function recordFailure(email: string): LockoutState {
+export function recordAttempt(email: string): LockoutState {
 	const now = Date.now();
 	for (const [key, entry] of attempts) {
 		if (now - entry.last >= WINDOW_MS) attempts.delete(key);
@@ -35,6 +35,6 @@ export function recordFailure(email: string): LockoutState {
 	return { locked: tries >= MAX_TRIES, triesLeft: Math.max(0, MAX_TRIES - tries) };
 }
 
-export function clearFailures(email: string): void {
+export function clearAttempts(email: string): void {
 	attempts.delete(email);
 }

@@ -1,16 +1,9 @@
 import { error, fail, redirect } from "@sveltejs/kit";
-import { eq, sql } from "drizzle-orm";
 import { type Infer, message, type SuperValidated, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 import { LOCKOUT_MINUTES, type LoginMessage, loginSchema } from "$lib/schemas/auth";
-import {
-	clearFailures,
-	lockoutState,
-	normalizeEmail,
-	recordFailure,
-} from "$lib/server/auth/lockout";
+import { normalizeEmail } from "$lib/server/auth/lockout";
 import { beginSignIn } from "$lib/server/auth/oidc";
-import { verifyPassword } from "$lib/server/auth/password";
 import {
 	clearSessionCookie,
 	createSession,
@@ -19,20 +12,13 @@ import {
 	safePath,
 	setSessionCookie,
 } from "$lib/server/auth/session";
+import { passwordSignIn } from "$lib/server/auth/sign-in";
 import { sso } from "$lib/server/config";
 import { db } from "$lib/server/db";
-import { users } from "$lib/server/db/schema";
 import { release } from "$lib/server/instance";
 import type { Actions, PageServerLoad } from "./$types";
 
 const adapter = zod4(loginSchema);
-
-const byEmail = (email: string) =>
-	db
-		.select()
-		.from(users)
-		.where(eq(sql`lower(${users.email})`, email))
-		.get();
 
 type LoginData = Infer<typeof loginSchema, "zod4">;
 type Form = SuperValidated<LoginData, LoginMessage>;
@@ -79,49 +65,38 @@ export const actions: Actions = {
 		const form = await superValidate<LoginData, LoginMessage>(request, adapter);
 		if (!form.valid) return fail(400, { form });
 
-		const email = normalizeEmail(form.data.email);
-		if (lockoutState(email).locked) return lockedMessage(form);
-
-		const user = byEmail(email);
-		if (!user) {
-			return message(
-				form,
-				{ text: "No account on this instance uses that address.", tone: "bad" },
-				{ status: 401 },
-			);
-		}
-		if (user.disabled) {
-			return message(form, { text: ssoRefusals.disabled, tone: "bad" }, { status: 403 });
-		}
-		if (user.passwordHash === null) {
-			return message(
-				form,
-				{
-					text: sso.enabled
-						? `That account is provisioned through ${sso.provider} — sign in with SSO instead.`
-						: `That account is provisioned through ${sso.provider}, which is switched off on this instance.`,
-					tone: "warn",
-				},
-				{ status: 401 },
-			);
+		const result = await passwordSignIn(db, normalizeEmail(form.data.email), form.data.password);
+		if (result.ok) {
+			setSessionCookie(cookies, url, createSession(result.user.id, "password"));
+			redirect(303, safePath(form.data.redirectTo));
 		}
 
-		if (!(await verifyPassword(form.data.password, user.passwordHash))) {
-			const state = recordFailure(email);
-			if (state.locked) return lockedMessage(form);
-			return message(
-				form,
-				{
-					text: `Incorrect password. ${state.triesLeft}${state.triesLeft === 1 ? " attempt" : " attempts"} left before lockout.`,
-					tone: state.triesLeft <= 2 ? "bad" : "warn",
-				},
-				{ status: 401 },
-			);
+		switch (result.refused) {
+			case "locked":
+				return lockedMessage(form);
+			case "disabled":
+				return message(form, { text: ssoRefusals.disabled, tone: "bad" }, { status: 403 });
+			case "sso-only":
+				return message(
+					form,
+					{
+						text: sso.enabled
+							? `That account is provisioned through ${sso.provider} — sign in with SSO instead.`
+							: `That account is provisioned through ${sso.provider}, which is switched off on this instance.`,
+						tone: "warn",
+					},
+					{ status: 401 },
+				);
+			case "wrong":
+				return message(
+					form,
+					{
+						text: `Incorrect password. ${result.triesLeft}${result.triesLeft === 1 ? " attempt" : " attempts"} left before lockout.`,
+						tone: result.triesLeft <= 2 ? "bad" : "warn",
+					},
+					{ status: 401 },
+				);
 		}
-
-		clearFailures(email);
-		setSessionCookie(cookies, url, createSession(user.id, "password"));
-		redirect(303, safePath(form.data.redirectTo));
 	},
 
 	/**

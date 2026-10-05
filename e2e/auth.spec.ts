@@ -38,11 +38,12 @@ test("an SSO-only account refuses a password and points at the provider", async 
 	await expect(page).toHaveURL(/\/login/);
 });
 
-test("an address with no account on the instance is refused", async ({ page }) => {
+test("an address with no account is refused as a wrong password, not named", async ({ page }) => {
 	await page.goto("/login");
 	await submitCredentials(page, "nobody@antoine-langlois.net", PASSWORD);
 
-	await expect(page.getByText("No account on this instance uses that address.")).toBeVisible();
+	await expect(page.getByText("Incorrect password.")).toBeVisible();
+	await expect(page).toHaveURL(/\/login/);
 });
 
 test("signing out clears the session and a guarded route bounces again", async ({ page }) => {
