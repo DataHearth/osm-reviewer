@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+import { BlockList, isIP, isIPv6 } from "node:net";
 import { LINK_HINTS } from "./fr/words";
 import { request, sleep } from "./http";
 import { parseMatching, type Selector } from "./tagfilter";
@@ -150,6 +152,58 @@ export function sameHostLinks(html: string, base: URL): string[] {
 const FOLLOW_PER_SEED = 2;
 const PAGE_TIMEOUT_MS = 15_000;
 const PAGE_BYTES = 1_500_000;
+const ROBOTS_BYTES = 500_000;
+const REDIRECTS = [301, 302, 303, 307, 308];
+const MAX_HOPS = 5;
+
+/** Where a URL from OSM must never lead the server: itself, its network, its cloud's metadata. */
+const NOT_PUBLIC = new BlockList();
+for (const [net, bits] of [
+	["0.0.0.0", 8],
+	["10.0.0.0", 8],
+	["100.64.0.0", 10],
+	["127.0.0.0", 8],
+	["169.254.0.0", 16],
+	["172.16.0.0", 12],
+	["192.168.0.0", 16],
+	["224.0.0.0", 3],
+] as const)
+	NOT_PUBLIC.addSubnet(net, bits, "ipv4");
+// BlockList checks an IPv4-mapped IPv6 address against the IPv4 rules above; a
+// `::ffff:0:0/96` rule here would instead match every IPv4 address.
+for (const [net, bits] of [
+	["::", 128],
+	["::1", 128],
+	["fc00::", 7],
+	["fe80::", 10],
+	["ff00::", 8],
+] as const)
+	NOT_PUBLIC.addSubnet(net, bits, "ipv6");
+
+export const isPublicAddress = (ip: string) => !NOT_PUBLIC.check(ip, isIPv6(ip) ? "ipv6" : "ipv4");
+
+export type Resolve = (host: string) => Promise<string[]>;
+const resolveHost: Resolve = async (host) =>
+	(await lookup(host, { all: true })).map((a) => a.address);
+
+/** A site and its `www.` twin are one, so `http://a.fr` redirecting to `https://www.a.fr` stays on it. */
+const site = (u: URL) => u.hostname.replace(/^www\./, "");
+
+/** At most `cap` bytes of the body: the stream is cut there, not read whole and then sliced. */
+async function readCapped(res: Response, cap: number): Promise<string> {
+	if (!res.body) return "";
+	const reader = res.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	while (size < cap) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		chunks.push(value);
+		size += value.length;
+	}
+	await reader.cancel().catch(() => {});
+	return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, cap));
+}
 
 export interface CrawlResult {
 	text: string;
@@ -166,6 +220,7 @@ export class Crawler {
 	constructor(
 		private readonly budget: Budget,
 		private readonly userAgent: string,
+		private readonly resolve: Resolve = resolveHost,
 	) {}
 
 	get exhausted() {
@@ -176,10 +231,14 @@ export class Crawler {
 		let rules = this.robots.get(u.host);
 		if (rules === undefined) {
 			try {
-				const res = await this.polite(new URL("/robots.txt", u), [404, 410]);
-				rules = res.ok
-					? parseRobots(await res.text(), this.userAgent)
-					: { allow: [], disallow: [] };
+				const got = await this.follow(new URL("/robots.txt", u), [404, 410], false);
+				if (!got) rules = null;
+				else if (got.res.ok)
+					rules = parseRobots(await readCapped(got.res, ROBOTS_BYTES), this.userAgent);
+				else {
+					await got.res.body?.cancel().catch(() => {});
+					rules = { allow: [], disallow: [] };
+				}
 			} catch {
 				rules = null;
 			}
@@ -188,25 +247,67 @@ export class Crawler {
 		return rules !== null && robotsAllows(rules, u.pathname + u.search);
 	}
 
-	private async polite(u: URL, ok: number[] = []): Promise<Response> {
+	private async assertPublic(u: URL) {
+		const host = u.hostname.replace(/^\[(.*)\]$/, "$1");
+		let addresses: string[];
+		try {
+			addresses = isIP(host) ? [host] : await this.resolve(host);
+		} catch (err) {
+			throw new PipelineError(`${host}: ${err instanceof Error ? err.message : String(err)}`);
+		}
+		if (addresses.length === 0 || !addresses.every(isPublicAddress))
+			throw new PipelineError(`${host}: refused, not a public address`);
+	}
+
+	private async polite(u: URL, ok: number[]): Promise<Response> {
 		const wait = (this.lastAt.get(u.host) ?? 0) + this.budget.delayMs - Date.now();
 		if (wait > 0) await sleep(wait);
 		this.lastAt.set(u.host, Date.now());
-		return request(u.toString(), { timeoutMs: PAGE_TIMEOUT_MS, redirect: "follow" }, ok);
+		return request(u.toString(), { timeoutMs: PAGE_TIMEOUT_MS, redirect: "manual" }, ok);
 	}
 
-	private async page(u: URL): Promise<{ html: string } | null> {
-		if (this.exhausted || !(await this.allowed(u))) return null;
-		this.pages += 1;
-		const res = await this.polite(u);
-		if (!/html|xml/i.test(res.headers.get("content-type") ?? "")) {
+	/**
+	 * Follows redirects by hand, so every hop is held to the starting site, to a public
+	 * address and, for a page, to robots.txt. Null when a hop breaks one of those.
+	 */
+	private async follow(
+		start: URL,
+		ok: number[],
+		robots: boolean,
+	): Promise<{ res: Response; url: URL } | null> {
+		let at = start;
+		for (let hop = 0; hop <= MAX_HOPS; hop++) {
+			await this.assertPublic(at);
+			if (robots) {
+				if (!(await this.allowed(at))) return null;
+				this.pages += 1;
+			}
+			const res = await this.polite(at, [...ok, ...REDIRECTS]);
+			if (!REDIRECTS.includes(res.status)) return { res, url: at };
+			await res.body?.cancel().catch(() => {});
+			const next = URL.parse(res.headers.get("location") ?? "", at);
+			if (!next || !/^https?:$/.test(next.protocol) || site(next) !== site(start)) return null;
+			at = next;
+		}
+		return null;
+	}
+
+	private async page(u: URL): Promise<{ html: string; url: URL } | null> {
+		if (this.exhausted) return null;
+		const got = await this.follow(u, [], true);
+		if (!got) return null;
+		const { res, url } = got;
+		if (
+			!/html|xml/i.test(res.headers.get("content-type") ?? "") ||
+			Number(res.headers.get("content-length") ?? 0) > PAGE_BYTES
+		) {
 			await res.body?.cancel().catch(() => {});
 			return null;
 		}
-		return { html: (await res.text()).slice(0, PAGE_BYTES) };
+		return { html: await readCapped(res, PAGE_BYTES), url };
 	}
 
-	/** The seed page and the couple of same-host pages most likely to carry contact details. Null when robots.txt or the budget stops it. */
+	/** The seed page and the couple of same-host pages most likely to carry contact details. Null when robots.txt, the budget or a redirect off the site stops it. */
 	async fetchSeed(url: string): Promise<CrawlResult | null> {
 		let seed: URL;
 		try {
@@ -217,7 +318,7 @@ export class Crawler {
 		const first = await this.page(seed);
 		if (!first) return null;
 		const texts = [htmlToText(first.html)];
-		for (const link of sameHostLinks(first.html, seed).slice(0, FOLLOW_PER_SEED)) {
+		for (const link of sameHostLinks(first.html, first.url).slice(0, FOLLOW_PER_SEED)) {
 			try {
 				const more = await this.page(new URL(link));
 				if (more) texts.push(htmlToText(more.html));

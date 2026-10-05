@@ -13,6 +13,9 @@ vi.mock("./llm", async (orig) => ({
 	askModel: ask,
 	modelLabel: () => "test · model",
 }));
+vi.mock("node:dns/promises", () => ({
+	lookup: async () => [{ address: "203.0.113.7", family: 4 }],
+}));
 vi.mock("./http", async (orig) => ({
 	...(await orig<typeof import("./http")>()),
 	sleep: async () => {},
