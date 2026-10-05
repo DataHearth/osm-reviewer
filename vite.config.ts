@@ -24,7 +24,7 @@ export default defineConfig({
 	// and Vite answers each touched tsconfig with a full page reload.
 	server: { watch: { ignored: ["**/.direnv/**"] } },
 	test: {
-		environment: "jsdom",
+		environment: "node",
 		include: ["src/**/*.test.ts"],
 		globals: false,
 	},
