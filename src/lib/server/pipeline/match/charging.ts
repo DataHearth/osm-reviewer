@@ -54,11 +54,16 @@ export function otherStation(e: OsmElement, refs: Record<string, string>): boole
 /** `FR*TLS*E31555*059*3*1`: a point's id, connector and all, as some mappers write a plain `ref`. */
 const EVSE_SHAPED = /^[A-Z]{2}\*[A-Z0-9]{3}\*[EP][A-Z0-9*]+$/i;
 
-/** The EVSE ids an object carries, under its own key or as its plain `ref`. */
-const evseOn = (e: OsmElement) =>
-	[e.tags["ref:EU:EVSE"], EVSE_SHAPED.test(e.tags.ref ?? "") ? e.tags.ref : undefined]
-		.filter(Boolean)
+/** The point ids in a plain `ref`, which some mappers write as a list of a borne's connectors. */
+const evseRef = (e: OsmElement) =>
+	(e.tags.ref ?? "")
+		.split(";")
+		.map((p) => p.trim())
+		.filter((p) => EVSE_SHAPED.test(p))
 		.join(";");
+
+/** The EVSE ids an object carries, under its own key or as its plain `ref`. */
+const evseOn = (e: OsmElement) => [e.tags["ref:EU:EVSE"], evseRef(e)].filter(Boolean).join(";");
 
 /** The tag an object carries its EVSE id under, as the reviewer would look it up. */
 export const evseTag = (e: OsmElement) =>
@@ -100,7 +105,7 @@ export function pointsOn(
  */
 export function otherBorne(a: OsmElement, b: OsmElement): boolean {
 	const station = (e: OsmElement) =>
-		EVSE_SHAPED.test(e.tags.ref ?? "") ? null : /^(.*\d)[A-Z]$/i.exec(e.tags.ref ?? "")?.[1];
+		evseRef(e) ? null : /^(.*\d)[A-Z]$/i.exec(e.tags.ref ?? "")?.[1];
 	const [sa, sb] = [station(a), station(b)];
 	return !!sa && !!sb && sa.toUpperCase() !== sb.toUpperCase();
 }
@@ -154,10 +159,69 @@ export function stationFit(
 		if (a === b) agree += 1;
 		else against += 1;
 	}
+	// An object listing its connectors and none of one the record counts is another unit, or
+	// another kind of charger. A type 2 socket or cable, and an E/F or Schuko outlet, are each
+	// the same connector to a mapper.
+	const sockets = socketsOf(e);
+	const lacking = (k: string) => !sockets.some((s) => connector(s) === connector(k));
+	const firm = (t: (typeof listed)[number]) => !("addOnly" in t && t.addOnly);
+	if (sockets.length && listed.some((t) => COUNT.test(t.k) && firm(t) && lacking(t.k)))
+		against += 1;
 	const [ours, theirs] = [current(listed.map((t) => t.k)), current(Object.keys(e.tags))];
 	const types = !!ours && !!theirs && ours !== theirs;
 	if (types) against += 1;
 	return agree + against ? { agree, against, types } : null;
 }
 
+const COUNT = /^socket:(?!unknown)[^:]+$/;
+
+const socketsOf = (e: OsmElement) => Object.keys(e.tags).filter((k) => COUNT.test(k));
+
+const connector = (k: string) =>
+	k.replace(/^socket:type2_cable$/, "socket:type2").replace(/^socket:schuko$/, "socket:typee");
+
+/** Connectors only a car takes: an e-bike locker's or a scooter's charger has none of them. */
+const CAR_SOCKET = /^socket:(type2|type2_cable|type2_combo|type1|type1_combo|chademo|tesla.*)$/;
+
+/**
+ * Whether `e` charges bicycles or scooters only, for a record that is a car station: one
+ * mapped for them (`bicycle=yes`, `scooter=yes`) with no car connector or `motorcar=no`, or
+ * one with domestic Schuko outlets alone (Carrefour Francheville's padlocked e-bike lockers).
+ * A two-wheeler station's own record (`motorcycle=yes`) may still be matched to one.
+ */
+export function forTwoWheels(x: Partial<Pick<Extraction, "tags" | "fit">>, e: OsmElement): boolean {
+	const listed = [...(x.tags ?? []), ...(x.fit ?? [])];
+	if (!listed.some((t) => CAR_SOCKET.test(t.k)) || listed.some((t) => t.k === "motorcycle"))
+		return false;
+	const sockets = socketsOf(e);
+	const ridden = ["bicycle", "scooter"].some((k) => /^(yes|designated)$/.test(e.tags[k] ?? ""));
+	if (ridden && e.tags.motorcar !== "yes")
+		return e.tags.motorcar === "no" || !sockets.some((k) => CAR_SOCKET.test(k));
+	return (
+		sockets.length > 0 &&
+		sockets.every((k) => k === "socket:schuko") &&
+		!listed.some((t) => t.k === "socket:schuko")
+	);
+}
+
 export const fitScore = (f: ReturnType<typeof stationFit>) => (f ? f.agree - f.against : 0);
+
+/**
+ * Whether the object repeats the station's counts: its capacity, when it states one, is the
+ * record's, some count agrees, and none the record is sure of differs, nor its kind of current.
+ * A count that only fills a gap may agree; one that differs says nothing either way.
+ */
+export function exactFit(x: Partial<Pick<Extraction, "tags" | "fit">>, e: OsmElement): boolean {
+	const listed = [...(x.tags ?? []), ...(x.fit ?? [])];
+	if (e.tags.capacity !== undefined && !listed.some((t) => t.k === "capacity")) return false;
+	let agree = 0;
+	for (const t of listed) {
+		if (t.k !== "capacity" && !COUNT.test(t.k)) continue;
+		const [a, b] = [Number.parseInt(t.v, 10), Number.parseInt(e.tags[t.k] ?? "", 10)];
+		if (Number.isNaN(a) || Number.isNaN(b)) continue;
+		if (a === b) agree += 1;
+		else if (!("addOnly" in t && t.addOnly)) return false;
+	}
+	const [ours, theirs] = [current(listed.map((t) => t.k)), current(Object.keys(e.tags))];
+	return agree > 0 && !(ours && theirs && ours !== theirs);
+}

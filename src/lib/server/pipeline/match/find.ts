@@ -1,8 +1,15 @@
 import { bestHit, groundsOf, otherPlace, ownGrounds } from "../fr/school";
-import { distance, metres } from "../geo";
+import { distance, distanceTo, metres } from "../geo";
 import { lookalike, schoolBuilding } from "../tagfilter";
 import { type Extraction, type OsmElement, osmRef } from "../types";
-import { fitScore, otherStation, renumberedPool, stationFit } from "./charging";
+import {
+	exactFit,
+	fitScore,
+	forTwoWheels,
+	otherStation,
+	renumberedPool,
+	stationFit,
+} from "./charging";
 import { companiesAgree, NAME_MATCH, nameScore, whoOf, whoSimilarity } from "./names";
 import { MAIN, type Main, mainOf, RETIRED } from "./ops";
 import { DUPLICATE_RADIUS_M, LAT_PREFILTER, MATCH_RADIUS_M } from "./radii";
@@ -66,7 +73,7 @@ export function findMatch(
 
 	let best: { el: OsmElement; score: number } | null = null;
 	for (const e of els) {
-		if (otherPlace(e, x.refs)) continue;
+		if (otherPlace(e, x.refs) || forTwoWheels(x, e)) continue;
 		if (Math.abs(e.lat - x.lat) > LAT_PREFILTER) continue;
 		// What its id cannot make the place, its name or position cannot either.
 		if (notThePlace(e, main, now)) continue;
@@ -88,12 +95,20 @@ export function findMatch(
 		// the object's id takes it back (`yieldToIds`).
 		const renumbered = otherStation(e, x.refs);
 		const network = renumbered ? renumberedPool(e, x.refs) : agree >= NAME_MATCH;
-		const known = d <= FIT_RADIUS_M && network && !!fits && fits.agree > 0 && fits.against === 0;
-		if (renumbered && !known) continue;
+		const edge = distanceTo(x.lat, x.lon, e);
+		const known = edge <= FIT_RADIUS_M && network && !!fits && fits.agree > 0 && fits.against === 0;
+		// Farther off, what runs it or its name has to agree and the object repeat the station's
+		// counts: IKEA Lyon's 24 bays sit 125 m from the registry's point.
+		const exact =
+			edge <= DUPLICATE_RADIUS_M &&
+			(!renumbered || renumberedPool(e, x.refs)) &&
+			(agree >= NAME_MATCH || (nameScore(x, e, true) ?? 0) >= NAME_MATCH) &&
+			exactFit(x, e);
+		if (renumbered && !known && !exact) continue;
 		const sim = named ?? (agree >= NAME_MATCH ? agree : null);
 		const strong = named !== null && named >= STRONG_NAME;
-		if (d > (strong ? DUPLICATE_RADIUS_M : MATCH_RADIUS_M)) continue;
-		const ok = known || (sim === null ? d <= BARE_RADIUS_M : sim >= NAME_MATCH);
+		if (d > (strong ? DUPLICATE_RADIUS_M : MATCH_RADIUS_M) && !exact) continue;
+		const ok = known || exact || (sim === null ? d <= BARE_RADIUS_M : sim >= NAME_MATCH);
 		if (!ok) continue;
 		// On the operator's word alone a fast DC unit is not an AC station, nor the other way round.
 		if (named === null && fits?.types) continue;
@@ -104,7 +119,7 @@ export function findMatch(
 			(building ? 1 : 0) +
 			(who !== null && agree < NAME_MATCH ? 0.3 : 0) +
 			(x.absent ?? []).filter((k) => e.tags[k] !== undefined).length * 0.3;
-		const base = known ? Math.max(sim ?? 0, NAME_MATCH) : (sim ?? 0.4);
+		const base = known || exact ? Math.max(sim ?? 0, NAME_MATCH) : (sim ?? 0.4);
 		const score = base - d / 1000 - against + fitScore(fits) * 0.05;
 		if (!best || score > best.score) best = { el: e, score };
 	}
@@ -128,12 +143,19 @@ export function findAtAddress(
 	return el && fitScore(stationFit(x, el)) >= 0 ? el : null;
 }
 
+const postcodeOf = (s: string) => /\b\d{5}\b/.exec(s)?.[0];
+
+/** The base asked again without the postcode can answer from a namesake street in another commune. */
+const samePostcode = (q: string, label: string) =>
+	!!postcodeOf(q) && postcodeOf(q) === postcodeOf(label);
+
 /**
  * A source point farther from its own housenumber than the record allows moves there: a
  * directory geocoded on a CEDEX's sorting office, or a station placed to a couple of decimals,
  * would otherwise match whatever stands at the wrong spot, or nothing. Unless the point is
  * borne out where it stands: an object there matches it, and is not the same object found
- * from the address, standing nearer it.
+ * from the address, standing nearer it. Past `wrongM` from a housenumber in its own postcode
+ * the point is an error, and moves whatever stands there.
  */
 export function settlePoints(
 	xs: Extraction[],
@@ -145,8 +167,10 @@ export function settlePoints(
 		const to = x.atAddress;
 		if (!to || !x.geocode) return x;
 		const d = distance(x.lat, x.lon, to.lat, to.lon);
-		if (d <= x.geocode.farM) return x;
-		const here = findMatch(x, els, refIndex, shared);
+		const wrong =
+			d > (x.geocode.wrongM ?? Number.POSITIVE_INFINITY) && samePostcode(x.geocode.q, to.label);
+		if (d <= x.geocode.farM && !wrong) return x;
+		const here = wrong ? null : findMatch(x, els, refIndex, shared);
 		if (here) {
 			const there = findMatch({ ...x, lat: to.lat, lon: to.lon }, els, refIndex, shared);
 			if (

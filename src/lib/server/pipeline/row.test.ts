@@ -28,8 +28,13 @@ describe("openingHours", () => {
 				`${week("07:30-12:30", ["Mo", "Tu"])}, ${week("13:30-19:00", ["Mo", "Tu"])}, Sa 09:00-12:00`,
 			),
 		).toBe("Mo-Tu 07:30-12:30,13:30-19:00; Sa 09:00-12:00");
-		expect(openingHours("Mo-Fr 08:00-12:00,Mo-Fr 14:00-18:00,Th 08:00-18:00")).toBe(
-			"Mo-We 08:00-12:00,14:00-18:00; Th 08:00-18:00; Fr 08:00-12:00,14:00-18:00",
+	});
+
+	it("refuses spans that overlap a day named again after a comma, and joins those that do not", () => {
+		// Ligue Occitanie Basketball (electromaps): Thursday 08:00-18:00 over its split day.
+		expect(openingHours("Mo-Fr 08:00-12:00,Mo-Fr 14:00-18:00,Th 08:00-18:00")).toBeNull();
+		expect(openingHours("Mo-Fr 08:00-12:00,Mo-Fr 14:00-18:00")).toBe(
+			"Mo-Fr 08:00-12:00,14:00-18:00",
 		);
 	});
 
@@ -47,10 +52,15 @@ describe("openingHours", () => {
 
 	it("repairs what OSM's parser can read and refuses the rest", () => {
 		expect(openingHours("Mo-Fri: 07:30-19:00")).toBe("Mo-Fr 07:30-19:00");
-		expect(openingHours("Mo-Fr 09:00-19:00,Sat 09:00-18:00")).toBe(
-			"Mo-Fr 09:00-19:00, Sa 09:00-18:00",
-		);
 		expect(openingHours("Monday to Friday")).toBeNull();
+	});
+
+	it("reads a day the registry spells out in full before folding the rules", () => {
+		// Mazda - Lyon Nord (ZEBORNE).
+		expect(openingHours("Mo-Fr 09:00-19:00,Sat 09:00-18:00")).toBe(
+			"Mo-Fr 09:00-19:00; Sa 09:00-18:00",
+		);
+		expect(openingHours("Mo-Sun 09:00-21:00")).toBe("Mo-Su 09:00-21:00");
 	});
 });
 

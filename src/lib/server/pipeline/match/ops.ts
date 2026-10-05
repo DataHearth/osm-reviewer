@@ -85,10 +85,13 @@ const UNTYPED = ["socket:unknown", "socket:unknown:output"];
 /** A registry's bare `24/7` is what it writes when nobody filled the hours in, not a survey. */
 const addOnly = (p: ProposedTag) => p.addOnly || (p.k === "opening_hours" && p.v.trim() === "24/7");
 
-/** Keys that leave a gap-filling value no gap: type 2 points the object already counts as cables. */
+/**
+ * Keys that leave a gap-filling value no gap: type 2 points the object already counts, as
+ * sockets or as cables, whose output may belong to either.
+ */
 const FILLED_BY: Record<string, string[]> = {
 	"socket:type2": ["socket:type2_cable"],
-	"socket:type2:output": ["socket:type2_cable"],
+	"socket:type2:output": ["socket:type2", "socket:type2_cable"],
 };
 
 /** Tag operations that turn the element's tags into what the source says; nothing for what already agrees. */
@@ -100,6 +103,8 @@ export function updateOps(proposed: ProposedTag[], current: Record<string, strin
 	for (const p of proposed) {
 		if (p.group === "addr" || RULED_OUT[p.k]?.(current)) continue;
 		if (addOnly(p) && FILLED_BY[p.k]?.some((o) => current[o] !== undefined)) continue;
+		const named = p.unless && current[p.unless.k];
+		if (named && named.replace(/\s/g, "") !== p.unless?.v) continue;
 		// A main tag beside its own `disused:` twin would reopen the place on the source's word.
 		if (MAIN.includes(p.k) && RETIRED.some((r) => current[`${r}:${p.k}`] !== undefined)) continue;
 		const k = keyOn(p.k, current);
@@ -114,10 +119,21 @@ export function updateOps(proposed: ProposedTag[], current: Record<string, strin
 		)
 			ops.push({ ...p, k, op: "mod", was: had });
 	}
-	const typed = ops.find((o) => /^socket:(?!unknown)[^:]+$/.test(o.k));
-	if (typed)
+	// A count that only fills a gap is too unsure to replace a mapper's, or to be quoted as why.
+	const typed = ops.filter((o) => /^socket:(?!unknown)[^:]+$/.test(o.k) && !o.addOnly);
+	if (typed.length) {
+		const why = {
+			conf: Math.min(...typed.map((o) => o.conf)),
+			path: [...new Set(typed.map((o) => o.path))].join(", "),
+			kind: typed[0].kind,
+			parts: [
+				{ text: "replaced by ", mark: false },
+				{ text: typed.map((o) => `${o.k}=${o.v}`).join(", "), mark: true },
+			],
+		};
 		for (const k of UNTYPED)
-			if (current[k] !== undefined) ops.push({ ...typed, k, v: current[k], op: "del", was: null });
+			if (current[k] !== undefined) ops.push({ ...why, k, v: current[k], op: "del", was: null });
+	}
 	const amenity = ops.find((o) => o.k === "amenity")?.v ?? current.amenity;
 	return amenity === "social_facility" ? ops : ops.filter((o) => o.k !== "social_facility:for");
 }

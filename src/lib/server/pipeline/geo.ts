@@ -18,6 +18,23 @@ export function distance(aLat: number, aLon: number, bLat: number, bLon: number)
 	return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
 }
 
+type Box = { minlat: number; minlon: number; maxlat: number; maxlon: number };
+
+/**
+ * How far a point is from an object: from a way or a relation, to the nearest edge of its box,
+ * since a large car park mapped as an area has its centre well off the bays at its edge.
+ */
+export function distanceTo(
+	lat: number,
+	lon: number,
+	e: { lat: number; lon: number; bounds?: Box },
+): number {
+	if (!e.bounds) return distance(lat, lon, e.lat, e.lon);
+	const b = e.bounds;
+	const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+	return distance(lat, lon, clamp(lat, b.minlat, b.maxlat), clamp(lon, b.minlon, b.maxlon));
+}
+
 export const metres = (d: number) =>
 	d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`;
 

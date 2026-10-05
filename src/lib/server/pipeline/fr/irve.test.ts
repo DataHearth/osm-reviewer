@@ -448,6 +448,49 @@ describe("IRVE preset", () => {
 		]);
 	});
 
+	it("counts no sockets where a station named for DC charging ticks no DC connector", () => {
+		// RNO ETATS UNIS (Mobilize, Toulouse): two "Borne DC" stations of three 62.5 kW points
+		// ticking type 2 and E/F only, beside nine AC points of the dealership.
+		const station = (id: string, nom_station: string, power: string, n: number) =>
+			Array.from({ length: n }, (_, i) =>
+				irveRow({
+					id_station_itinerance: id,
+					id_pdc_itinerance: `${id}${i + 1}`,
+					nom_station,
+					nom_operateur: "Mobilize Power Solutions",
+					nom_amenageur: "Mobilize Power Solutions",
+					nbre_pdc: "1",
+					puissance_nominale: power,
+					prise_type_2: "True",
+					cable_t2_attache: "False",
+					prise_type_ef: "True",
+					consolidated_latitude: "43.63946533203125",
+					consolidated_longitude: "1.4293237924575806",
+				}),
+			);
+		const ac = "RNO ETATS UNIS - Edenauto Toulouse Etats Unis";
+		const x = irve.extract(
+			[
+				...station("FRMBZEAZIVT", ac, "22", 2),
+				...station("FRMBZEBREPD", ac, "22", 1),
+				...station("FRMBZEFQAXT", ac, "7.4", 1),
+				...station("FRMBZEKIAIT", "RNO ETATS UNIS - Borne DC", "62.5", 3),
+				...station("FRMBZEKKZTF", ac, "7.4", 1),
+				...station("FRMBZEQPJLA", "RNO ETATS UNIS - Borne DC", "62.5", 3),
+				...station("FRMBZERNFEQ", ac, "7.4", 1),
+				...station("FRMBZEWPKRT", ac, "22", 2),
+				...station("FRMBZEZPQCJ", ac, "7.4", 1),
+			],
+			"u",
+		);
+		expect(x?.tags.find((t) => t.k === "capacity")?.v).toBe("15");
+		expect(x?.tags.filter((t) => t.k.startsWith("socket:"))).toEqual([]);
+		expect(x?.absent).toEqual([]);
+		expect(x?.notes).toContain(
+			"6 of its 15 charge points are on a station named for DC charging that ticks no DC connector, so sockets are left out",
+		);
+	});
+
 	it("reads a point's connectors from an older declaration where the newest says only 'autre'", () => {
 		const point = { id_pdc_itinerance: "FRETIE69259A11", nbre_pdc: "1", prise_type_2: "false" };
 		const x = irve.extract(
@@ -578,6 +621,22 @@ describe("IRVE preset", () => {
 		);
 		expect(elsewhere?.addr).toBe("363 Rte de Toulouse, 33140 Villenave-d'Ornon");
 		expect(elsewhere?.geocode?.q).toBe("363 Route de Toulouse, 33140 Villenave-d'Ornon");
+	});
+
+	it("drops a postal box and a CEDEX from the address", () => {
+		const addr = (adresse_station: string, consolidated_code_postal: string, commune: string) =>
+			irve.extract(
+				[irveRow({ adresse_station, consolidated_code_postal, consolidated_commune: commune })],
+				"u",
+			)?.addr;
+		// Carrefour Energies - Vénissieux (EV Cars).
+		expect(addr("136 Boulevard Joliot Curie_Bp 75", "69200", "Vénissieux")).toBe(
+			"136 Boulevard Joliot Curie, 69200 Vénissieux",
+		);
+		expect(addr("Avenue du Mirail, 31100 TOULOUSE CEDEX 4", "31100", "Toulouse")).toBe(
+			"Avenue du Mirail, 31100 Toulouse",
+		);
+		expect(addr("12 rue X, CS 30012", "31000", "Toulouse")).toBe("12 rue X, 31000 Toulouse");
 	});
 
 	it("reads notes, fee, two-wheelers and accessibility over every declaration of the points", () => {
@@ -739,6 +798,57 @@ describe("IRVE preset", () => {
 		});
 	});
 
+	it("reads an operator's phone the registry's numeric column lost its 0 or its + from", () => {
+		const phone = (telephone_operateur: string) =>
+			irve
+				.extract([irveRow({ telephone_operateur })], "u")
+				?.tags.find((t) => t.k === "operator:phone")?.v;
+		expect(phone("374090105")).toBe("+33 3 74 09 01 05");
+		expect(phone("180977673")).toBe("+33 1 80 97 76 73");
+		expect(phone("33975891501")).toBe("+33 9 75 89 15 01");
+		expect(phone("612460747")).toBeUndefined();
+		expect(phone("123456789")).toBeUndefined();
+		expect(phone("+31 615 11 3734")).toBeUndefined();
+	});
+
+	it("proposes no owner for a site whose stations name different owners", () => {
+		// PROUDREED_VENISSIEUX (WAAT): the AC station and its DC neighbour are owned apart.
+		const station = (id: string, point: string, nom_amenageur: string, ccs: string) =>
+			irveRow({
+				id_station_itinerance: id,
+				id_pdc_itinerance: point,
+				nom_station: id === "FRWA2P488438" ? "PROUDREED_VENISSIEUX" : "PROUDREED_VENISSIEUX_DC",
+				nom_operateur: "WAAT Umbrella-Copro",
+				nom_amenageur,
+				nbre_pdc: id === "FRWA2P488438" ? "3" : "2",
+				prise_type_2: ccs === "true" ? "false" : "true",
+				prise_type_combo_ccs: ccs,
+				consolidated_latitude: "45.719553997",
+				consolidated_longitude: "4.860102739",
+			});
+		const ac = ["FRWA2E3576922", "FRWA2E3576930", "FRWA2E3576933"].map((p) =>
+			station("FRWA2P488438", p, "TOURMALINE REAL ESTATE", "false"),
+		);
+		const dc = ["FRWA2E3756350", "FRWA2E3756355"].map((p) =>
+			station("FRWA2P631984", p, "SCI PARIS PROVINCES PROPERTIES", "true"),
+		);
+		const owner = (rows: Row[]) => irve.extract(rows, "u")?.tags.find((t) => t.k === "owner")?.v;
+		expect(owner([...ac, ...dc])).toBeUndefined();
+		expect(owner(ac)).toBe("TOURMALINE REAL ESTATE");
+	});
+
+	it("proposes no owner to an object whose owner's SIREN is another's", () => {
+		// VIL01 - Gratte-Ciel - Dedieu: node/11109171904 carries Grand Lyon's SIREN.
+		const ops = (nom_amenageur: string, siren_amenageur: string) =>
+			updateOps(irve.extract([irveRow({ nom_amenageur, siren_amenageur })], "u")?.tags ?? [], {
+				amenity: "charging_station",
+				"owner:ref:FR:SIREN": "419070180",
+			}).find((o) => o.k === "owner")?.v;
+		expect(ops("IZIVIA FMET 1", "844799288")).toBeUndefined();
+		expect(ops("Grand Lyon", "419 070 180")).toBe("Grand Lyon");
+		expect(ops("Grand Lyon", "")).toBe("Grand Lyon");
+	});
+
 	it("proposes no owner written as a web slug", () => {
 		const owner = (nom_amenageur: string) =>
 			irve.extract([irveRow({ nom_amenageur })], "u")?.tags.find((t) => t.k === "owner")?.v;
@@ -763,6 +873,113 @@ describe("IRVE preset", () => {
 			expect(x?.tags.find((t) => t.k === "network")?.v).toBe("ReseauCharge");
 			expect(x?.absent).not.toContain("socket:chademo");
 		}
+	});
+
+	it("reads each point's cable from its newest declaration that states it before ruling a socket out", () => {
+		// RELAIS TOULOUSE ESPAGNE: the 2026 copy says both type 2 points carry a cable, the
+		// operator's 2024 file leaves the column blank. way/1493526842 maps socket:type2=4.
+		const connectors: Record<number, [string, string][]> = {
+			1: [
+				["prise_type_2", "true"],
+				["prise_type_combo_ccs", "true"],
+			],
+			2: [
+				["prise_type_combo_ccs", "true"],
+				["prise_type_chademo", "true"],
+			],
+			3: [["prise_type_combo_ccs", "true"]],
+			4: [["prise_type_combo_ccs", "true"]],
+			5: [
+				["prise_type_2", "true"],
+				["prise_type_combo_ccs", "true"],
+			],
+			6: [
+				["prise_type_combo_ccs", "true"],
+				["prise_type_chademo", "true"],
+			],
+		};
+		const older: Record<number, [string, string][]> = {
+			...connectors,
+			2: [["prise_type_chademo", "true"]],
+			6: [["prise_type_chademo", "true"]],
+		};
+		const point = (n: number, over: Row, set: [string, string][]) =>
+			irveRow({
+				id_station_itinerance: "FRHPCPNF059709",
+				id_pdc_itinerance: `FRHPCENF05970900${n}`,
+				nom_station: "RELAIS TOULOUSE ESPAGNE",
+				nom_operateur: "TotalEnergies Marketing France",
+				nom_amenageur: "TotalEnergies Marketing France",
+				nbre_pdc: "6",
+				puissance_nominale: "300",
+				prise_type_2: "false",
+				...Object.fromEntries(set),
+				...over,
+			});
+		const rows = [1, 2, 3, 4, 5, 6].flatMap((n) => [
+			point(
+				n,
+				{
+					date_maj: "2026-01-07",
+					cable_t2_attache: connectors[n][0][0] === "prise_type_2" ? "True" : "False",
+				},
+				connectors[n],
+			),
+			point(n, { date_maj: "2024-04-03", cable_t2_attache: "" }, older[n]),
+		]);
+		const x = irve.extract(rows, "u");
+		expect(x?.tags.find((t) => t.k === "socket:type2_cable")?.v).toBe("2");
+		expect(x?.absent).toContain("socket:type2");
+	});
+
+	it("reads a station from its operator's own file over an aggregator's copy of the same day", () => {
+		// VIL03 - La Doua (FRGLYPLYON133): Izivia's file and Qualicharge's copy, both 2026-10-04.
+		const doua = (point: string, over: Row) =>
+			irveRow({
+				id_station_itinerance: "FRGLYPLYON133",
+				id_pdc_itinerance: point,
+				nom_station: "VIL03 - La Doua",
+				nom_operateur: "IZIVIA",
+				puissance_nominale: "24.0",
+				prise_type_2: "False",
+				cable_t2_attache: "False",
+				date_maj: "2026-10-04",
+				...over,
+			});
+		const izivia = {
+			nom_amenageur: "Grand Lyon",
+			siren_amenageur: "419070180",
+			nbre_pdc: "4",
+			last_modified: "2026-10-04T06:02:02.674000+00:00",
+			datagouv_organization_or_owner: "izivia",
+			datagouv_resource_id: "e297f18c-bb35-445f-af43-0217c27ab4fe",
+		};
+		const copy = {
+			nom_amenageur: "IZIVIA FMET 1",
+			siren_amenageur: "844799288",
+			nbre_pdc: "2",
+			last_modified: "2026-10-04T15:33:28.702988+00:00",
+			datagouv_organization_or_owner: "qualicharge",
+			datagouv_resource_id: "8bb0a6e2-1016-42ba-aaee-f72f55c82e9f",
+			prise_type_combo_ccs: "True",
+			prise_type_chademo: "True",
+		};
+		const rows = [
+			doua("FRGLYELYON13311", { ...izivia, prise_type_combo_ccs: "True" }),
+			doua("FRGLYELYON13311", copy),
+			doua("FRGLYELYON13312", { ...izivia, prise_type_2: "True" }),
+			doua("FRGLYELYON13321", { ...izivia, prise_type_combo_ccs: "True" }),
+			doua("FRGLYELYON13321", copy),
+			doua("FRGLYELYON13322", { ...izivia, prise_type_2: "True" }),
+		];
+		const tags = Object.fromEntries((irve.extract(rows, "u")?.tags ?? []).map((t) => [t.k, t.v]));
+		expect(tags).toMatchObject({
+			capacity: "4",
+			"socket:type2": "2",
+			"socket:type2_combo": "2",
+			owner: "Grand Lyon",
+		});
+		expect(tags["socket:chademo"]).toBeUndefined();
 	});
 
 	it("says a socket is not there when every type 2 point has its cable attached", () => {
@@ -846,11 +1063,34 @@ describe("IRVE preset", () => {
 			const sockets = blank.tags.filter((t) => t.k.startsWith("socket:type2"));
 			const ops = (tags: Record<string, string>) => updateOps(sockets, tags).map((o) => o.k);
 			expect(ops({})).toEqual(["socket:type2", "socket:type2:output"]);
-			expect(ops({ "socket:type2": "4" })).toEqual(["socket:type2:output"]);
+			expect(ops({ "socket:type2": "4" })).toEqual([]);
 			expect(ops({ "socket:type2_cable": "2" })).toEqual([]);
 			const station = { type: "node" as const, id: 1, version: 1, lat: 0, lon: 0 };
 			expect(stationFit(blank, { ...station, tags: { "socket:type2": "4" } })).toBeNull();
 			expect(stationFit(blank, { ...station, tags: { "socket:type2_cable": "2" } })).toBeNull();
+		});
+
+		it("gives a type 2 point with no word on its cable no output where OSM already counts type 2", () => {
+			// Station Ax'Stone (INOUID, Saint-Didier-au-Mont-d'Or): node/11109168767 has socket:type2=yes.
+			const x = irve.extract(
+				[
+					irveRow({
+						id_station_itinerance: "Non concerné",
+						id_pdc_itinerance: "Non concerné",
+						nom_station: "Station Ax'Stone",
+						nom_operateur: "INOUID",
+						nom_amenageur: "Ax'stone",
+						nbre_pdc: "1",
+						puissance_nominale: "22",
+						prise_type_2: "true",
+						cable_t2_attache: "",
+					}),
+				],
+				"u",
+			);
+			const sockets = (x?.tags ?? []).filter((t) => t.k.startsWith("socket:"));
+			expect(sockets.map((t) => t.k)).toEqual(["socket:type2", "socket:type2:output"]);
+			expect(updateOps(sockets, { "socket:type2": "yes" })).toEqual([]);
 		});
 
 		it("takes each type's power from the points that carry it, not the station's maximum", () => {
@@ -893,6 +1133,34 @@ describe("IRVE preset", () => {
 			];
 			expect(capacity(rows)?.v).toBe("2");
 			expect(outputs(rows)["socket:type2:output"]).toBeUndefined();
+		});
+
+		it("takes no type 2 output from a DC unit's own type 2 outlet declared at the unit's power", () => {
+			// IKEA LYON - STATION 3: borne 9 is a 24 kW DC unit, its CCS point 1 and type 2 point 2.
+			const ikea = (id: string, power: string, over: Row = {}) =>
+				irveRow({
+					id_station_itinerance: "FRIKAPIKEA96",
+					id_pdc_itinerance: id,
+					nom_station: "IKEA LYON - STATION 3",
+					nom_operateur: "IZIVIA",
+					nom_amenageur: "IKEA",
+					nbre_pdc: "10",
+					puissance_nominale: power,
+					prise_type_2: "True",
+					cable_t2_attache: "False",
+					...over,
+				});
+			const rows = [
+				...["11", "21", "31", "41", "71", "81"].map((n) => ikea(`FRIKAEIKEA96${n}`, "7.4")),
+				...["51", "61"].map((n) => ikea(`FRIKAEIKEA96${n}`, "3.7")),
+				ikea("FRIKAEIKEA9691", "24.0", { prise_type_2: "False", prise_type_combo_ccs: "True" }),
+				ikea("FRIKAEIKEA9692", "24.0"),
+			];
+			expect(outputs(rows)).toMatchObject({
+				"socket:type2": ["9", 0.9],
+				"socket:type2:output": ["7.4 kW", 0.8],
+				"socket:type2_combo:output": ["24 kW", 0.8],
+			});
 		});
 
 		it("gives an AC type no output once one of its points shares the power", () => {
@@ -977,6 +1245,7 @@ describe("a station's address query", () => {
 		expect(geocode("45.7641", "4.835123")).toEqual({
 			q: "1 place de la Mairie, 69001 Lyon",
 			farM: 100,
+			wrongM: 2000,
 		});
 		expect(geocode("45.76412", "4.835123")?.farM).toBe(Number.POSITIVE_INFINITY);
 	});

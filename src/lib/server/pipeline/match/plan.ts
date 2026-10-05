@@ -18,6 +18,9 @@ import {
 /** What a source counts for a whole site, which no single part of a split site carries. */
 const SITE_COUNTS = /^(capacity|socket:.+)$/;
 
+/** No object was mapped before OpenStreetMap began. */
+const OSM_BEGAN = "2004-08-09";
+
 /** A connector's power is the same whichever record states it; how many there are is not. */
 const isCount = (o: TagOp) => SITE_COUNTS.test(o.k) && (o.op === "del" || !o.k.endsWith(":output"));
 
@@ -96,6 +99,10 @@ export function planUpdate(
 	// A group's object (a primaire and its collège, a cité scolaire) opened once for each of them.
 	if (others.length || sharedByOthers(el, x.refs) || campus(el.tags))
 		leave((o) => o.k === "start_date");
+	// A place mapped before the date the source gives it opened earlier, or opened again; when
+	// it was first mapped is known only at version 1, and certain only before OSM existed.
+	const firstMapped = el.version === 1 ? el.timestamp?.slice(0, 10) : undefined;
+	leave((o) => o.k === "start_date" && o.v >= OSM_BEGAN && !(firstMapped && o.v <= firstMapped));
 	// Nor does one of its establishments give it a single level.
 	if (campus(el.tags)) leave((o) => o.k === LEVEL);
 	const housed = housedInLycee(x, el.tags);

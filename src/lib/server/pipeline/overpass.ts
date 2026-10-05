@@ -57,7 +57,9 @@ export function buildQuery(a: OverpassArea, selectors: Selector[], require: Sele
 	const and = require.map(overpassFilter).join("");
 	const filters = selectors.length ? selectors.map(overpassFilter) : [""];
 	const statements = filters.map((f) => `nwr${f}${and}${where};`).join("");
-	return `[out:json][timeout:${QUERY_TIMEOUT_S}];${head}(${statements});out center tags meta;`;
+	// `bb` rather than `center`: Overpass's centre is the box's middle, and the box also gives
+	// the distance to a car park's edge.
+	return `[out:json][timeout:${QUERY_TIMEOUT_S}];${head}(${statements});out bb tags meta;`;
 }
 
 interface RawElement {
@@ -65,9 +67,11 @@ interface RawElement {
 	id: number;
 	version?: number;
 	user?: string;
+	timestamp?: string;
 	lat?: number;
 	lon?: number;
 	center?: { lat: number; lon: number };
+	bounds?: { minlat: number; minlon: number; maxlat: number; maxlon: number };
 	tags?: Record<string, string>;
 }
 
@@ -77,16 +81,19 @@ export function parseElements(body: { elements?: RawElement[]; remark?: string }
 	const out: OsmElement[] = [];
 	for (const e of body.elements ?? []) {
 		if (e.type !== "node" && e.type !== "way" && e.type !== "relation") continue;
-		const lat = e.lat ?? e.center?.lat;
-		const lon = e.lon ?? e.center?.lon;
+		const b = e.bounds;
+		const lat = e.lat ?? e.center?.lat ?? (b && (b.minlat + b.maxlat) / 2);
+		const lon = e.lon ?? e.center?.lon ?? (b && (b.minlon + b.maxlon) / 2);
 		if (lat === undefined || lon === undefined) continue;
 		out.push({
 			type: e.type,
 			id: e.id,
 			version: e.version ?? 1,
 			user: e.user,
+			...(e.timestamp ? { timestamp: e.timestamp } : {}),
 			lat,
 			lon,
+			...(b ? { bounds: b } : {}),
 			tags: e.tags ?? {},
 		});
 	}

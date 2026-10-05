@@ -227,12 +227,11 @@ function joinSpans(spans: Iterable<string>): string {
  * where in OSM the later one replaces the earlier.
  *
  * A registry means `Mo-Sa 07:30-12:00;Mo-Sa 13:30-17:30` as one split day, so with `merge` a
- * day named again after a `;` adds its spans. Spans that overlap the day's earlier ones leave
- * no reading to trust, and the value comes back empty, which the parser refuses.
+ * day named again, after a `;` or a `,`, adds its spans. Spans that overlap the day's earlier
+ * ones leave no reading to trust, and the value comes back empty, which the parser refuses.
  */
 export function foldDays(v: string, merge = false): string {
 	const spans = new Map<number, Set<string>>();
-	let earlier = new Map<number, Set<string>>();
 	let repeated = false;
 	const closing = (span: string) => {
 		const [from, to] = span.split("-");
@@ -246,7 +245,6 @@ export function foldDays(v: string, merge = false): string {
 		joinSpans(had) !== joinSpans(added) && added.some((a) => [...had].some((h) => overlap(a, h)));
 	const parts = v.trim().split(/\s*([;,])\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su)\b)/);
 	for (let i = 0; i < parts.length; i += 2) {
-		if (parts[i - 1] === ";") earlier = new Map([...spans].map(([d, s]) => [d, new Set(s)]));
 		const m = DAY_RULE.exec(parts[i]);
 		if (!m) return v;
 		const from = WEEK.indexOf(m[1]);
@@ -254,7 +252,7 @@ export function foldDays(v: string, merge = false): string {
 		if (to < from) return v;
 		const added = m[3].split(",");
 		for (let d = from; d <= to; d++) {
-			const had = earlier.get(d);
+			const had = spans.get(d);
 			if (merge && had && clash(had, added)) return "";
 			repeated ||= spans.has(d);
 			spans.set(d, new Set([...(spans.get(d) ?? []), ...added]));

@@ -151,7 +151,9 @@ server calls is configuration rather than code:
   something matches it where it stands or the base found another street, and a record moved out
   of the area is dropped and counted in the run's message. A station's point moves (100 m) only
   when the registry gives it to four decimals or fewer: a precise one stays, is matched at its
-  address only when nothing matches where it stands, and a new one says how far its address is),
+  address only when nothing matches where it stands, and a new one says how far its address is,
+  unless a housenumber in its own postcode lies more than 2 km off, which moves any point; a
+  postal box or CEDEX in the station's address is dropped before asking),
   `OSM_URL` (default the dev sandbox, so an unconfigured instance cannot write to the live
   map), the model at `LLM_URL`, and each source's own endpoint. All are read in
   `src/lib/server/config.ts`, and `PIPELINE_ENABLED=false` switches off the scheduler and
@@ -234,10 +236,15 @@ The **deterministic** extractor is a preset (`fr/irve.ts`, `fr/education.ts`): `
 named on the source or detected from the columns, and a source that fits none fails its run
 rather than guessing. Where the source is not sure, the preset proposes nothing rather than a
 guess: no socket output above what the connector can deliver (43.5 kW on type 2, 400 kW on
-CCS and CHAdeMO, where the registry holds cabinet totals), a type 2 point whose
-`cable_t2_attache` is blank counted as a socket only where OSM has no type 2 count, no opening
-hours where a day's spans overlap (a day named again after `;` is one split day), no `network` that is the site's
-own name, no school `start_date` from the register's bulk entries or a merged primaire. The
+CCS and CHAdeMO, where the registry holds cabinet totals, and no type 2 output from a DC unit's
+own type 2 outlet), a type 2 point whose `cable_t2_attache` is blank (in its newest declaration
+that states it) counted as a socket only where OSM has no type 2 count, no socket counts for a
+station its own name calls DC (`Borne DC`, `rapide`) that ticks no DC connector, no opening
+hours where a day's spans overlap (a day named again after `;` or `,` is one split day), no `network` that is the site's
+own name, no `owner` where a site's stations name different owners or the object's
+`owner:ref:FR:SIREN` is another's, no school `start_date` from the register's bulk entries or a
+merged primaire, and no `start_date` on an update later than the day the object was first mapped
+(known only at version 1; a date before OSM began always stands). The
 directory's medico-social institutes become `amenity=social_facility` (the main tag of one
 already mapped is left alone), its sections housed in a parent establishment are skipped (a
 SEGPA however it is attached, a lycée's SEP or SEGT attached as an annex at its parent's
@@ -251,8 +258,10 @@ single word that is neither a role nor the school's name, place or domain), a we
 naming neither the school, its place nor a role, and a mobile are left out, and counted in the
 run's message. Phones are written as FR:Key:phone
 does: `+33 4 …`, an 08 number national (`08 06 14 15 00`), an overseas one under its own code
-(`+262 262 …`). A charging site is read from
-each station's newest declaration, with notes, fee and accessibility read over every
+(`+262 262 …`); an operator's phone that a spreadsheet stripped of its 0 or its `+` is read
+back. A charging site is read from each station's newest declaration (on one day the operator's
+or owner's own file before an aggregator's copy, `AGGREGATORS` in `fr/irve-declarations.ts`),
+with notes, fee and accessibility read over every
 declaration of its points. Declarations sharing a charge point id within 400 m, or its seven-digit
 number within 100 m under another operator's prefix, are one site, since operators re-declare a
 site under a new station id, position or code. When every single-row station of a site repeats
@@ -286,9 +295,15 @@ that also hold another establishment. A post-bac school matched to an object nam
 is a section housed in it: its `amenity` is left alone, with a banner line; one only tagged
 `school:FR=lycée` becomes a college with a line saying so. An unnamed object matches within
 15 m, or within 50 m when its operator, network or brand agrees, and another operator's sign
-counts against an object, as does a poor fit of capacity, connectors and power class; an object
-two records match without ids goes to the one that fits it. The network's own station within
-25 m whose connectors fit is matched under a renumbered pool id, with a banner. A match more than
+counts against an object, as does a poor fit of capacity, connectors and power class, or a
+connector the record counts that an object listing others lacks; an object two records match
+without ids goes to the one that fits it. A charger for bicycles or scooters only (or Schuko
+alone) is never a car station's match nor part of its site. The network's own station within
+25 m whose connectors fit is matched under a renumbered pool id, with a banner, and up to 150 m
+an object whose operator, network, owner or name (without the record's own operator's words)
+agrees and whose counts repeat the record's is the station, with the "matched N m away" banner
+past 50 m; both distances are to a way's or relation's nearest box edge (Overpass answers
+`out bb`). A plain `ref` listing a borne's point ids names those points. A match more than
 500 m from both the source's point and the address base's gets no address, contacts, SIRET or
 `start_date` (and nothing at all on an object mapped as no place); one left with nothing to write is counted in the
 run's message and listed in the diagnostics bundle. The fetch adds anything carrying a `ref:UAI`, a school's
@@ -299,7 +314,8 @@ round the box. Lookalikes that must never be matched are fetched for the banner 
 institutes (and an unnamed school building, as beside schools). The commune's words count for
 nothing in a name match. What matching cannot settle
 is not guessed: a "new" POI with an object of its kind within 150 m (300 m when its operator or
-address agrees), a match more than 150 m away (naming what of its kind stands within 50 m of the
+address agrees; one without another station's id named first, and the rest of its site within
+25 m counted), a match more than 150 m away (naming what of its kind stands within 50 m of the
 source's point), a match whose site is mapped as several objects
 or whose id another object also carries (one carrying the UAI more than 25 m off is named as
 such, not counted into the site), an object of its kind 25–150 m off the match under its name

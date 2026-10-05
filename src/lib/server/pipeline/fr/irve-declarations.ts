@@ -5,7 +5,19 @@ import type { Row } from "../types";
 
 export const NOT_A_POINT = /^non concern/i;
 
-const newest = (r: Row) => `${str(r, "date_maj")}|${str(r, "last_modified")}`;
+/**
+ * Organisations publishing copies of other operators' files on data.gouv.fr. Their copy of a
+ * station often carries the day of the operator's own declaration and a later publish time,
+ * while it drops points and names the operator's company as owner (Qualicharge's copy of
+ * Izivia's Grand Lyon stations: two points of four, owner "IZIVIA FMET 1" for Grand Lyon).
+ */
+const AGGREGATORS = new Set(["qualicharge"]);
+
+/** A file of the operator or owner itself, which a same-day copy does not outrank. */
+const ownFile = (r: Row) =>
+	AGGREGATORS.has(str(r, "datagouv_organization_or_owner").toLowerCase()) ? 0 : 1;
+
+const newest = (r: Row) => `${str(r, "date_maj")}|${ownFile(r)}|${str(r, "last_modified")}`;
 
 /**
  * An EVSE id the way two declarations of one point or station are compared: without `*`, the
@@ -82,9 +94,9 @@ const SAME_SPOT_M = 2;
 /**
  * The consolidated file keeps every declaration a station has had: an operator's own file
  * beside its aggregator's, and older ones listing points since removed. Each station is read
- * from its newest declaration whole, by `date_maj` and then `last_modified` (an operator's file
- * and its aggregator's often share the day), rather than from a union that counts what no
- * longer exists.
+ * from its newest declaration whole, by `date_maj`, then the operator's or owner's own file over
+ * an aggregator's copy, then `last_modified` (an operator's file and its aggregator's often
+ * share the day), rather than from a union that counts what no longer exists.
  *
  * A station is gone when newer ones list all its points (a pool taking in the stations an
  * operator declared one per point), or a newer one in another file declares it again: some of

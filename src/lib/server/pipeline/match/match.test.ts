@@ -420,6 +420,26 @@ describe("updateOps", () => {
 		]);
 	});
 
+	it("quotes every typed count an untyped one is replaced by, and no count that only fills a gap", () => {
+		// Allego FREVCP000209 on node/14134684301, which maps socket:unknown=4.
+		const fills = { ...tag("socket:type2", "2"), path: "prise_type_2", addOnly: true };
+		const ops = updateOps(
+			[
+				fills,
+				{ ...tag("socket:type2_combo", "4"), path: "prise_type_combo_ccs" },
+				tag("socket:type2_combo:output", "150 kW"),
+				{ ...tag("socket:typee", "2"), path: "prise_type_ef" },
+			],
+			{ amenity: "charging_station", "socket:unknown": "4" },
+		);
+		const del = ops.find((o) => o.op === "del");
+		expect(del).toMatchObject({ k: "socket:unknown", path: "prise_type_combo_ccs, prise_type_ef" });
+		expect(del?.parts.map((p) => p.text).join("")).toBe(
+			"replaced by socket:type2_combo=4, socket:typee=2",
+		);
+		expect(updateOps([fills], { "socket:unknown": "4" }).map((o) => o.op)).toEqual(["add"]);
+	});
+
 	it("proposes no ad-hoc access to a station surveyed as badge-only", () => {
 		const none = { ...tag("authentication:none", "yes"), addOnly: true };
 		expect(updateOps([none], { "payment:membership_card": "yes" })).toEqual([]);
@@ -1067,6 +1087,202 @@ describe("which object", () => {
 		);
 	});
 
+	describe("a station whose counts the object repeats exactly", () => {
+		const station = (
+			name: string,
+			lat: number,
+			lon: number,
+			tags: ProposedTag[],
+			evse: string,
+		) => ({
+			key: evse,
+			lat,
+			lon,
+			name,
+			tags: [tag("amenity", "charging_station"), ...tags],
+			refs: { "ref:EU:EVSE": evse },
+		});
+		const fill = (k: string, v: string) => ({ ...tag(k, v), addOnly: true });
+
+		it("is matched up to 150 m off when who runs it or its name agrees", () => {
+			// IKEA LYON - STATION 2 (FRIKAPIKEA95) and node/11531825193, 125 m off.
+			const ikea = station(
+				"IKEA LYON - STATION 2",
+				45.718092,
+				4.881303,
+				[
+					fill("operator", "IZIVIA"),
+					tag("capacity", "24"),
+					tag("socket:type2", "24"),
+					tag("socket:type2:output", "7.4 kW"),
+					fill("owner", "IKEA"),
+				],
+				"FRIKAPIKEA95",
+			);
+			const izivia = el(11531825193, 45.7187799, 4.8825817, {
+				amenity: "charging_station",
+				capacity: "24",
+				network: "Izivia Grand Lyon",
+				"socket:type2": "24",
+				"socket:type2:output": "7 kW",
+				"socket:typee": "24",
+			});
+			expect(findMatch(ikea, [izivia], new Map())?.id).toBe(11531825193);
+			expect(matchWarnings(ikea, izivia, [izivia])).toEqual([
+				"Matched to node/11531825193, 125 m away from the source's point: check it is this place",
+			]);
+			const other = { ...izivia, tags: { ...izivia.tags, capacity: "22", "socket:type2": "22" } };
+			expect(findMatch(ikea, [other], new Map())).toBeNull();
+
+			// Parking Béraudier P1 (e-totem for LPA) and node/12696418802, 119 m off: its name
+			// without the owner's word is the record's.
+			const beraudier = station(
+				"Parking Béraudier P1",
+				45.75958,
+				4.858517,
+				[
+					fill("operator", "e-totem"),
+					tag("capacity", "75"),
+					fill("socket:type2", "75"),
+					tag("socket:typee", "75"),
+					fill("owner", "LPA"),
+				],
+				"FRG10P69383DA",
+			);
+			const lpa = el(12696418802, 45.7606264, 4.8588079, {
+				amenity: "charging_station",
+				capacity: "75",
+				name: "Parc LPA Béraudier P1",
+				"socket:type2": "75",
+			});
+			expect(findMatch(beraudier, [lpa], new Map())?.id).toBe(12696418802);
+		});
+
+		it("measures a way from its nearest edge, and takes the network's renumbered pool", () => {
+			// CLINIQUE MEDIPOLE GARONNE (PARERA, FR*MW1) and way/1493527170, 29 m from its centre
+			// and 25 m from its edge, carrying the network's older pool id.
+			const clinique = station(
+				"CLINIQUE MEDIPOLE GARONNE",
+				43.5632446,
+				1.4237746,
+				[
+					fill("operator", "PARERA MOBILITE CPO"),
+					tag("capacity", "4"),
+					tag("socket:type2", "4"),
+					tag("socket:typee", "2"),
+					fill("owner", "CLINIQUE MEDIPOLE GARONNE"),
+				],
+				"FRMW1PAVGKG9E774II1MVHMWP",
+			);
+			const way: OsmElement = {
+				...el(1493527170, 43.5634928, 1.4238799, {
+					amenity: "charging_station",
+					network: "Mobilygreen",
+					operator: "Mobilygreen",
+					owner: "CLINIQUE MEDIPOLE GARONNE",
+					"ref:EU:EVSE": "FR*MW1*P7658798021619996006",
+					"socket:type2": "4",
+					"socket:typee": "2",
+				}),
+				type: "way",
+				bounds: { minlat: 43.5634668, minlon: 1.4238158, maxlat: 43.5635188, maxlon: 1.423944 },
+			};
+			expect(findMatch(clinique, [way], new Map())?.id).toBe(1493527170);
+			const another = { ...way, tags: { ...way.tags, "ref:EU:EVSE": "FR*TLS*P31555020" } };
+			expect(findMatch(clinique, [another], new Map())).toBeNull();
+		});
+	});
+
+	describe("a car station beside two-wheeler chargers", () => {
+		// Carrefour Energies - Francheville (Allego, FREVCP000141): four CCS points and four type 2
+		// + E/F points; OSM maps the car units and, a few metres off, an e-bike locker, a bicycle
+		// station and a scooter station.
+		const francheville = {
+			key: "FREVCP000141",
+			lat: 45.7342931,
+			lon: 4.7746172,
+			name: "Carrefour Energies - Francheville",
+			tags: [
+				tag("amenity", "charging_station"),
+				tag("operator", "Allego"),
+				tag("network", "Carrefour Energies"),
+				tag("capacity", "8"),
+				tag("socket:type2", "4"),
+				tag("socket:type2_combo", "4"),
+				tag("socket:type2_combo:output", "150 kW"),
+				tag("socket:typee", "4"),
+				tag("motorcar", "yes"),
+			],
+			refs: { "ref:EU:EVSE": "FREVCP000141;FREVCE9003791;FREVCE9005391" },
+		};
+		const car = { amenity: "charging_station", operator: "Carrefour Energies", motorcar: "yes" };
+		const site = [
+			el(13, 45.7342824, 4.7746239, {
+				...car,
+				capacity: "2",
+				"socket:schuko": "1",
+				"socket:type2": "2",
+			}),
+			el(14, 45.7342855, 4.7746101, {
+				...car,
+				capacity: "2",
+				"socket:schuko": "1",
+				"socket:type2": "2",
+			}),
+			el(15, 45.7342532, 4.7746061, { ...car, capacity: "2", "socket:type2_combo": "2" }),
+			el(16, 45.7342457, 4.774591, { ...car, capacity: "2", "socket:type2_combo": "2" }),
+			el(17, 45.7342147, 4.7745696, {
+				amenity: "charging_station",
+				capacity: "8",
+				description: "Casiers avec pose de cadenas possible",
+				operator: "Carrefour Energies",
+				"socket:schuko": "8",
+			}),
+			el(18, 45.7342305, 4.7745728, {
+				amenity: "charging_station",
+				bicycle: "yes",
+				capacity: "4",
+				operator: "Carrefour Energies",
+				"socket:schuko": "4",
+			}),
+			el(19, 45.7342277, 4.7745941, {
+				amenity: "charging_station",
+				capacity: "6",
+				operator: "Carrefour Energies",
+				scooter: "yes",
+			}),
+		];
+		const twoWheels = [17, 18, 19];
+
+		it("counts a connector the record lists and an object listing others lacks against it", () => {
+			const locker = site[4];
+			expect(stationFit(francheville, locker)).toMatchObject({ agree: 1, against: 1 });
+			expect(stationFit(francheville, site[0])).toMatchObject({ agree: 0, against: 3 });
+		});
+
+		it("never takes a two-wheeler charger for a car station, nor for a part of its site", () => {
+			const m = findMatch(francheville, site, new Map());
+			expect(m).not.toBeNull();
+			expect(twoWheels).not.toContain(m?.id);
+			const parts = splitParts(francheville, site[0], site).map((k) => k.e.id);
+			expect(parts.some((id) => twoWheels.includes(id))).toBe(false);
+			const bikes = {
+				...francheville,
+				name: "Carrefour Energies - Francheville vélos",
+				tags: [
+					tag("amenity", "charging_station"),
+					tag("operator", "Carrefour Energies"),
+					tag("capacity", "4"),
+					tag("motorcycle", "yes"),
+				],
+				refs: {},
+				lat: 45.7342305,
+				lon: 4.7745728,
+			};
+			expect(findMatch(bikes, site, new Map())?.id).toBe(18);
+		});
+	});
+
 	it("makes way for the record whose id the object carries", () => {
 		const obj = el(1, 45.7, 4.8, { amenity: "charging_station", "ref:EU:EVSE": "FR*TLS*P1" });
 		const idx = indexRefs([obj], ["ref:EU:EVSE"]);
@@ -1108,6 +1324,57 @@ describe("duplicates of a new record", () => {
 		expect(matchWarnings(x, null, [ime], new Map(), new Set(), by)).toContainEqual(
 			expect.stringMatching(/^Another establishment with the same SIRET is mapped at node\/3/),
 		);
+	});
+});
+
+describe("duplicates of a new station", () => {
+	it("names an object without another station's id first, and says when the one it names has one", () => {
+		// Brasserie Stade Toulousain (SOLVEO, DKMONE4198725).
+		const x = {
+			lat: 43.621588,
+			lon: 1.413705,
+			name: "Brasserie Stade Toulousain",
+			tags: [tag("amenity", "charging_station"), tag("operator", "SOLVEO ENERGIES")],
+			refs: { "ref:EU:EVSE": "DKMONE4198725" },
+		};
+		const alize = el(11434652994, 43.621479, 1.4136063, {
+			amenity: "charging_station",
+			capacity: "4",
+			operator: "Bouygues Énergies et Services",
+			"ref:EU:EVSE": "FR*TLS*P31555053",
+		});
+		const bare = el(11434652993, 43.6214625, 1.4138249, {
+			access: "private",
+			amenity: "charging_station",
+			capacity: "6",
+		});
+		expect(matchWarnings(x, null, [alize, bare])).toEqual([
+			"Possible duplicate: amenity=charging_station already mapped at node/11434652993, 17 m away",
+		]);
+		expect(matchWarnings(x, null, [alize])).toEqual([
+			"Possible duplicate: amenity=charging_station already mapped at node/11434652994, 14 m away (carries ref:EU:EVSE=FR*TLS*P31555053, another station's)",
+		]);
+	});
+
+	it("says how many more objects of its kind stand within 25 m of the one it names", () => {
+		// Lidl TOULOUSE Labège (FRLDLPLFR1522EVCP): three nodes of the site, 2, 6 and 15 m off.
+		const x = {
+			lat: 43.559239,
+			lon: 1.503482,
+			name: "LFR1522EVCP03",
+			tags: [tag("amenity", "charging_station"), tag("operator", "Lidl France")],
+			refs: {},
+		};
+		const lidl = (id: number, lat: number, lon: number) =>
+			el(id, lat, lon, { amenity: "charging_station", capacity: "2", operator: "Lidl" });
+		const site = [
+			lidl(11065956027, 43.5592535, 1.5035023),
+			lidl(11065956028, 43.5592863, 1.5034615),
+			lidl(11065956029, 43.5593519, 1.5033853),
+		];
+		expect(matchWarnings(x, null, site)).toEqual([
+			"Possible duplicate: amenity=charging_station already mapped at node/11065956027, 2 m away, and 2 more objects of its kind within 25 m of it",
+		]);
 	});
 });
 
@@ -1657,6 +1924,34 @@ describe("schools of the fifth audit", () => {
 	});
 });
 
+describe("a commissioning date and the object's own history", () => {
+	const dated = (since: string) => ({
+		lat: 45.7,
+		lon: 4.8,
+		name: "",
+		tags: [tag("start_date", since)],
+		refs: {},
+	});
+	const station = (version: number, timestamp: string) => ({
+		...el(1, 45.7, 4.8, { amenity: "charging_station" }),
+		version,
+		timestamp,
+	});
+	const dates = (since: string, e: OsmElement) =>
+		planUpdate(dated(since), e, [e]).ops.map((o) => o.v);
+
+	it("proposes no start_date later than the day the object was first mapped", () => {
+		// cf7c327bb58: node/9405205339, first mapped 2022-01-09, commissioned 2023-12-18.
+		expect(dates("2023-12-18", station(1, "2022-01-09T10:12:00Z"))).toEqual([]);
+		expect(dates("2021-11-30", station(1, "2022-01-09T10:12:00Z"))).toEqual(["2021-11-30"]);
+		// c5301f472db: node/12029214826 at version 4, saved 2026-04-19: when it was first
+		// mapped is not known, and a date after 2004 could be later.
+		expect(dates("2026-03-11", station(4, "2026-04-19T08:00:00Z"))).toEqual([]);
+		expect(dates("2023-03-11", station(4, "2026-04-19T08:00:00Z"))).toEqual([]);
+		expect(dates("1985-09-01", station(4, "2026-04-19T08:00:00Z"))).toEqual(["1985-09-01"]);
+	});
+});
+
 describe("one object, several establishments", () => {
 	const x = {
 		lat: 45.7,
@@ -1839,6 +2134,30 @@ describe("plain refs on stations", () => {
 		expect(planUpdate(x, whole, [whole]).ops.map((o) => o.k)).toEqual(["socket:type2"]);
 	});
 
+	it("read a list of a borne's point ids as the points it names", () => {
+		// TOULOUSE - Avenue de Castres: node/12455535934 lists its two connectors' ids.
+		const castres = {
+			key: "FRTLSP31555007",
+			lat: 43.59472,
+			lon: 1.48832,
+			name: "TOULOUSE - Avenue de Castres",
+			tags: [tag("amenity", "charging_station"), tag("capacity", "4")],
+			refs: {
+				"ref:EU:EVSE":
+					"FRTLSP31555007;FRTLSE315550071;FRTLSE315550072;FRTLSE315550073;FRTLSE315550074",
+			},
+		};
+		const borne = el(1, 43.59472, 1.48832, {
+			amenity: "charging_station",
+			capacity: "2",
+			name: "Alizé",
+			ref: "FR*TLS*E31555*007*2*2;FR*TLS*E31555*007*2*1",
+		});
+		expect(planUpdate(castres, borne, [borne]).notes[0]).toMatch(
+			/ref=FR\*TLS\*E31555\*007\*2\*2;FR\*TLS\*E31555\*007\*2\*1 names 1 of the station's 4 points/,
+		);
+	});
+
 	it("tell one station's bornes from another's", () => {
 		const y = { ...x, refs: {} };
 		const own = (id: number, ref: string, lat: number) =>
@@ -1943,5 +2262,27 @@ describe("settlePoints", () => {
 	it("leaves a point within reach of its address", () => {
 		const [x] = settle([station("a", 43.5495, 1.5063)]);
 		expect(x.from).toBeUndefined();
+	});
+
+	it("moves even a precise point its own commune's housenumber puts kilometres away", () => {
+		// SAS agripat (ZEENCO): the registry places it in Lyon, its address is in Cleppé (42110).
+		const agripat = (at: { lat: number; lon: number; label: string }, lat = 45.751829) => ({
+			...station("FRLMSE10001422461", lat, 4.81745, "ZEENCO"),
+			addr: "343,Route des Etangs, 42110 Cleppé",
+			geocode: {
+				q: "343,Route des Etangs, 42110 Cleppé",
+				farM: Number.POSITIVE_INFINITY,
+				wrongM: 2000,
+			},
+			atAddress: at,
+		});
+		const cleppe = { lat: 45.751852, lon: 4.181735, label: "343 Route des Etangs 42110 Cleppé" };
+		const [x] = settle([agripat(cleppe)], [node(1, 45.75183, 4.81746)]);
+		expect(x).toMatchObject({ lat: 45.751852, lon: 4.181735 });
+		expect(x.notes).toEqual(["Moved 49.3 km to its address, 343 Route des Etangs 42110 Cleppé"]);
+		const near = { ...cleppe, lat: 45.751829, lon: 4.8 };
+		expect(settle([agripat(near)])[0].from).toBeUndefined();
+		const elsewhere = { ...cleppe, label: "343 Route des Etangs 42600 Montbrison" };
+		expect(settle([agripat(elsewhere)])[0].from).toBeUndefined();
 	});
 });

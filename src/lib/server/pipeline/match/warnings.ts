@@ -15,7 +15,7 @@ import { distance, metres } from "../geo";
 import { lookalike, sameKind, schoolBuilding } from "../tagfilter";
 import { ids, nameSimilarity } from "../text";
 import { type Extraction, type OsmElement, osmRef } from "../types";
-import { evseTag, otherBorne, otherStation, stationFit } from "./charging";
+import { evseTag, forTwoWheels, otherBorne, otherStation, stationFit } from "./charging";
 import { notThePlace } from "./find";
 import {
 	companiesAgree,
@@ -93,7 +93,12 @@ export function splitParts(
 	const samePlace = (e: OsmElement) => {
 		if (e.tags.name && !names.some((n) => nameSimilarity(n, e.tags.name) >= NAME_MATCH))
 			return false;
-		if (otherStation(e, x.refs) || otherBorne(el, e) || matchedElsewhere(e, x, matchedBy).length)
+		if (
+			otherStation(e, x.refs) ||
+			otherBorne(el, e) ||
+			forTwoWheels(x, e) ||
+			matchedElsewhere(e, x, matchedBy).length
+		)
 			return false;
 		const who = whoSimilarity(x, e);
 		const asMapped = companiesAgree(whoOn(el.tags), whoOn(e.tags));
@@ -133,24 +138,42 @@ function duplicates(
 		(d <= SAME_OPERATOR_RADIUS_M && (whoAgrees(x, e) || (!!at && addressOf(e.tags) === at)));
 	// A record moved to its address may be mapped where the source placed it.
 	const points = [x, ...(x.from ? [x.from] : [])];
-	// A station's other kind of station nearer (its DC units beside its AC bays) is not the one to name.
+	// Another station's id makes an object the less likely duplicate, and a station's other kind
+	// of station nearer (its DC units beside its AC bays) is not the one to name either.
+	const theirs = (e: OsmElement) => (otherStation(e, x.refs) ? 1 : 0);
 	const misfit = (e: OsmElement) => (stationFit(x, e)?.types ? 1 : 0);
 	const nearest = (kind: (e: OsmElement) => boolean) =>
 		els
 			.filter((e) => kind(e) && !otherPlace(e, x.refs))
 			.map((e) => ({ e, d: Math.min(...points.map((p) => distance(p.lat, p.lon, e.lat, e.lon))) }))
 			.filter(({ e, d }) => reach(e, d))
-			.sort((a, b) => misfit(a.e) - misfit(b.e) || a.d - b.d)[0];
-	const kin = nearest((e) => sameKind(main.k, main.v, e.tags));
+			.sort((a, b) => theirs(a.e) - theirs(b.e) || misfit(a.e) - misfit(b.e) || a.d - b.d)[0];
+	const ofKind = (e: OsmElement) => sameKind(main.k, main.v, e.tags);
+	const kin = nearest(ofKind);
 	const alike = nearest(
-		(e) =>
-			lookalike(main.k, main.v, e.tags) && !sameKind(main.k, main.v, e.tags) && maternelleAs(x, e),
+		(e) => lookalike(main.k, main.v, e.tags) && !ofKind(e) && maternelleAs(x, e),
 	);
 	const out = [kin, alike]
 		.filter((n) => n !== undefined)
 		.map(({ e, d }) => {
 			const k = [...MAIN, "man_made", "building"].find((key) => e.tags[key]) ?? main.k;
-			return `Possible duplicate: ${k}=${e.tags[k]} already mapped at ${label(e, d)}`;
+			const id = theirs(e) ? ` (carries ${evseTag(e)}, another station's)` : "";
+			// The rest of a site mapped as several objects; one with another station's id beside
+			// an id-less one is that other station.
+			const more =
+				e === kin?.e
+					? els.filter(
+							(o) =>
+								o !== e &&
+								ofKind(o) &&
+								theirs(o) === theirs(e) &&
+								distance(e.lat, e.lon, o.lat, o.lon) <= SPLIT_RADIUS_M,
+						).length
+					: 0;
+			const site = more
+				? `, and ${more} more object${more === 1 ? "" : "s"} of its kind within ${SPLIT_RADIUS_M} m of it`
+				: "";
+			return `Possible duplicate: ${k}=${e.tags[k]} already mapped at ${label(e, d)}${id}${site}`;
 		});
 	const sibling = siblingOf(x, els, matchedBy);
 	if (sibling) out.push(sibling);
@@ -332,7 +355,13 @@ export function matchWarnings(
 		out.push(
 			`Matched to ${osmRef(el)}${el.tags.name ? ` “${el.tags.name}”` : ""}, ${metres(far)} from where the source and the address base place it: the place may have moved, or the id on this object may be stale, so its address, contacts, ${SIRET_NAME} and opening date are left out${standing}`,
 		);
-	else if (d > DUPLICATE_RADIUS_M)
+	// A station matched on its counts, not its id, reaches past where an operator would.
+	else if (
+		d > DUPLICATE_RADIUS_M ||
+		(d > MATCH_RADIUS_M &&
+			!!stationFit(x, el) &&
+			!refHits(x, refIndex, shared).some((h) => h.e === el))
+	)
 		out.push(
 			`Matched to ${label(el, d)} from the source's point${standing}: check it is this place`,
 		);

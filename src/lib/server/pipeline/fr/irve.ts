@@ -82,9 +82,16 @@ function serviceDate(rows: Row[]): string | null {
 /** Filler numbers some operators declare when they have none to give: `+33 1 23 45 67 89`, `+33 1 00 00 00 00`. */
 const PLACEHOLDER_PHONE = /^0\d(23456789|(\d)\2{7})$/;
 
-/** A mobile is usually somebody's own line, not the operator's. */
+/**
+ * A mobile is usually somebody's own line, not the operator's. The column is numeric in some
+ * operators' spreadsheets, which drops a leading 0 (`374090105`) or a `+` (`33975891501`).
+ */
 function operatorPhone(raw: string): string | null {
-	const phone = phoneFR(raw.replace(/^tel:/i, ""));
+	const written = raw.replace(/^tel:/i, "").trim();
+	const d = written.replace(/[\s.\-()]/g, "");
+	const phone = phoneFR(
+		/^[1-9]\d{8}$/.test(d) ? `0${d}` : /^33[1-9]\d{8}$/.test(d) ? `+${d}` : written,
+	);
 	return !phone || PLACEHOLDER_PHONE.test(digits(phone)) || mobileFR(phone) ? null : phone;
 }
 
@@ -115,6 +122,9 @@ const isPrice = (v: string) => /\d\s*(€|eur|cts?\b)|€\s*\d/i.test(v) && !/gr
 
 /** A station named for two-wheelers, whatever its flag says. */
 const TWO_WHEEL_NAME = /deux[- ]roues|2[- ]roues|\bmotos?\b|scooter|v[ée]los?\b/i;
+
+/** A station named for fast DC charging ("RNO ETATS UNIS - Borne DC", "Charge ultra-rapide"). */
+const DC_NAME = /\bDC\b|\brapides?\b/i;
 
 /** An operator's note that per-session payment goes through its own app, badge or account. */
 const NEEDS_ACCOUNT = /\b(app|appli|application|badge|abonnement|compte|rfid|lidl plus|emsp)\b/i;
@@ -177,6 +187,9 @@ function gluedSiteName(network: string, theirs: string): boolean {
 
 const decimals = (v: string) => /\.(\d+)$/.exec(v)?.[1].length ?? 0;
 
+/** A mailbox ("_Bp 75", "CS 30012") or a CEDEX, which no street carries and the address base misreads. */
+const POSTAL_BOX = /(?:[\s,_–-]+|^)(?:B\.?\s?P\.?|CS)\s*\d+\b|\s+CEDEX(?:\s*\d+)?\b/gi;
+
 /**
  * `adresse_station` carries the postcode and commune or not, a country, sometimes another
  * postcode than the consolidated one ("…, 31000 Toulouse" at 31100): the street part is kept
@@ -188,6 +201,7 @@ const decimals = (v: string) => /\.(\d+)$/.exec(v)?.[1].length ?? 0;
 function stationAddress(raw: string, postcode: string, commune: string, insee = ""): string {
 	const place = normaliseName(commune);
 	let street = raw
+		.replace(POSTAL_BOX, "")
 		.replace(/,\s*france\s*$/i, "")
 		.trim()
 		.replace(/[\s,–-]+$/, "");
@@ -257,6 +271,8 @@ const listedSockets = (rows: Row[]) =>
 
 const DC = ["prise_type_combo_ccs", "prise_type_chademo"];
 
+const AC_TYPE2 = ["socket:type2", "socket:type2_cable"];
+
 /** How many connector types a point carries. */
 const kinds = (r: Row) =>
 	new Set(SOCKETS.filter(([, f, only]) => has(r, f) && only(r)).map(([, f]) => f)).size +
@@ -309,6 +325,12 @@ const STATION_FAR_M = 100;
 
 /** Four decimals is 11 m: a registry writing so few rounded a geocoded point, or typed it. */
 const COARSE_DECIMALS = 4;
+
+/**
+ * Past this from its own housenumber even a precise point is a mistyped one: SAS agripat's,
+ * 49 km off in Lyon, against the 2 km a car park or a site's postal address puts between them.
+ */
+const STATION_WRONG_M = 2000;
 
 /** IRVE "statique" v2.3, consolidated: one row per charge point, grouped into one station. */
 export const irve: Preset = {
@@ -391,6 +413,26 @@ export const irve: Preset = {
 				kinds(r) === 1 &&
 				typeTwoKw(r) > MAX_KW["socket:type2"],
 		).length;
+		// A DC unit's type 2 outlet can also be declared below 43.5 kW, at the unit's power (IKEA
+		// Lyon's 24 kW unit, `…9691` CCS and `…9692` type 2): a point numbered as another connector
+		// of a DC point, at that point's power, gives no type 2 output.
+		const dcRows = rows.filter((r) => DC.some((f) => has(r, f)));
+		const dcOutlet = (r: Row) => {
+			const p = pointOf(r);
+			const kw = Number(str(r, "puissance_nominale"));
+			return (
+				!!p &&
+				dcRows.some((d) => {
+					const q = pointOf(d);
+					return (
+						!!q &&
+						q !== p &&
+						q.slice(0, -1) === p.slice(0, -1) &&
+						Number(str(d, "puissance_nominale")) === kw
+					);
+				})
+			);
+		};
 		const capacity = unsure
 			? 0
 			: points - oneRows.length + oneRows.reduce((a, n) => a + n, 0) - acOnDc || declaredCount;
@@ -466,20 +508,48 @@ export const irve: Preset = {
 		// A point naming no connector may carry any, so no type's count is known to be whole,
 		// nor any type known to be missing.
 		const blank = oneRow || unsure ? 0 : rows.filter((r) => kinds(r) === 0).length;
+		// An older declaration leaving the cable blank says nothing against a newer one that
+		// states it, so each point's cable is its newest stated one before anything is ruled out.
+		const allDeclared = declarationsOf(declared, declared);
+		const stated = declared.map((r) => {
+			if (str(r, "cable_t2_attache")) return r;
+			const said = allDeclared.get(r)?.find((h) => str(h, "cable_t2_attache"));
+			return said ? { ...r, cable_t2_attache: str(said, "cable_t2_attache") } : r;
+		});
 		if (blank)
 			notes.push(
 				blank === rows.length
 					? "None of its charge points names a connector, so sockets are left out"
 					: `${blank} of its ${rows.length} charge points name no connector, so sockets are left out`,
 			);
+		// A station its own name calls DC that ticks no DC connector has its connectors wrong
+		// (Mobilize's "Borne DC" at 62.5 kW ticks type 2 and E/F), so they say nothing either.
+		const misnamed = new Set(
+			current
+				.filter(
+					(s) =>
+						DC_NAME.test(str(s.rows[0], "nom_station")) &&
+						!s.rows.some((r) => DC.some((f) => has(r, f))),
+				)
+				.map((s) => s.id),
+		);
+		const dcNamed =
+			oneRow || unsure
+				? 0
+				: rows.filter((r) => kinds(r) > 0 && misnamed.has(stationKey(r) ?? "")).length;
+		if (dcNamed)
+			notes.push(
+				`${dcNamed} of its ${rows.length} charge points are on a station named for DC charging that ticks no DC connector, so sockets are left out`,
+			);
+		const unknown = blank + dcNamed;
 		if (recovered)
 			notes.push(
 				`The registry's newest declaration names no connector on ${recovered} of its charge points; their connectors are an older declaration's`,
 			);
-		for (const [k, field, only] of oneRow || everything || unsure || blank ? [] : SOCKETS) {
+		for (const [k, field, only] of oneRow || everything || unsure || unknown ? [] : SOCKETS) {
 			const carrying = rows.filter((r) => has(r, field) && only(r));
 			if (carrying.length === 0) {
-				if (!declared.some((r) => has(r, field) && (only(r) || unstated(r)))) absent.push(k);
+				if (!stated.some((r) => has(r, field) && (only(r) || unstated(r)))) absent.push(k);
 				continue;
 			}
 			const gap = k === "socket:type2" && carrying.some(unstated);
@@ -494,7 +564,8 @@ export const irve: Preset = {
 			if (gap) fill(count);
 			const shared = carrying.some((r) => kinds(r) > 1);
 			if (shared && k !== "socket:type2_combo") continue;
-			const power = Math.max(0, ...carrying.map((r) => Number(str(r, "puissance_nominale")) || 0));
+			const powered = AC_TYPE2.includes(k) ? carrying.filter((r) => !dcOutlet(r)) : carrying;
+			const power = Math.max(0, ...powered.map((r) => Number(str(r, "puissance_nominale")) || 0));
 			if (power === 0 || power > (MAX_KW[k] ?? Number.POSITIVE_INFINITY)) continue;
 			const output = t.add(
 				`${k}:output`,
@@ -506,7 +577,7 @@ export const irve: Preset = {
 			);
 			if (gap) fill(output);
 		}
-		if (!unsure && !blank && !declared.some((r) => has(r, "prise_type_autre"))) {
+		if (!unsure && !unknown && !declared.some((r) => has(r, "prise_type_autre"))) {
 			absent.push(...OTHER_SOCKETS);
 			// `prise_type_ef` is an E/F outlet, and F is Schuko: the registry cannot tell which.
 			if (!declared.some((r) => has(r, "prise_type_ef"))) absent.push("socket:schuko");
@@ -615,9 +686,20 @@ export const irve: Preset = {
 			}),
 		);
 		if (since) fill(t.add("start_date", since, 0.7, "date_mise_en_service", since));
+		// A site merged from stations of several owners (an AC car park and the DC units another
+		// company owns beside it) has no one owner.
 		const owner = str(first, "nom_amenageur");
-		if (normaliseName(owner) !== normaliseName(operator) && !SLUG.test(owner))
-			fill(t.add("owner", owner, 0.7, "nom_amenageur"));
+		const owners = new Set(rows.map((r) => normaliseName(str(r, "nom_amenageur"))).filter(Boolean));
+		if (
+			owners.size === 1 &&
+			normaliseName(owner) !== normaliseName(operator) &&
+			!SLUG.test(owner)
+		) {
+			const tag = t.add("owner", owner, 0.7, "nom_amenageur");
+			fill(tag);
+			const siren = str(first, "siren_amenageur").replace(/\s/g, "");
+			if (tag && /^\d{9}$/.test(siren)) tag.unless = { k: "owner:ref:FR:SIREN", v: siren };
+		}
 		const phone = operatorPhone(str(first, "telephone_operateur"));
 		if (phone)
 			fill(t.add("operator:phone", phone, 0.7, "telephone_operateur", undefined, "normalised"));
@@ -666,13 +748,14 @@ export const irve: Preset = {
 			lon: pos[1],
 			refs,
 			tags: t.list,
-			fit: unsure && !oneRow && !everything && !blank ? listedSockets(rows) : undefined,
+			fit: unsure && !oneRow && !everything && !unknown ? listedSockets(rows) : undefined,
 			absent,
 			notes,
 			geocode: str(first, "adresse_station")
 				? {
 						q: addressQuery(addr, "", ""),
 						farM: precision <= COARSE_DECIMALS ? STATION_FAR_M : Number.POSITIVE_INFINITY,
+						wrongM: STATION_WRONG_M,
 					}
 				: undefined,
 		};

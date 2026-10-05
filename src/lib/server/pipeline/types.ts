@@ -36,6 +36,11 @@ export interface ProposedTag {
 	 * listed at several sites): OSM holding any of them agrees with the source.
 	 */
 	also?: string[];
+	/**
+	 * An identifier of what the value names, which the object may carry under its own key: an
+	 * object carrying another one (the owner's SIREN) says the value names someone else.
+	 */
+	unless?: { k: string; v: string };
 }
 
 export interface Extraction {
@@ -58,7 +63,15 @@ export interface Extraction {
 	 * The address to ask the national address base for, and how far the source's point may
 	 * sit from its housenumber before the point is the one taken to be wrong.
 	 */
-	geocode?: { q: string; farM: number };
+	geocode?: {
+		q: string;
+		farM: number;
+		/**
+		 * Farther than this from a housenumber in the postcode the source gives, the point is
+		 * an error whatever matches there or however precisely it is written.
+		 */
+		wrongM?: number;
+	};
 	/**
 	 * Where the address base places the record's own housenumber, on a street that agrees
 	 * with the source's. Set by `placeAddress`; the point moves there only once matching at
@@ -83,8 +96,12 @@ export interface OsmElement {
 	id: number;
 	version: number;
 	user?: string;
+	/** When this version was saved (ISO); at version 1, the day the object was first mapped. */
+	timestamp?: string;
 	lat: number;
 	lon: number;
+	/** A way's or a relation's bounding box; `lat`/`lon` are its centre. */
+	bounds?: { minlat: number; minlon: number; maxlat: number; maxlon: number };
 	tags: Record<string, string>;
 }
 

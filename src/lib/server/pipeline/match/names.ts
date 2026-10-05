@@ -64,11 +64,15 @@ function communeWords(x: Named, e: OsmElement): Set<string> {
  * How well an OSM name names the record, or null when it names nothing: a generic label
  * ("Recharge", "Borne de recharge Révéo") or the operator's own name ("Allego"), which leave
  * the operator to decide. A mapper's short name all inside the record's long one ("La Fourmi"
- * in "École élémentaire privée La Fourmi") counts as a strong match.
+ * in "École élémentaire privée La Fourmi") counts as a strong match. With `withoutWho`, the
+ * words of the record's own operator and owner are dropped first: "Parc LPA Béraudier P1" is
+ * "Parking Béraudier P1" run for LPA.
  */
-export function nameScore(x: Named, e: OsmElement): number | null {
+export function nameScore(x: Named, e: OsmElement, withoutWho = false): number | null {
 	const commune = communeWords(x, e);
-	const words = (s: string) => [...tokens(s)].filter((w) => !GENERIC.has(w) && !commune.has(w));
+	const own = new Set(withoutWho ? whoOf(x).flatMap((s) => [...tokens(s)]) : []);
+	const ignored = new Set([...commune, ...own]);
+	const words = (s: string) => [...tokens(s)].filter((w) => !GENERIC.has(w) && !ignored.has(w));
 	const theirs = words(e.tags.name ?? "");
 	const ours = new Set(words(x.name));
 	const inOurs = theirs.every((w) => ours.has(w));
@@ -76,6 +80,6 @@ export function nameScore(x: Named, e: OsmElement): number | null {
 	// place's name a brand.
 	const who = new Set([...whoOf(x), ...WHO.map((k) => e.tags[k] ?? "")].flatMap(words));
 	if (!theirs.length || (!inOurs && theirs.every((w) => who.has(w)))) return null;
-	const dice = nameSimilarity(x.name, e.tags.name, commune);
+	const dice = nameSimilarity(x.name, e.tags.name, ignored);
 	return inOurs ? Math.max(dice, WHOLE_NAME) : dice;
 }

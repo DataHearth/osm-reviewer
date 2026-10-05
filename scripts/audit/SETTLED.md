@@ -23,7 +23,7 @@ Settled after the second audit (2026-10-04) — judge whether the code does this
 - Objects carrying ref:EU:EVSE are fetched without amenity (charge points excluded).
 - A value among the object's ;-list agrees (school:FR=collège;primaire;lycée). Keys that several records on one object disagree on are left out with a banner line.
 - phone not added when the same number is in mobile; contact: scheme chosen only from contact:phone/email/website/fax/mobile.
-- Typed socket counts delete socket:unknown(:output).
+- Typed socket counts delete socket:unknown(:output) (only firm ones, since the fifth audit).
 - Address held as contact:housenumber|street|postcode|city moves to addr:* (del/add pair) in the mapper's spelling; a differing part leaves the whole address alone.
 - authentication:none from paiement_acte, skipped when notes mention app/badge/abonnement or OSM says badge-only.
 - fee follows gratuit (false → yes, FR wiki); may overwrite a mapper's fee=no, with a banner line.
@@ -85,7 +85,7 @@ Settled after the code bug hunt (on `main` 2026-10-05). Where a line here differ
 - No `socket:type2_combo:output` or `socket:chademo:output` above 400 kW (the registry holds cabinet or site totals), like the 43.5 kW cap on type 2. A type 2 point declared in watts counts as a bay, not as a DC cabinet's outlet.
 - Phones follow FR:Key:phone: `+33 4 …` for a geographic or mobile number, an 08 number national and spaced (`08 06 14 15 00`), an overseas number under its own code (`+262 262 …`). Mobiles, overseas ones included, are still left out of schools.
 - A blank `cable_t2_attache` means unknown: such type 2 points are proposed as `socket:type2` (and its output) fill-only, and not at all where the object has `socket:type2` or `socket:type2_cable`; `socket:type2_cable` is never ruled out because of them and they weigh nothing in the fit. Explicit true is a cable, explicit false a socket.
-- A day named again after `;` in the registry's hours is one split day (`Mo-Sa 07:30-12:00,13:30-17:30`); overlapping spans propose no opening_hours. Only 23:57 to 23:59 read as the end of the day.
+- A day named again after `;` or `,` in the registry's hours is one split day (`Mo-Sa 07:30-12:00,13:30-17:30`); overlapping spans propose no opening_hours. Only 23:57 to 23:59 read as the end of the day.
 - `socket:schuko` is never ruled out on a station that ticks an E/F outlet. `motorcycle=yes` from `station_deux_roues` stays, fill-only, with no `motorcar=no` beside it.
 - A school's street may be a cité, ruelle, cour, traverse, résidence, lotissement and the like; a lieu-dit or hameau still gets no address (`addr:place` is never written). A postcode is dropped only where the address lines say CEDEX, BP or CS.
 - A mapper's socket output is read in its own unit (W, kW, kVA) before power classes are compared.
@@ -118,6 +118,28 @@ Education preset:
 - A lycée's SEP (334) or SEGT (335) attached as a geographic annex at its parent's address is skipped, like a SEGPA; annexes elsewhere (lycées professionnels, STS, IME) stay.
 - "The directory lists this UAI at N sites" counts distinct addresses and points; repeated rows of one site say nothing.
 - An accented name written in lower case gets its capital ("la boétie" → "la Boétie").
+
+Settled after the fifth audit (2026-10-05). Where a line here differs from one above, this one wins.
+
+IRVE:
+- On one `date_maj` the operator's or owner's own file outranks an aggregator's copy (Qualicharge, by `datagouv_organization_or_owner`); `last_modified` only orders files of the same standing.
+- A point's `cable_t2_attache` is its newest declaration that states it before anything is ruled out; a blank type 2 point's output is fill-only and not proposed where the object has `socket:type2` or `socket:type2_cable`.
+- A station whose own name says DC (`\bDC\b`, `rapide`) but which ticks no DC connector has unknown connectors: no socket counts, a note.
+- Type 2 output leaves out a DC unit's own type 2 outlet: a point numbered as another connector of a DC point (ids differing in the last character) at that point's power.
+- Days spelled in English (`Sat`, `Sun`, `Mon-Fri`) are read as OSM's two letters before the days are folded.
+- An operator phone the CSV stripped of its 0 (nine digits) or its `+` (`33` and nine digits) is read back; the filler and mobile rules still apply. School phones are unchanged.
+- A postal box (`BP 75`, `CS 30012`) or CEDEX is dropped from `adresse_station` before geocoding.
+- No `owner` where a site's stations name different owners, and none on an object whose `owner:ref:FR:SIREN` is not the row's `siren_amenageur`.
+- A point more than 2 km from a confident housenumber in its own postcode is an error whatever its precision: it moves (banner), and is dropped and counted when that takes it out of the area.
+
+Matching and banners:
+- Firm typed socket counts delete socket:unknown(:output), quoting them all; a fill-only count deletes and quotes nothing.
+- A socket type the record counts that an object listing other socket types lacks counts against it (type 2 socket and cable, E/F and Schuko, are each one connector).
+- A charger for bicycles or scooters only (`bicycle`/`scooter` yes or designated without `motorcar=yes` and with `motorcar=no` or no car connector), or one with Schuko alone, is never matched to a car station (one listing a car connector and no `motorcycle`) nor part of its site.
+- A plain `ref` holding a `;`-list of point ids is read as those EVSE ids.
+- Within 150 m (to a way's or relation's nearest box edge), an object is a station's match when its operator, network, owner or name agrees (the record's own operator and owner words dropped from the name), its capacity if it states one is the record's, some count agrees (a fill-only one may) and no firm count differs, and it carries no other station's id unless the same operator's renumbered pool. Past 50 m such a match has the "Matched to … m away" banner.
+- The duplicate banner of a "new" station names an object without another station's id first, says "(carries …, another station's)" when the one it names has one, and counts the others of its kind within 25 m of it.
+- No `start_date` on an update later than the day the object was first mapped; that day is known only at version 1 (its timestamp), so on a later version a date from 2004-08-09 on is left out. This holds for schools as well.
 
 Known gaps, deliberately not done: mention them only as a count, do not analyse them. This list replaces any earlier one: a stale UAI on an object more than 50 m from a "new" record that shares no address, phone, email or SIRET with it (never matched, and named by no banner line), and one the run's read cannot judge (a directory row with no position is not read); point-inside-area containment; street names not verified against OSM highways; no banner when a fill-only value contradicts the source; an IRVE operator, owner or network written as the registry spells it (capitals, legal names); operator:email / charge / maxheight not proposed.
 

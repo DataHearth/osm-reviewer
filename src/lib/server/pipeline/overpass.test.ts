@@ -11,7 +11,7 @@ describe("buildQuery", () => {
 		);
 		expect(q).not.toContain("area(id:");
 		expect(q).toContain('nwr["amenity"="charging_station"](45.698,4.767,45.812,4.903);');
-		expect(q).toContain("out center tags meta;");
+		expect(q).toContain("out bb tags meta;");
 	});
 
 	it("falls back to the area id while a relation has no box yet", () => {
@@ -70,6 +70,15 @@ describe("parseElements", () => {
 			{ type: "node", id: 1, lat: 1, lon: 2, version: 4, user: "bob", tags: { a: "b" } },
 			{ type: "way", id: 2, lat: 3, lon: 4, version: 1, user: undefined, tags: {} },
 		]);
+	});
+
+	it("keeps a way's box, and places it at the box's middle as Overpass's centre does", () => {
+		// way/1493527170, the Clinique Médipôle Garonne's chargers.
+		const bounds = { minlat: 43.5634668, minlon: 1.4238158, maxlat: 43.5635188, maxlon: 1.423944 };
+		const [way] = parseElements({ elements: [{ type: "way", id: 1493527170, bounds, tags: {} }] });
+		expect(way.bounds).toEqual(bounds);
+		expect(way.lat).toBeCloseTo(43.5634928, 7);
+		expect(way.lon).toBeCloseTo(1.4238799, 7);
 	});
 
 	it("turns a runtime error remark into a failure", () => {
