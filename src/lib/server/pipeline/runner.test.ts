@@ -358,6 +358,25 @@ describe("runSource (registry)", () => {
 		expect(side.some((r) => r.side === "ours")).toBe(true);
 	});
 
+	it("flags rather than recomputes a candidate whose object moved on with a key its warning quotes", async () => {
+		const el = osm.elements[0] as { version: number; tags: Record<string, string> };
+		el.tags.fee = "yes";
+		await runSource(db, "irve");
+		const before = cands().find((x) => x.sourceRecordKey === "FRS1");
+		expect(before?.warning).toContain("fee=yes");
+
+		el.version = 7;
+		el.tags.fee = "donation";
+		await runSource(db, "irve");
+		const c = cands().find((x) => x.sourceRecordKey === "FRS1");
+		expect(c).toMatchObject({
+			headVersion: 7,
+			baseVersion: 5,
+			warning: before?.warning,
+			contentHash: before?.contentHash,
+		});
+	});
+
 	it("moves a station to its own address, and drops one that lands outside the area", async () => {
 		const at = (q: string, lon: number, lat: number) => {
 			addresses[q] = {

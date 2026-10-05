@@ -280,7 +280,8 @@ export async function processArea(
 		// model answer has to reach an undecided candidate as surely as a change in the data.
 		// The operations it makes against OSM are hashed apart: a fix to matching must reach
 		// the candidate too, but only while the element is where it was, since an element
-		// that moved is a conflict to flag, not a candidate to rebase quietly. What an accept
+		// that moved is a conflict to flag, not a candidate to rebase quietly. The warning
+		// quotes the object's current values, so it is held to the same rule. What an accept
 		// is checked against (the groups, the object's other tags) goes with the operations.
 		const proposal = hash(
 			JSON.stringify([x.name, x.addr, x.lat, x.lon, x.tags, x.closedBy ?? null]),
@@ -290,7 +291,6 @@ export async function processArea(
 		const h = `${proposal}:${hash(JSON.stringify([written, kept]))}`;
 		const had = existing.get(x.key);
 		const moved = !!had && !!el && had.osmId === osmRef(el) && had.version !== el.version;
-		const same = had?.contentHash === h || (moved && had?.contentHash?.split(":")[0] === proposal);
 		const warning =
 			[
 				...(x.notes ?? []),
@@ -304,14 +304,10 @@ export async function processArea(
 					(o) => `Also matched by “${o.name}” (${o.key}), another candidate on this object`,
 				),
 			].join("\n") || null;
-		if (
-			had &&
-			!had.decided &&
-			had.areaId === area.id &&
-			same &&
-			had.osmId === osmId &&
-			had.warning === warning
-		) {
+		const same = moved
+			? had?.contentHash?.split(":")[0] === proposal
+			: had?.contentHash === h && had?.warning === warning;
+		if (had && !had.decided && had.areaId === area.id && same && had.osmId === osmId) {
 			if (!had.hasRecord) backfillRecord(db, had, recordOf(rec));
 			unchanged.push(x.key);
 			continue;
