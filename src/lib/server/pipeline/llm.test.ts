@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { askModel, buildRequest, openingHours, quoteParts, readReply, vetTags } from "./llm";
 

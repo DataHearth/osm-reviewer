@@ -22,9 +22,10 @@ missing, say so and stop: sampling is the caller's job.
 - Read `scripts/audit/SETTLED.md` first. Those decisions are made: report only code that
   fails to implement them, never the decision itself. Its "known gaps" are a count in your
   report, not an analysis.
-- Read "The pipeline" in `CLAUDE.md`, then `src/lib/server/pipeline/presets.ts` (the `irve`
-  and `annuaire-education` presets), `match.ts` (refs, then distance and name) and
-  `process.ts` (newOps/updateOps, merge, warnings, the Overpass query), so a systematic
+- Read "The pipeline" in `CLAUDE.md`, then, under `src/lib/server/pipeline/`, `fr/irve.ts` and
+  `fr/education.ts` (the `irve` and `annuaire-education` presets), `match/find.ts` (refs, then
+  distance and name), `match/ops.ts`, `match/plan.ts` and `match/warnings.ts` (what is written,
+  what is left out, the banner) and `process.ts` (merge, the Overpass query), so a systematic
   problem can be attributed to a file and line.
 
 ## The slice

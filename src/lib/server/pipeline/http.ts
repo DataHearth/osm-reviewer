@@ -4,7 +4,7 @@ import { PipelineError } from "./types";
 export const userAgent = () =>
 	`osm-reviewer/${version} (+${process.env.ORIGIN || "http://localhost"})`;
 
-export const JSON_TIMEOUT_MS = 30_000;
+const JSON_TIMEOUT_MS = 30_000;
 /** A 158 MB registry file over a slow link; the stream is read, not buffered, so this is only a ceiling. */
 export const DOWNLOAD_TIMEOUT_MS = 20 * 60_000;
 

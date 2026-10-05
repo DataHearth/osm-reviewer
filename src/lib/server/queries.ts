@@ -19,7 +19,7 @@ import type { QueueQuery, SortKey } from "$lib/schemas/queue";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
-import { contextTags } from "$lib/server/pipeline/match";
+import { contextTags } from "$lib/server/pipeline/match/ops";
 import { claimFresh } from "$lib/server/pipeline/runner";
 import { configRows, KIND_LABEL, metricRows, runRow } from "$lib/server/source-display";
 import type {

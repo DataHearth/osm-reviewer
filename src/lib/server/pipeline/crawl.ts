@@ -102,7 +102,7 @@ const ENTITIES: Record<string, string> = {
 	nbsp: " ",
 };
 
-export const TEXT_LIMIT = 12_000;
+const TEXT_LIMIT = 12_000;
 
 /** Visible text plus any JSON-LD, which is where sites keep their opening hours. */
 export function htmlToText(html: string): string {

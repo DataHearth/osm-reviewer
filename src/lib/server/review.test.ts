@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type Db } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import * as t from "./db/schema";
-import { unchangedTags, updateOps } from "./pipeline/match";
+import { unchangedTags, updateOps } from "./pipeline/match/ops";
 import { saveCandidate } from "./pipeline/store";
 import { accept, decisionOps, type Picks, type Proposal, RefusedError } from "./review";
 

@@ -1,5 +1,6 @@
 import OpeningHours from "opening_hours";
 import { z } from "zod";
+import { OSM_MAX } from "$lib/changeset";
 import { llm } from "$lib/server/config";
 import { request } from "./http";
 import { allowedBy } from "./tagfilter";
@@ -220,7 +221,7 @@ function joinSpans(spans: Iterable<string>): string {
  * but plain day rules comes back as it was, and so do rules naming a day twice across `;`,
  * where the later one replaces the earlier.
  */
-export function foldDays(v: string): string {
+function foldDays(v: string): string {
 	const spans = new Map<number, Set<string>>();
 	let repeated = false;
 	for (const rule of v.trim().split(/\s*[;,]\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su)\b)/)) {
@@ -291,7 +292,7 @@ export function vetTags(
 	for (const t of out.tags) {
 		const k = t.k.trim();
 		let v = t.v.trim();
-		if (!KEY.test(k) || !v || v.length > 255 || seen.has(k)) continue;
+		if (!KEY.test(k) || !v || v.length > OSM_MAX || seen.has(k)) continue;
 		if (!valueInQuote(k, v, t.quote)) continue;
 		if (k === "opening_hours") {
 			const valid = openingHours(v);

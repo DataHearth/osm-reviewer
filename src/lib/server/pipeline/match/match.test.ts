@@ -1,26 +1,11 @@
 import { describe, expect, it } from "vitest";
-import {
-	closureOps,
-	contextTags,
-	disputedOps,
-	findAtAddress,
-	findMatch,
-	indexRefs,
-	matchWarnings,
-	modWarnings,
-	nearbyLabels,
-	newOps,
-	planUpdate,
-	sameValue,
-	sharedRefs,
-	splitParts,
-	twinWarnings,
-	unchangedTags,
-	updateOps,
-	yieldToFit,
-	yieldToIds,
-} from "./match";
-import type { Extraction, OsmElement, ProposedTag } from "./types";
+import type { Extraction, OsmElement, ProposedTag } from "../types";
+import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./find";
+import { closureOps, contextTags, disputedOps, newOps, unchangedTags, updateOps } from "./ops";
+import { planUpdate } from "./plan";
+import { indexRefs, sharedRefs } from "./refs";
+import { sameValue } from "./values";
+import { matchWarnings, modWarnings, nearbyLabels, splitParts, twinWarnings } from "./warnings";
 
 const el = (
 	id: number,
@@ -1390,5 +1375,54 @@ describe("operations that make no sense", () => {
 			"social_facility:for",
 		]);
 		expect(updateOps([tag("opening_hours", "24/7")], { opening_hours: "10:00-20:00" })).toEqual([]);
+	});
+});
+
+describe("settlePoints", () => {
+	const station = (key: string, lat: number, lon: number, operator = "IZIVIA"): Extraction => ({
+		key,
+		url: "u",
+		name: "",
+		addr: "700 La Pyrénéenne, 31670 Labège",
+		lat,
+		lon,
+		refs: {},
+		tags: [
+			{ ...tag("amenity", "charging_station"), group: undefined },
+			{ ...tag("operator", operator), group: undefined },
+		],
+		geocode: { q: "700 La Pyrénéenne, 31670 Labège", farM: 100 },
+		atAddress: { lat: 43.549142, lon: 1.506215, label: "700 La Pyreneenne 31670 Labège" },
+	});
+	const node = (id: number, lat: number, lon: number): OsmElement => ({
+		type: "node",
+		id,
+		version: 1,
+		lat,
+		lon,
+		tags: { amenity: "charging_station" },
+	});
+	const settle = (xs: Extraction[], els: OsmElement[] = []) =>
+		settlePoints(xs, els, new Map(), new Set());
+
+	it("moves a point far from its housenumber there, and says so", () => {
+		const [x] = settle([station("a", 43.550283, 1.50233)]);
+		expect(x).toMatchObject({
+			lat: 43.549142,
+			lon: 1.506215,
+			from: { lat: 43.550283, lon: 1.50233 },
+		});
+		expect(x.notes?.[0]).toBe("Moved 338 m to its address, 700 La Pyreneenne 31670 Labège");
+	});
+
+	it("keeps a point an object already stands at", () => {
+		const [x] = settle([station("a", 43.550283, 1.50233)], [node(1, 43.55031, 1.50235)]);
+		expect(x).toMatchObject({ lat: 43.550283, lon: 1.50233 });
+		expect(x.from).toBeUndefined();
+	});
+
+	it("leaves a point within reach of its address", () => {
+		const [x] = settle([station("a", 43.5495, 1.5063)]);
+		expect(x.from).toBeUndefined();
 	});
 });

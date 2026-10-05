@@ -45,6 +45,16 @@ interface Exec {
 	far?: (FarMatch & { area: string })[];
 }
 
+const blankExec = (source: SourceRow, areas: AreaRow[]): Exec => ({
+	fetched: 0,
+	cands: 0,
+	errors: [],
+	areasOk: 0,
+	areasTried: areas.length,
+	note: null,
+	state: source.syncState ?? {},
+});
+
 const msg = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 function absorb(out: Exec, p: AreaOutcome, area: AreaRow) {
@@ -98,11 +108,8 @@ async function readRegistrySource(
 	// The licence the dataset's own metadata names travels with this run's evidence too.
 	const withLicence = { ...source, licence: source.licence || reg.licence || "" };
 	const out: Exec = {
+		...blankExec(source, areas),
 		fetched: reg.scanned,
-		cands: 0,
-		errors: [],
-		areasOk: 0,
-		areasTried: areas.length,
 		note: reg.unchanged ? "dataset unchanged" : reg.skipped ? `${reg.skipped} rows skipped` : null,
 		state: { ...(source.syncState ?? {}), registry: reg.state },
 		licence: reg.licence,
@@ -132,15 +139,7 @@ async function readRegistrySource(
 }
 
 async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Date): Promise<Exec> {
-	const out: Exec = {
-		fetched: 0,
-		cands: 0,
-		errors: [],
-		areasOk: 0,
-		areasTried: areas.length,
-		note: null,
-		state: source.syncState ?? {},
-	};
+	const out = blankExec(source, areas);
 	let skipped = 0;
 	for (const area of areas) {
 		try {
@@ -192,15 +191,7 @@ async function readCrawlSource(
 	const crawler = new Crawler(parseBudget(source.budget), userAgent());
 	const known = ((source.syncState ?? {}) as { pages?: Record<string, string> }).pages ?? {};
 	const pages = { ...known };
-	const out: Exec = {
-		fetched: 0,
-		cands: 0,
-		errors: [],
-		areasOk: 0,
-		areasTried: areas.length,
-		note: null,
-		state: source.syncState ?? {},
-	};
+	const out = blankExec(source, areas);
 	const require = rule.require.length ? rule.require : [{ k: "website", v: null }];
 
 	for (const area of areas) {
@@ -320,15 +311,7 @@ export async function runSource(db: Db, id: string): Promise<void> {
 		exec = await execute(db, source, areas, startedAt);
 	} catch (err) {
 		fatal = msg(err);
-		exec = {
-			fetched: 0,
-			cands: 0,
-			errors: [],
-			areasOk: 0,
-			areasTried: areas.length,
-			note: null,
-			state: source.syncState ?? {},
-		};
+		exec = blankExec(source, areas);
 	}
 
 	const result: "ok" | "partial" | "failed" =

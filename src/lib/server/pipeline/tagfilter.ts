@@ -56,7 +56,7 @@ const KIN: Record<string, Record<string, string[]>> = {
 	},
 };
 
-export const kinValues = (k: string, v: string) => KIN[k]?.[v] ?? [v];
+const kinValues = (k: string, v: string) => KIN[k]?.[v] ?? [v];
 
 /** Whom an institute takes in. A care home, a shelter or a health service is another place. */
 const INSTITUTE_FOR = ["disabled", "child", "juvenile", "blind", "deaf", "intellectual_disability"];

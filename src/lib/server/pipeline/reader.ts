@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { detectPreset, findCoords, type Preset, presetById, str } from "./presets";
+import type { Preset } from "./preset";
+import { detectPreset, presetById } from "./presets";
+import { findCoords, str } from "./row";
 import { PipelineError, type Row } from "./types";
 
 /** How a source's rows become records: the preset's own key and position, or the generic guess for the model extractor. */

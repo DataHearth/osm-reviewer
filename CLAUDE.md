@@ -28,7 +28,8 @@ are considered settled: change where data and validation live, not how a screen 
   account can read it; every action on it is admin-only, and users and diagnostics are
   hidden from reviewers altogether.
 - `src/lib/server/pipeline/` — the in-process pipeline that fills the queue (see "The
-  pipeline"). Server-only, started from `src/hooks.server.ts`.
+  pipeline"). Server-only, started from `src/hooks.server.ts`. `match/` is matching, `fr/`
+  everything read from France.
 - `src/lib/components/**` — shared markup. `areas/`, `sources/` and `settings/` hold the
   pieces of those screens.
 - `src/lib/server/db/` — schema, client, migration runner, admin bootstrap. Server-only: nothing
@@ -194,7 +195,25 @@ OSM over that same box: cut by the exact `area` instead, a neighbour's records f
 match and all come out as duplicate "new" POIs. Only the "POIs watched" count uses the exact
 `area`.
 
-The **deterministic** extractor is a preset (`presets.ts`): `irve` and `annuaire-education`,
+The code is in three layers, and a country only adds to the last. The run (`runner.ts`,
+`process.ts`, the readers, `store.ts`) and matching (`match/`: `find.ts` picks the object,
+`ops.ts` and `plan.ts` what is written to it, `warnings.ts` the banner, `refs.ts` the one table
+of identifier schemes) name no dataset. What matching has to know about a kind of place is that
+kind's module in `match/`: `charging.ts` (EVSE ids, socket fit) and `school.ts` (UAI, grounds,
+campuses). Everything read from France is in `fr/`: the two presets, the IRVE file's
+declarations, the address base (`ban.ts`, reached only through a preset's `address`) and French
+spelling (`text.ts`, `school-name.ts`). A new dataset is a `Preset` (`preset.ts`) added to the
+list in `presets.ts`, built with `Tags` and the readers in `row.ts`; a new identifier is one
+entry in `refs.ts`. Still French outside `fr/`, to move when a second country exists: the
+`school:FR` levels (`match/values.ts`, `match/school.ts`), the stop words and bis/ter in
+`text.ts`, the `+33` in `values.ts`, the kinds and lookalikes in `tagfilter.ts`, and the
+data.gouv.fr resolver in `registry.ts`.
+
+A change that must not alter what is proposed is checked with `scripts/audit/golden.mjs`: it
+rebuilds the queue on a copy of the database with every HTTP answer recorded to disk, so the
+run before the change and the run after read the same world and their two dumps can be diffed.
+
+The **deterministic** extractor is a preset (`fr/irve.ts`, `fr/education.ts`): `irve` and `annuaire-education`,
 named on the source or detected from the columns, and a source that fits none fails its run
 rather than guessing. Where the source is not sure, the preset proposes nothing rather than a
 guess: no socket output above what the connector can deliver, no `network` that is the site's
@@ -306,7 +325,7 @@ are the worked examples.
 **Three layouts, not one**: phone (402), tablet (834), desktop. The queue row, the review
 pane and the sources/areas rails each change shape between them, and the evidence gutter
 exists only at `lg`. A change to a screen is not done until it has been looked at in all
-three. JS width reads go through `$lib/stores/viewport.svelte`, never `window.innerWidth`.
+three.
 
 ## Working on it
 

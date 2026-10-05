@@ -1,9 +1,8 @@
 import { ban } from "$lib/server/config";
-import { distance, houseNumber, spacedNumber, tokens } from "./geo";
-import { getJson } from "./http";
-import { findMatch } from "./match";
-import type { Preset } from "./presets";
-import type { Extraction, OsmElement, ProposedTag, Row } from "./types";
+import { getJson } from "../http";
+import type { AddressBase } from "../preset";
+import { houseNumber, spacedNumber, tokens } from "../text";
+import type { Extraction, ProposedTag } from "../types";
 
 /** Below this the base matched another street of a similar name. */
 const MIN_SCORE = 0.7;
@@ -111,8 +110,6 @@ function sameStreet(p: Feature["properties"], q: string, anyType = false): boole
 	return within(theirs, ours) || within(ours, theirs);
 }
 
-const metres = (d: number) => (d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`);
-
 /**
  * The address as the national address base spells it, with the source's own housenumber
  * (a range like 20-28 included) unless the base writes the same number. A directory writes a
@@ -155,7 +152,7 @@ function spelled(parts: ProposedTag[], hit: Feature): ProposedTag[] {
  * nothing about where on the street, so it moves nothing, though it says roughly where the
  * place is.
  */
-export async function placeAddress(x: Extraction): Promise<Extraction> {
+async function placeAddress(x: Extraction): Promise<Extraction> {
 	if (!x.geocode) return x;
 	const hit = await lookup(x.geocode.q);
 	const address = x.tags.filter((t) => t.group === "addr");
@@ -175,63 +172,12 @@ export async function placeAddress(x: Extraction): Promise<Extraction> {
 		: { ...x, tags, onStreet: at };
 }
 
-/**
- * For a key the source lists at several sites, how far each row's own address lies from the
- * row's point (Infinity where the base cannot place it): the site the point stands at is
- * the main one. The main row's question is the one `placeAddress` then asks again, from cache.
- */
-export async function addressGaps(
-	rows: Row[],
-	preset: Pick<Preset, "siteQuery" | "position">,
-): Promise<Map<Row, number>> {
-	const gaps = new Map<Row, number>();
-	for (const r of rows) {
-		const q = preset.siteQuery?.(r);
-		const pos = preset.position(r);
-		const hit = q && pos ? await lookup(q) : null;
-		if (!pos || !hit) {
-			gaps.set(r, Number.POSITIVE_INFINITY);
-			continue;
-		}
-		const [lon, lat] = hit.geometry.coordinates;
-		gaps.set(r, distance(pos[0], pos[1], lat, lon));
-	}
-	return gaps;
+async function locate(q: string): Promise<[number, number] | null> {
+	const hit = await lookup(q);
+	if (!hit) return null;
+	const [lon, lat] = hit.geometry.coordinates;
+	return [lat, lon];
 }
 
-/**
- * A source point farther from its own housenumber than the record allows moves there: a
- * directory geocoded on a CEDEX's sorting office, or a station placed to a couple of decimals,
- * would otherwise match whatever stands at the wrong spot, or nothing. Unless the point is
- * borne out where it stands: an object there matches it, and is not the same object found
- * from the address, standing nearer it.
- */
-export function settlePoints(
-	xs: Extraction[],
-	els: OsmElement[],
-	refIndex: Map<string, OsmElement[]>,
-	shared: Set<string>,
-): Extraction[] {
-	return xs.map((x) => {
-		const to = x.atAddress;
-		if (!to || !x.geocode) return x;
-		const d = distance(x.lat, x.lon, to.lat, to.lon);
-		if (d <= x.geocode.farM) return x;
-		const here = findMatch(x, els, refIndex, shared);
-		if (here) {
-			const there = findMatch({ ...x, lat: to.lat, lon: to.lon }, els, refIndex, shared);
-			if (
-				there !== here ||
-				distance(to.lat, to.lon, here.lat, here.lon) >= distance(x.lat, x.lon, here.lat, here.lon)
-			)
-				return x;
-		}
-		return {
-			...x,
-			lat: to.lat,
-			lon: to.lon,
-			from: { lat: x.lat, lon: x.lon },
-			notes: [...(x.notes ?? []), `Moved ${metres(d)} to its address, ${to.label}`],
-		};
-	});
-}
+/** The Base Adresse Nationale. */
+export const addressBase: AddressBase = { place: placeAddress, locate };

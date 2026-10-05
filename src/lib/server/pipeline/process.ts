@@ -1,33 +1,21 @@
 import { eq } from "drizzle-orm";
+import { OSM_MAX } from "$lib/changeset";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import type { SourceRecord } from "$lib/types";
-import { addressGaps, placeAddress, settlePoints } from "./ban";
 import { refreshConflicts } from "./conflicts";
 import { inArea } from "./geo";
 import { askModel, modelLabel, vetTags } from "./llm";
-import {
-	closureOps,
-	findAtAddress,
-	findMatch,
-	indexRefs,
-	type MatchedBy,
-	matchWarnings,
-	nearbyLabels,
-	newOps,
-	planUpdate,
-	REF_SELECTORS,
-	sharedRefs,
-	type TagOp,
-	twinWarnings,
-	unchangedTags,
-	yieldToFit,
-	yieldToIds,
-} from "./match";
+import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./match/find";
+import { closureOps, newOps, type TagOp, unchangedTags } from "./match/ops";
+import { planUpdate } from "./match/plan";
+import { indexRefs, refSelectors, sharedRefs } from "./match/refs";
+import { type MatchedBy, matchWarnings, nearbyLabels, twinWarnings } from "./match/warnings";
 import { countPois, fetchElements } from "./overpass";
-import { mergeSites, OSM_MAX, str } from "./presets";
+import { addressGaps, mergeSites } from "./preset";
 import { hash, type Reader } from "./reader";
+import { str } from "./row";
 import { existingCandidates, saveCandidate, sweepVanished, touchSeen } from "./store";
 import {
 	allowedBy,
@@ -121,28 +109,13 @@ const RECORD_TEXT_MAX = 100_000;
 const recordOf = (rec: RawRecord): SourceRecord =>
 	rec.text !== undefined ? { text: rec.text.slice(0, RECORD_TEXT_MAX) } : { rows: rec.rows };
 
-/** One source's records for one area, matched against what OSM has and written as candidates. */
-export async function processArea(
-	db: Db,
-	source: SourceRow,
-	area: AreaRow,
-	input: AreaInput,
-	runStart: Date,
-): Promise<AreaOutcome> {
-	const allow = db
-		.select({ pattern: t.sourceAllowedTags.pattern })
-		.from(t.sourceAllowedTags)
-		.where(eq(t.sourceAllowedTags.sourceId, source.id))
-		.all()
-		.map((r) => r.pattern);
-	const existing = existingCandidates(db, source.id);
+/** Every record that says something the source is allowed to say, with its address placed. */
+async function readRecords(source: SourceRow, input: AreaInput, allow: string[]) {
 	const errors: string[] = [];
 	const failedKeys: string[] = [];
 	const unchanged: string[] = [];
 	const read: { x: Extraction; rec: RawRecord }[] = [];
-	let outside = 0;
 	let withheld = 0;
-	const far: FarMatch[] = [];
 
 	let failedInARow = 0;
 	for (const rec of mergeSites(input.records, input.reader?.preset)) {
@@ -154,7 +127,7 @@ export async function processArea(
 			const raw = await extract(source, rec, input.reader, allow);
 			failedInARow = 0;
 			if (!raw) continue;
-			const x = await placeAddress(raw);
+			const x = (await input.reader?.preset?.address?.place(raw)) ?? raw;
 			withheld += x.withheld ?? 0;
 			const tags = x.tags.filter((tag) => allowedBy(allow, tag.k) && tag.conf >= source.floor);
 			if (tags.length) read.push({ x: { ...x, tags }, rec });
@@ -168,12 +141,22 @@ export async function processArea(
 				throw new PipelineError(`the model keeps failing: ${errors[errors.length - 1]}`);
 		}
 	}
+	return { read, errors, failedKeys, unchanged, withheld };
+}
 
+/** Each record with the OSM object it is, or none, and what the run fetched to tell. */
+async function matchRecords(
+	source: SourceRow,
+	area: AreaRow,
+	input: AreaInput,
+	read: { x: Extraction; rec: RawRecord }[],
+) {
+	let outside = 0;
 	const refKeys = [...new Set(read.flatMap((e) => Object.keys(e.x.refs)))];
 	const selectors = mergeSelectors(
 		parseMatching(source.matching),
 		selectorsFromTags(read.flatMap((e) => e.x.tags)),
-		...refKeys.map((k) => REF_SELECTORS[k] ?? []),
+		...refKeys.map(refSelectors),
 	);
 	const lookalikes = lookalikeSelectors(read.flatMap((e) => e.x.tags));
 	const fetched =
@@ -220,6 +203,45 @@ export async function processArea(
 	for (const { x, el } of matched)
 		if (el) byElement.set(osmRef(el), [...(byElement.get(osmRef(el)) ?? []), x]);
 	const twins = twinWarnings(matched.filter((m) => !m.el && !m.x.closedBy).map((m) => m.x));
+	return { matched, fetched, elements, refIndex, shared, byElement, twins, outside };
+}
+
+/** How many POIs the area watches, counted again once a week. */
+async function poisOf(area: AreaRow): Promise<number | null> {
+	let pois = area.pois;
+	if (
+		area.pois === null ||
+		!area.lastRunAt ||
+		Date.now() - area.lastRunAt.getTime() > POI_RECOUNT_MS
+	) {
+		try {
+			pois = (await countPois(area)) ?? area.pois;
+		} catch {
+			// the count is decoration; a busy Overpass must not fail the run
+		}
+	}
+	return pois;
+}
+
+/** One source's records for one area, matched against what OSM has and written as candidates. */
+export async function processArea(
+	db: Db,
+	source: SourceRow,
+	area: AreaRow,
+	input: AreaInput,
+	runStart: Date,
+): Promise<AreaOutcome> {
+	const allow = db
+		.select({ pattern: t.sourceAllowedTags.pattern })
+		.from(t.sourceAllowedTags)
+		.where(eq(t.sourceAllowedTags.sourceId, source.id))
+		.all()
+		.map((r) => r.pattern);
+	const existing = existingCandidates(db, source.id);
+	const { read, errors, failedKeys, unchanged, withheld } = await readRecords(source, input, allow);
+	const { matched, fetched, elements, refIndex, shared, byElement, twins, outside } =
+		await matchRecords(source, area, input, read);
+	const far: FarMatch[] = [];
 
 	let cands = 0;
 	for (const { x, rec, el } of matched) {
@@ -325,18 +347,7 @@ export async function processArea(
 	refreshConflicts(db, area.id, elements);
 	if (input.complete) sweepVanished(db, source.id, area.id, runStart);
 
-	let pois = area.pois;
-	if (
-		area.pois === null ||
-		!area.lastRunAt ||
-		Date.now() - area.lastRunAt.getTime() > POI_RECOUNT_MS
-	) {
-		try {
-			pois = (await countPois(area)) ?? area.pois;
-		} catch {
-			// the count is decoration; a busy Overpass must not fail the run
-		}
-	}
+	const pois = await poisOf(area);
 	db.update(t.areas).set({ lastRunAt: new Date(), pois }).where(eq(t.areas.id, area.id)).run();
 
 	return { cands, errors, failedKeys, outside, withheld, far };

@@ -1,8 +1,10 @@
-// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { addressGaps, placeAddress, settlePoints } from "./ban";
-import { updateOps } from "./match";
-import type { Extraction, OsmElement, ProposedTag } from "./types";
+import { updateOps } from "../match/ops";
+import { addressGaps } from "../preset";
+import type { Extraction, ProposedTag } from "../types";
+import { addressBase } from "./ban";
+
+const placeAddress = addressBase.place;
 
 const tag = (k: string, v: string): ProposedTag => ({
 	k,
@@ -207,57 +209,9 @@ describe("addressGaps", () => {
 		const gaps = await addressGaps([near, far], {
 			siteQuery: (r) => String(r.adresse),
 			position: () => [43.6, 1.45],
+			address: addressBase,
 		});
 		expect(gaps.get(near)).toBeLessThan(1);
 		expect(gaps.get(far)).toBeGreaterThan(1000);
-	});
-});
-
-describe("settlePoints", () => {
-	const station = (key: string, lat: number, lon: number, operator = "IZIVIA"): Extraction => ({
-		key,
-		url: "u",
-		name: "",
-		addr: "700 La Pyrénéenne, 31670 Labège",
-		lat,
-		lon,
-		refs: {},
-		tags: [
-			{ ...tag("amenity", "charging_station"), group: undefined },
-			{ ...tag("operator", operator), group: undefined },
-		],
-		geocode: { q: "700 La Pyrénéenne, 31670 Labège", farM: 100 },
-		atAddress: { lat: 43.549142, lon: 1.506215, label: "700 La Pyreneenne 31670 Labège" },
-	});
-	const node = (id: number, lat: number, lon: number): OsmElement => ({
-		type: "node",
-		id,
-		version: 1,
-		lat,
-		lon,
-		tags: { amenity: "charging_station" },
-	});
-	const settle = (xs: Extraction[], els: OsmElement[] = []) =>
-		settlePoints(xs, els, new Map(), new Set());
-
-	it("moves a point far from its housenumber there, and says so", () => {
-		const [x] = settle([station("a", 43.550283, 1.50233)]);
-		expect(x).toMatchObject({
-			lat: 43.549142,
-			lon: 1.506215,
-			from: { lat: 43.550283, lon: 1.50233 },
-		});
-		expect(x.notes?.[0]).toBe("Moved 338 m to its address, 700 La Pyreneenne 31670 Labège");
-	});
-
-	it("keeps a point an object already stands at", () => {
-		const [x] = settle([station("a", 43.550283, 1.50233)], [node(1, 43.55031, 1.50235)]);
-		expect(x).toMatchObject({ lat: 43.550283, lon: 1.50233 });
-		expect(x.from).toBeUndefined();
-	});
-
-	it("leaves a point within reach of its address", () => {
-		const [x] = settle([station("a", 43.5495, 1.5063)]);
-		expect(x.from).toBeUndefined();
 	});
 });

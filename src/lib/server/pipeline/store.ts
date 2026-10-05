@@ -1,10 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { and, eq, inArray, isNotNull, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import { fmtDate } from "$lib/format";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import type { SourceRecord } from "$lib/types";
-import type { TagOp } from "./match";
-import { evidenceDate } from "./presets";
+import type { TagOp } from "./match/ops";
 
 export interface CandidateWrite {
 	sourceId: string;
@@ -123,7 +123,7 @@ export function saveCandidate(db: Db, w: CandidateWrite, existing: Existing | un
 				.run();
 		}
 
-		const when = evidenceDate(w.seenAt);
+		const when = fmtDate(w.seenAt);
 		w.ops.forEach((op, position) => {
 			const tag = tx
 				.insert(t.tags)

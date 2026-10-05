@@ -1,3 +1,6 @@
+/** OSM refuses a longer key or value, and the upload batch with it. */
+export const OSM_MAX = 255;
+
 /** Staged rows, in upload order, cut into the changesets they will be sent as. */
 export function batches<T>(rows: T[], size: number): T[][] {
 	const out: T[][] = [];
