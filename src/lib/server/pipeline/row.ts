@@ -75,14 +75,15 @@ export function website(raw: string): string | null {
 const OPENING_HOURS = /^(24\/7|(?:Mo|Tu|We|Th|Fr|Sa|Su|PH)(?![a-z])[A-Za-z0-9:,;\-+ /]*)$/;
 
 /**
- * Registries write "all day" as the last minute they count to, and some spell every day
- * out: `Mo 00:00-23:59, Tu 00:00-23:59, …`. The days are folded into ranges and checked by
- * OSM's own parser, which repairs `Mo-Fri:` and `Sat` and refuses what it cannot read.
+ * Registries write "all day" as the last minute they count to (23:59, or 23:57–23:58 in
+ * the IRVE file), and some spell every day out: `Mo 00:00-23:59, Tu 00:00-23:59, …`. An earlier
+ * minute is a real closing time. The days are folded into ranges and checked by OSM's own
+ * parser, which repairs `Mo-Fri:` and `Sat` and refuses what it cannot read.
  */
 export function openingHours(raw: string): string | null {
 	const v = raw
 		.trim()
-		.replace(/23:5\d\b/g, "24:00")
+		.replace(/23:5[7-9]\b/g, "24:00")
 		.replace(/00:00-00:00/g, "00:00-24:00");
 	if (/^24\/7$/i.test(v)) return "24/7";
 	return OPENING_HOURS.test(v) ? parsedHours(v) : null;

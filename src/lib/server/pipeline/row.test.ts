@@ -14,6 +14,11 @@ describe("openingHours", () => {
 		expect(openingHours("Mo-Fr 08:00-18:00")).toBe("Mo-Fr 08:00-18:00");
 	});
 
+	it("keeps a real closing time late in the evening", () => {
+		expect(openingHours("Mo-Fr 08:00-23:50")).toBe("Mo-Fr 08:00-23:50");
+		expect(openingHours("Mo-Su 06:00-23:58")).toBe("Mo-Su 06:00-24:00");
+	});
+
 	it("folds days spelled out one by one into ranges", () => {
 		const week = (span: string, days = ["Mo", "Tu", "We", "Th", "Fr", "Sa"]) =>
 			days.map((d) => `${d} ${span}`).join(", ");
