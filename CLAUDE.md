@@ -19,9 +19,11 @@ are considered settled: change where data and validation live, not how a screen 
 ## Layout
 
 - `src/routes/**` — one `+page.svelte` per screen with its `+page.server.ts` beside it.
-  `+layout.svelte` is the shell and the keyboard map; `+layout.server.ts` is the auth
-  guard — every route but `/login` needs a session and remembers where it bounced from —
-  and loads the counts the top bar shows everywhere. `/settings` is the signed-in
+  `+layout.svelte` is the shell and the keyboard map; `handle` in `src/hooks.server.ts`
+  is the auth guard (`src/lib/server/auth/guard.ts`) — every route but `/login` and its
+  callback needs a session and remembers where it bounced from. A layout load cannot be the
+  guard: a `__data.json` request can ask for the page's load alone. `+layout.server.ts` keeps
+  the same redirect for the client and loads the counts the top bar shows everywhere. `/settings` is the signed-in
   account's own (account, OSM account, shortcuts), opened from the account menu;
   `/server` is everything instance-wide (sources, areas, notifications, users,
   diagnostics), behind the gear. `/server?s=<section>` opens a section directly. Every
@@ -88,8 +90,8 @@ table it describes: a candidate is **staged** when its decision is `accepted` an
 
 Two ways in: email + password, and OpenID Connect against `SSO_ISSUER`. SSO exists only
 when an issuer is configured — no issuer, no button, and both its action and
-`/login/callback` answer 404. The callback is a `+server.ts`, so the layout's auth guard
-never runs for it; it refuses on its own.
+`/login/callback` answer 404. The callback is exempt from the session guard, since it is
+how a session starts; it refuses on its own.
 
 `ssoUser` decides who an SSO sign-in is. The `groups` claim must carry `SSO_GROUP` (empty
 disables the gate). An account is matched on the provider's `sub`, stored in
@@ -103,8 +105,9 @@ Admins manage accounts in the **users** pane on `/server`: create (an empty pass
 SSO-only account that links on first sign-in), promote/demote, disable — which also
 deletes the account's sessions — and delete. Delete is refused for anyone with decisions,
 because `candidate_decisions.user_id` has no cascade and the audit trail needs the row;
-disable them instead. None of these actions accept the acting admin's own id, and that
-single rule is what guarantees an instance never loses its last admin.
+disable them instead. None of these actions accept the acting admin's own id, and each
+refuses, inside its own transaction, a write that would leave no enabled admin: the first
+rule alone does not hold when two admins demote each other at once.
 
 ## What the app fetches at runtime
 
@@ -165,7 +168,11 @@ server calls is configuration rather than code:
   `user_settings`, the database being the trust boundary. An upload first reads each object's
   current version: one moved past the candidate's base is a conflict and nothing is sent. Then
   per `osmPerChangeset` batch it creates a changeset, posts an osmChange built from the
-  *current* element with the accepted tag ops applied, and always closes it. A closure is
+  *current* element with the accepted tag ops applied, and always closes it. One upload runs
+  at a time, and an undo is refused meanwhile. Candidates on one object go out as a single
+  modify (refused when two write one key differently), and an object the ops would leave as it
+  is gets no modify at all. A diff that got no answer is not assumed lost: the changeset is
+  read back, and counts as uploaded when it holds changes. A closure is
   written as the `disused:` key its candidate carries, and the bare key it replaces is
   dropped. A failed batch is a `changesets` row with a null `osm_id` and the error, and its
   decisions stay staged. The diagnostics page probes `/api/0.6/capabilities.json` only when a
@@ -185,11 +192,13 @@ three hours old, so a crash cannot wedge a source.
 
 A run is source × linked area. A **registry** is streamed once for every area (the IRVE file is
 158 MB and never in memory; a data.gouv.fr dataset URL is resolved to its current CSV, because
-the file URL changes with every publish). An **api** is an Opendatasoft explore v2.1 endpoint,
+the file URL changes with every publish; its "unchanged" answer is asked for only after an ok
+run over the same areas, configuration and app version, and never on "run now"). An **api** is an Opendatasoft explore v2.1 endpoint,
 paged by 100 and switched to the `jsonl` export past the 10 000 offset ceiling. A **crawl**'s
 seed rule is either URLs or `key=*` on OSM POIs (`website=*`): the pages OSM already points
-at, same host only, robots.txt honoured, the budget and per-host delay read from the free
-text, and only the model extractor reads them. Relation areas are cut by their bounding box
+at, same host only (redirects are followed by hand under the same rule), public addresses
+only, robots.txt honoured, the budget and per-host delay read from the free text, and only the
+model extractor reads them. A read that returns no rows at all sweeps nothing. Relation areas are cut by their bounding box
 while a source is read, which lets in a neighbour's corner of the box, and matching fetches
 OSM over that same box: cut by the exact `area` instead, a neighbour's records find nothing to
 match and all come out as duplicate "new" POIs. Only the "POIs watched" count uses the exact
@@ -217,7 +226,10 @@ run before the change and the run after read the same world and their two dumps 
 The **deterministic** extractor is a preset (`fr/irve.ts`, `fr/education.ts`): `irve` and `annuaire-education`,
 named on the source or detected from the columns, and a source that fits none fails its run
 rather than guessing. Where the source is not sure, the preset proposes nothing rather than a
-guess: no socket output above what the connector can deliver, no `network` that is the site's
+guess: no socket output above what the connector can deliver (43.5 kW on type 2, 400 kW on
+CCS and CHAdeMO, where the registry holds cabinet totals), a type 2 point whose
+`cable_t2_attache` is blank counted as a socket only where OSM has no type 2 count, no opening
+hours where a day's spans overlap (a day named again after `;` is one split day), no `network` that is the site's
 own name, no school `start_date` from the register's bulk entries or a merged primaire. The
 directory's medico-social institutes become `amenity=social_facility` (the main tag of one
 already mapped is left alone), its sections housed in a parent establishment are skipped, and
@@ -226,7 +238,9 @@ A school's address is the directory's line as the national address base reads it
 postcode and city in its spelling, the housenumber (a range "20-28" included) the directory's,
 or no address at all when the base is not sure or names another street. A person's mailbox
 (first.last, or a single word that is neither a role nor the school's name, place or domain)
-and a 06/07 mobile are left out, and counted in the run's message. A charging site is read from
+and a mobile are left out, and counted in the run's message. Phones are written as FR:Key:phone
+does: `+33 4 …`, an 08 number national (`08 06 14 15 00`), an overseas one under its own code
+(`+262 262 …`). A charging site is read from
 each station's newest declaration, with notes, fee and accessibility read over every
 declaration of its points. Declarations sharing a charge point id within 400 m, or its seven-digit
 number within 100 m under another operator's prefix, are one site, since operators re-declare a
