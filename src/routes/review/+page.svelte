@@ -93,11 +93,13 @@ let acceptBtn = $state<HTMLButtonElement | null>(null);
 let rejectBtn = $state<HTMLButtonElement | null>(null);
 
 // The queue only moves on for a decision the server took, so a refusal leaves
-// the candidate exactly where it was — with the reason under the tag list.
-let sent = $state<Sending | null>(null);
+// the candidate exactly where it was — with the reason under the tag list. Each form
+// keeps its own, since a refused reject can settle while an accept is still in flight.
+const sent: Record<"accept" | "reject", Sending | null> = { accept: null, reject: null };
 const settle = (kind: "accept" | "reject") => (valid: boolean) => {
-	if (sent && valid) review.settled(sent, kind);
-	sent = null;
+	const decided = sent[kind];
+	sent[kind] = null;
+	if (decided && valid) review.settled(decided, kind);
 };
 
 const accepted = superForm(
@@ -106,7 +108,7 @@ const accepted = superForm(
 		id: "accept",
 		resetForm: false,
 		onSubmit: () => {
-			sent = review.sending();
+			sent.accept = review.sending();
 		},
 		onUpdated: ({ form }) => settle("accept")(form.valid && !form.message),
 	},
@@ -117,7 +119,7 @@ const rejected = superForm(
 		id: "reject",
 		resetForm: false,
 		onSubmit: () => {
-			sent = review.sending();
+			sent.reject = review.sending();
 		},
 		onUpdated: ({ form }) => settle("reject")(form.valid && !form.message),
 	},
