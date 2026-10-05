@@ -34,7 +34,6 @@ const OTHER_SOCKETS = [
 	"socket:type3",
 	"socket:type3a",
 	"socket:type3c",
-	"socket:schuko",
 ];
 
 /**
@@ -488,8 +487,11 @@ export const irve: Preset = {
 				"derived",
 			);
 		}
-		if (!unsure && !blank && !declared.some((r) => has(r, "prise_type_autre")))
+		if (!unsure && !blank && !declared.some((r) => has(r, "prise_type_autre"))) {
 			absent.push(...OTHER_SOCKETS);
+			// `prise_type_ef` is an E/F outlet, and F is Schuko: the registry cannot tell which.
+			if (!declared.some((r) => has(r, "prise_type_ef"))) absent.push("socket:schuko");
+		}
 		if (!everything && rows.some((r) => has(r, "prise_type_autre")))
 			notes.push(
 				"The registry lists connectors of another type on this station, which it does not name",

@@ -692,6 +692,13 @@ describe("IRVE preset", () => {
 		).toHaveLength(1);
 	});
 
+	it("never rules out a Schuko socket where the registry ticks an E/F outlet", () => {
+		const absent = (over: Row) => irve.extract([irveRow({ nbre_pdc: "1", ...over })], "u")?.absent;
+		expect(absent({})).toContain("socket:schuko");
+		expect(absent({ prise_type_ef: "true" })).not.toContain("socket:schuko");
+		expect(absent({ prise_type_ef: "true" })).toContain("socket:type3");
+	});
+
 	it("proposes no network the registry describes rather than names", () => {
 		const network = (nom_enseigne: string) =>
 			irve.extract([irveRow({ nom_enseigne })], "u")?.tags.find((t) => t.k === "network")?.v;
