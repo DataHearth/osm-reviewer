@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, count, eq, ne, sql } from "drizzle-orm";
+import { and, count, eq, ne, sql, TransactionRollbackError } from "drizzle-orm";
 import { stamp } from "$lib/format";
 import type { NewUserForm } from "$lib/schemas/settings";
 import { hashPassword } from "$lib/server/auth/password";
@@ -62,13 +62,38 @@ export async function createUser(db: Db, v: NewUserForm) {
 		.run();
 }
 
-export function setRole(db: Db, id: string, role: Role) {
-	db.update(users).set({ role }).where(eq(users.id, id)).run();
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/**
+ * Applies `write` only if an enabled admin is left after it; false when it was undone.
+ * Refusing an admin their own row is not enough on its own: two admins demoting each
+ * other were each checked as admins before either write landed.
+ */
+function keepingAnAdmin(db: Db, write: (tx: Tx) => void): boolean {
+	try {
+		db.transaction((tx) => {
+			write(tx);
+			const admins = tx
+				.select({ n: count() })
+				.from(users)
+				.where(and(eq(users.role, "admin"), eq(users.disabled, false)))
+				.get();
+			if (!admins?.n) tx.rollback();
+		});
+		return true;
+	} catch (err) {
+		if (err instanceof TransactionRollbackError) return false;
+		throw err;
+	}
+}
+
+export function setRole(db: Db, id: string, role: Role): boolean {
+	return keepingAnAdmin(db, (tx) => tx.update(users).set({ role }).where(eq(users.id, id)).run());
 }
 
 /** Disabling also ends every live session, or the account would stay in until they expired. */
-export function setDisabled(db: Db, id: string, disabled: boolean) {
-	db.transaction((tx) => {
+export function setDisabled(db: Db, id: string, disabled: boolean): boolean {
+	return keepingAnAdmin(db, (tx) => {
 		tx.update(users).set({ disabled }).where(eq(users.id, id)).run();
 		if (disabled) tx.delete(sessions).where(eq(sessions.userId, id)).run();
 	});
@@ -76,11 +101,12 @@ export function setDisabled(db: Db, id: string, disabled: boolean) {
 
 /**
  * Decisions keep pointing at their reviewer for the audit trail, so an account that has
- * decided anything cannot be deleted — only disabled. Returns false when that refusal applies.
+ * decided anything cannot be deleted — only disabled. Returns why it was refused, if it was.
  */
-export function deleteUser(db: Db, id: string): boolean {
+export function deleteUser(db: Db, id: string): "decisions" | "last admin" | null {
 	const decided = db.select({ n: count() }).from(decisions).where(eq(decisions.userId, id)).get();
-	if (decided && decided.n > 0) return false;
-	db.delete(users).where(eq(users.id, id)).run();
-	return true;
+	if (decided && decided.n > 0) return "decisions";
+	return keepingAnAdmin(db, (tx) => tx.delete(users).where(eq(users.id, id)).run())
+		? null
+		: "last admin";
 }

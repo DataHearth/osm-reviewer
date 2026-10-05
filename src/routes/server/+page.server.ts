@@ -1,5 +1,5 @@
 import { fail } from "@sveltejs/kit";
-import { message, superValidate } from "sveltekit-superforms";
+import { message, type SuperValidated, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 import { areaDraftSchema, areaIdSchema, areaPausedSchema } from "$lib/schemas/area";
 import {
@@ -36,6 +36,9 @@ import {
 	setRole,
 } from "$lib/server/users";
 import type { Actions, PageServerLoad } from "./$types";
+
+const lastAdmin = <T extends Record<string, unknown>>(form: SuperValidated<T>) =>
+	message(form, "That would leave the instance without an enabled admin.", { status: 409 });
 
 /** Everything instance-wide: shared by every account, behind the gear in the top bar. */
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -147,8 +150,9 @@ export const actions: Actions = {
 	},
 
 	/**
-	 * The four account actions refuse to touch the acting admin's own row. That one rule is
-	 * also what keeps an admin on the instance: the last one can never be the one acted on.
+	 * The four account actions refuse to touch the acting admin's own row, and the writes in
+	 * `users.ts` refuse to leave no enabled admin, which two admins acting on each other at
+	 * once would otherwise manage.
 	 */
 	userCreate: async ({ request, locals }) => {
 		requireAdmin(locals);
@@ -168,7 +172,7 @@ export const actions: Actions = {
 		if (!form.valid) return fail(400, { form });
 		if (form.data.id === admin.id)
 			return message(form, "You cannot change your own role.", { status: 409 });
-		setRole(db, form.data.id, form.data.role);
+		if (!setRole(db, form.data.id, form.data.role)) return lastAdmin(form);
 		return { form };
 	},
 
@@ -178,7 +182,7 @@ export const actions: Actions = {
 		if (!form.valid) return fail(400, { form });
 		if (form.data.id === admin.id)
 			return message(form, "You cannot disable yourself.", { status: 409 });
-		setDisabled(db, form.data.id, form.data.disabled);
+		if (!setDisabled(db, form.data.id, form.data.disabled)) return lastAdmin(form);
 		return { form };
 	},
 
@@ -188,7 +192,9 @@ export const actions: Actions = {
 		if (!form.valid) return fail(400, { form });
 		if (form.data.id === admin.id)
 			return message(form, "You cannot delete yourself.", { status: 409 });
-		if (!deleteUser(db, form.data.id))
+		const refused = deleteUser(db, form.data.id);
+		if (refused === "last admin") return lastAdmin(form);
+		if (refused === "decisions")
 			return message(form, "This account has decisions on record — disable it instead.", {
 				status: 409,
 			});
