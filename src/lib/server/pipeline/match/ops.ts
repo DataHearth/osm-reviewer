@@ -1,5 +1,7 @@
+import { LEVEL, SIRET, UAI } from "../fr/tags";
+import { digits } from "../fr/text";
 import type { Extraction, ProposedTag } from "../types";
-import { digits, sameUrl, sameValue } from "./values";
+import { sameUrl, sameValue } from "./values";
 
 export type Main = { k: string; v: string };
 
@@ -168,10 +170,10 @@ export function disputedOps(
 const CONTEXT_KEYS = [
 	...MAIN,
 	"name",
-	"ref:UAI",
+	UAI,
 	"ref:EU:EVSE",
-	"ref:FR:SIRET",
-	"school:FR",
+	SIRET,
+	LEVEL,
 	"operator",
 	"brand",
 	"opening_hours",

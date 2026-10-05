@@ -1,10 +1,10 @@
+import { otherPlace, schemes } from "../fr/school";
 import { distance } from "../geo";
 import type { Selector } from "../tagfilter";
 import { ids } from "../text";
 import type { Extraction, OsmElement } from "../types";
 import { evse } from "./charging";
 import { DUPLICATE_RADIUS_M } from "./radii";
-import { otherPlace, uai } from "./school";
 
 /**
  * How one identifier is carried on OSM objects and compared. A key with no scheme is carried
@@ -25,8 +25,7 @@ export interface RefScheme {
 
 const SCHEMES: Record<string, RefScheme> = {
 	"ref:EU:EVSE": evse,
-	"ref:UAI": uai,
-	"ref:FR:SIRET": { aliases: ["ref:FR:SIRET", "siret"] },
+	...schemes,
 };
 
 const looseKey = (at: string) => at.includes("\u0000~");

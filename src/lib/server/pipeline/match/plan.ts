@@ -1,8 +1,9 @@
+import { campus, groundsOf, sharedByOthers } from "../fr/school";
+import { LEVEL, SIRET } from "../fr/tags";
 import type { OsmElement } from "../types";
 import { evseTag, pointsOn } from "./charging";
 import { notThePlace } from "./find";
 import { CONTACT, disputedOps, MAIN, mainOf, type TagOp, updateOps } from "./ops";
-import { campus, groundsOf, sharedByOthers } from "./school";
 import {
 	farFromAddress,
 	type Located,
@@ -27,10 +28,7 @@ const SHARED_COUNTS_NOTE =
 
 /** Where the place is reached, and the organisation's SIRET, which a far object's may not be. */
 const reachedAt = (o: TagOp) =>
-	o.group === "addr" ||
-	/^(addr|contact):/.test(o.k) ||
-	CONTACT.includes(o.k) ||
-	o.k === "ref:FR:SIRET";
+	o.group === "addr" || /^(addr|contact):/.test(o.k) || CONTACT.includes(o.k) || o.k === SIRET;
 
 export interface Plan {
 	ops: TagOp[];
@@ -94,7 +92,7 @@ export function planUpdate(
 	if (others.length || sharedByOthers(el, x.refs) || campus(el.tags))
 		leave((o) => o.k === "start_date");
 	// Nor does one of its establishments give it a single level.
-	if (campus(el.tags)) leave((o) => o.k === "school:FR" && o.op === "add");
+	if (campus(el.tags)) leave((o) => o.k === LEVEL && o.op === "add");
 	// Several establishments on one object (a cité scolaire) each propose their own phone,
 	// SIRET or UAI for it; whichever a reviewer accepted last would win.
 	const disputed = disputedOps(ops, others, el.tags);

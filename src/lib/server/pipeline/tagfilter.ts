@@ -1,3 +1,5 @@
+import { institute, KIN, LOOKALIKE_KINDS, SCHOOLS } from "./fr/kinds";
+
 /** `socket:*` allows everything under the prefix; a bare key allows exactly that key. An empty list restricts nothing. */
 export function allowedBy(patterns: string[], key: string): boolean {
 	if (patterns.length === 0) return true;
@@ -40,36 +42,12 @@ const MAIN_KEYS = [
 	"public_transport",
 ];
 
-/**
- * Kinds a mapper picks between for one place, so a record of one finds the others: a lycée's
- * STS is often mapped as the lycée's school, a private post-bac school as a university, and a
- * medico-social institute as a school. `amenity=kindergarten` is a crèche in France, another
- * place altogether.
- */
-export const SCHOOLS = ["school", "college", "university"];
-const KIN: Record<string, Record<string, string[]>> = {
-	amenity: {
-		school: SCHOOLS,
-		college: SCHOOLS,
-		university: SCHOOLS,
-		social_facility: ["social_facility", "school"],
-	},
-};
-
 const kinValues = (k: string, v: string) => KIN[k]?.[v] ?? [v];
-
-/** Whom an institute takes in. A care home, a shelter or a health service is another place. */
-const INSTITUTE_FOR = ["disabled", "child", "juvenile", "blind", "deaf", "intellectual_disability"];
 
 /** Whether an object tagged `tags` is a `k=v` place as some mapper would have mapped it. */
 export function sameKind(k: string, v: string, tags: Record<string, string>): boolean {
 	if (!tags[k] || !kinValues(k, v).includes(tags[k])) return false;
-	if (tags[k] !== "social_facility") return true;
-	const whom = (tags["social_facility:for"] ?? "").split(";").map((w) => w.trim());
-	return (
-		tags.social_facility !== "healthcare" &&
-		(!whom.some(Boolean) || whom.some((w) => INSTITUTE_FOR.includes(w)))
-	);
+	return tags[k] !== "social_facility" || institute(tags);
 }
 
 /** A school mapped as nothing but its building. */
@@ -87,11 +65,7 @@ const LOOKALIKES: Record<string, Selector[]> = {
 		{ k: "man_made", v: ["charge_point"] },
 		{ k: "capacity:charging", v: null },
 	],
-	"amenity=school": [{ k: "amenity", v: ["kindergarten"] }],
-	"amenity=social_facility": [
-		{ k: "healthcare", v: ["centre"] },
-		{ k: "amenity", v: ["clinic"] },
-	],
+	...LOOKALIKE_KINDS,
 };
 
 export const lookalikeSelectors = (tags: { k: string; v: string }[]) =>
@@ -138,6 +112,7 @@ export function mergeSelectors(...lists: Selector[][]): Selector[] {
 }
 
 const q = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
 const reEscape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The bracket filter of one Overpass statement. */

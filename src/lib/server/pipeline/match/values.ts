@@ -1,8 +1,7 @@
 import OpeningHours from "opening_hours";
-import { houseNumber, ids, normaliseName, values } from "../text";
-
-/** `+33 5 61…` and `05 61…` are the same line. */
-export const digits = (s: string) => s.replace(/\D/g, "").replace(/^(0033|33)(?=\d{9}$)/, "0");
+import { LOGIN_PORTAL, SAME_VALUE } from "../fr/tags";
+import { digits, fold } from "../fr/text";
+import { houseNumber, ids, values } from "../text";
 
 function url(s: string): { https: boolean; host: string; path: string } | null {
 	try {
@@ -25,7 +24,7 @@ const withoutTld = (host: string) => host.replace(/\.[^.]+$/, "");
 function sameSite(a: string, b: string): boolean {
 	const [pa, pb] = [url(a), url(b)];
 	if (!pa || !pb) return a.trim().toLowerCase() === b.trim().toLowerCase();
-	if (/(^|\.)ent\./.test(pa.host)) return true;
+	if (LOGIN_PORTAL.test(pa.host)) return true;
 	if (pa.host !== pb.host) return withoutTld(pa.host) === withoutTld(pb.host);
 	if (pb.https && !pa.https) return true;
 	return pa.path.startsWith(pb.path) || pb.path.startsWith(pa.path);
@@ -33,8 +32,6 @@ function sameSite(a: string, b: string): boolean {
 
 /** Accents, case, punctuation and `&` for "et" are how a registry and a mapper differ, not what they say. */
 const NAMES = ["name", "operator", "network", "brand", "owner", "addr:street", "addr:city"];
-
-export const fold = (s: string) => normaliseName(s.replace(/&/g, " et "));
 
 /** Registries write "open all day" as the last minute they bother to count to. */
 const allDay = (s: string) =>
@@ -66,34 +63,6 @@ const OPERATOR_TYPE: Record<string, string> = {
 };
 
 /**
- * The level a `school:FR` value sits in: a lycée professionnel is a lycée, a lycée secondary.
- * Not a maternelle a primaire: whether a school has its maternelle classes, the directory knows.
- */
-const parentLevel = (v: string): string | null =>
-	/^lycée\s/.test(v) ? "lycée" : v === "lycée" || v === "collège" ? "secondaire" : null;
-
-function levels(v: string): string[] {
-	const out: string[] = [];
-	for (let at: string | null = v; at; at = parentLevel(at)) out.push(at);
-	return out;
-}
-
-const schoolLevels = (v: string) =>
-	v
-		.split(";")
-		.map((x) => x.trim().toLowerCase().replace(/\s+/g, " "))
-		.filter(Boolean);
-
-/**
- * A mapper's level that is finer than the directory's, or that takes it in, already says it:
- * "lycée professionnel" is a lycée, "secondaire" covers a collège.
- */
-export const sameLevel = (a: string, b: string) =>
-	schoolLevels(a).every((x) =>
-		schoolLevels(b).some((y) => levels(x).includes(y) || levels(y).includes(x)),
-	);
-
-/**
  * Whether the proposed value `a` says what the object's `b` already does, so a re-spaced
  * phone number is not an edit, nor a coarser word for what a mapper wrote finely.
  */
@@ -107,7 +76,7 @@ export function sameValue(key: string, a: string, b: string): boolean {
 	if (k === "website") return sameSite(a, b);
 	if (k === "addr:housenumber" || k === "housenumber") return houseNumber(a) === houseNumber(b);
 	if (k === "operator:type") return OPERATOR_TYPE[b] === a;
-	if (k === "school:FR") return sameLevel(a, b);
+	if (SAME_VALUE[k]) return SAME_VALUE[k](a, b);
 	// One object often carries several establishments' ids (a collège and its SEGPA):
 	// the record's own id among them agrees, and replacing the list would delete the others.
 	if (k.startsWith("ref:")) {

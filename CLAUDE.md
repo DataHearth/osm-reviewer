@@ -199,15 +199,16 @@ The code is in three layers, and a country only adds to the last. The run (`runn
 `process.ts`, the readers, `store.ts`) and matching (`match/`: `find.ts` picks the object,
 `ops.ts` and `plan.ts` what is written to it, `warnings.ts` the banner, `refs.ts` the one table
 of identifier schemes) name no dataset. What matching has to know about a kind of place is that
-kind's module in `match/`: `charging.ts` (EVSE ids, socket fit) and `school.ts` (UAI, grounds,
-campuses). Everything read from France is in `fr/`: the two presets, the IRVE file's
-declarations, the address base (`ban.ts`, reached only through a preset's `address`) and French
-spelling (`text.ts`, `school-name.ts`). A new dataset is a `Preset` (`preset.ts`) added to the
-list in `presets.ts`, built with `Tags` and the readers in `row.ts`; a new identifier is one
-entry in `refs.ts`. Still French outside `fr/`, to move when a second country exists: the
-`school:FR` levels (`match/values.ts`, `match/school.ts`), the stop words and bis/ter in
-`text.ts`, the `+33` in `values.ts`, the kinds and lookalikes in `tagfilter.ts`, and the
-data.gouv.fr resolver in `registry.ts`.
+kind's module: `match/charging.ts` (EVSE ids, socket fit) and `fr/school.ts` (UAI, grounds,
+campuses). Everything French is in `fr/`: the two presets, the IRVE file's
+declarations, the address base (`ban.ts`, reached only through a preset's `address`), the
+data.gouv.fr dataset pages (`datagouv.ts`), French spelling (`text.ts`, `school-name.ts`,
+`words.ts`), the tags OSM France uses (`tags.ts`: UAI, SIRET, `school:FR` and its levels), which
+kinds stand for one another (`kinds.ts`) and how French schools are matched (`school.ts`). A new
+dataset is a `Preset` (`preset.ts`) added to the list in `presets.ts`, built with `Tags` and the
+readers in `row.ts`; a new identifier is one entry in a `schemes` table. The generic part still
+imports `fr/` directly, since France is the only country: `rg 'fr/' src/lib/server/pipeline -g
+'!fr/**'` lists every place a second country would have to be chosen by area instead.
 
 A change that must not alter what is proposed is checked with `scripts/audit/golden.mjs`: it
 rebuilds the queue on a copy of the database with every HTTP answer recorded to disk, so the

@@ -1,3 +1,4 @@
+import { bestHit, groundsOf, otherPlace, ownGrounds } from "../fr/school";
 import { distance, metres } from "../geo";
 import { lookalike, schoolBuilding } from "../tagfilter";
 import { type Extraction, type OsmElement, osmRef } from "../types";
@@ -6,7 +7,6 @@ import { companiesAgree, NAME_MATCH, nameScore, whoOf, whoSimilarity } from "./n
 import { MAIN, type Main, mainOf, RETIRED } from "./ops";
 import { DUPLICATE_RADIUS_M, LAT_PREFILTER, MATCH_RADIUS_M } from "./radii";
 import { refHits } from "./refs";
-import { bestHit, groundsOf, otherPlace, ownGrounds } from "./school";
 
 /** With a name missing on either side only a near-coincident point is trusted. */
 const BARE_RADIUS_M = 15;

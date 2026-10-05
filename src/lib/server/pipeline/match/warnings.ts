@@ -1,5 +1,9 @@
+import { SCHOOLS } from "../fr/kinds";
+import { campus, groundsOf, lyceeMadeCollege, maternelleAs, otherPlace } from "../fr/school";
+import { SIRET, SIRET_NAME, siretOf, UAI } from "../fr/tags";
+import { fold } from "../fr/text";
 import { distance, metres } from "../geo";
-import { lookalike, SCHOOLS, sameKind, schoolBuilding } from "../tagfilter";
+import { lookalike, sameKind, schoolBuilding } from "../tagfilter";
 import { nameSimilarity } from "../text";
 import { type Extraction, type OsmElement, osmRef } from "../types";
 import { evseTag, otherBorne, otherStation, stationFit } from "./charging";
@@ -17,8 +21,6 @@ import {
 import { MAIN, mainOf, type TagOp } from "./ops";
 import { DUPLICATE_RADIUS_M, LAT_PREFILTER, SPLIT_RADIUS_M } from "./radii";
 import { refHits, SITE_REFS } from "./refs";
-import { campus, groundsOf, otherPlace } from "./school";
-import { fold } from "./values";
 
 const NEARBY_RADIUS_M = 300;
 
@@ -98,11 +100,6 @@ export function splitParts(
 	return [...near, ...byRef].sort((a, b) => a.d - b.d);
 }
 
-/** A maternelle is often mapped as the kindergarten it looks like, under its own name. */
-const maternelleAs = (x: Placed, e: OsmElement) =>
-	e.tags.amenity !== "kindergarten" ||
-	(/maternelle/.test(tagsOf(x)["school:FR"] ?? "") && (nameScore(x, e) ?? 0) >= NAME_MATCH);
-
 /**
  * What a "new" record may already be mapped as: the nearest object of its kind, and the
  * nearest one mapped as something it may have been taken for (a charge point, a car park
@@ -160,9 +157,6 @@ const contactOf = (tags: Record<string, string>) =>
 		...["email", "contact:email"].map((k) => tags[k]?.toLowerCase()),
 	].filter((v): v is string => !!v);
 
-const siretOf = (tags: Record<string, string>) =>
-	(tags["ref:FR:SIRET"] ?? tags.siret ?? "").replace(/\s/g, "") || null;
-
 /**
  * An object carrying another establishment's id is never the match, but one at the record's
  * address, reached by its phone or email, or run under its SIRET may be this place under a
@@ -180,7 +174,7 @@ function siblingOf(x: Placed, els: OsmElement[], matchedBy: MatchedBy): string |
 			: contactOf(tags).some((c) => contact.has(c))
 				? "the same phone or email"
 				: siret && siretOf(tags) === siret
-					? "the same SIRET"
+					? `the same ${SIRET_NAME}`
 					: null;
 	const hit = els
 		.filter((e) => otherPlace(e, x.refs))
@@ -192,7 +186,7 @@ function siblingOf(x: Placed, els: OsmElement[], matchedBy: MatchedBy): string |
 		.filter((h) => h.why && h.d <= SAME_OPERATOR_RADIUS_M)
 		.sort((a, b) => a.d - b.d)[0];
 	if (!hit) return null;
-	const id = hit.e.tags["ref:UAI"] ? ` (ref:UAI=${hit.e.tags["ref:UAI"]})` : "";
+	const id = hit.e.tags[UAI] ? ` (${UAI}=${hit.e.tags[UAI]})` : "";
 	return `Another establishment${id} with ${hit.why} is mapped at ${label(hit.e, hit.d)}: check this is not it`;
 }
 
@@ -251,7 +245,7 @@ export function matchWarnings(
 	const d = distance(x.lat, x.lon, el.lat, el.lon);
 	if (far)
 		out.push(
-			`Matched to ${osmRef(el)}${el.tags.name ? ` “${el.tags.name}”` : ""}, ${metres(far)} from where the source and the address base place it: the place may have moved, or the id on this object may be stale, so its address, contacts and SIRET are left out`,
+			`Matched to ${osmRef(el)}${el.tags.name ? ` “${el.tags.name}”` : ""}, ${metres(far)} from where the source and the address base place it: the place may have moved, or the id on this object may be stale, so its address, contacts and ${SIRET_NAME} are left out`,
 		);
 	else if (d > DUPLICATE_RADIUS_M)
 		out.push(`Matched to ${label(el, d)} from the source's point: check it is this place`);
@@ -325,7 +319,7 @@ function twinReason(a: Extraction, b: Extraction): string | null {
 	if (Math.abs(a.lat - b.lat) < LAT_PREFILTER) {
 		const d = distance(a.lat, a.lon, b.lat, b.lon);
 		const alike =
-			!(a.refs["ref:UAI"] && b.refs["ref:UAI"]) &&
+			!(a.refs[UAI] && b.refs[UAI]) &&
 			((companiesAgree(whoOf(a), whoOf(b)) ?? 0) >= NAME_MATCH ||
 				nameSimilarity(a.name, b.name) >= NAME_MATCH);
 		if (d <= TWIN_RADIUS_M || (alike && d <= LIKE_TWIN_RADIUS_M))
@@ -339,8 +333,8 @@ function twinReason(a: Extraction, b: Extraction): string | null {
 		(companiesAgree(whoOf(a), whoOf(b)) ?? 0) >= NAME_MATCH
 	)
 		return "has the same name, address and operator";
-	const siret = a.refs["ref:FR:SIRET"];
-	if (siret && siret === b.refs["ref:FR:SIRET"]) return "has the same SIRET";
+	const siret = a.refs[SIRET];
+	if (siret && siret === b.refs[SIRET]) return `has the same ${SIRET_NAME}`;
 	const at = addressOf(tagsOf(a));
 	return at && at === addressOf(tagsOf(b)) ? "has the same address" : null;
 }
@@ -393,15 +387,7 @@ export function modWarnings(
 	const lines = ops
 		.filter((o) => o.op === "mod")
 		.map((o) => `OSM has ${o.k}=${o.was} where the source says ${o.v}${why}`);
-	const lycee = /lycée/i.test(current["school:FR"] ?? "")
-		? `school:FR=${current["school:FR"]}`
-		: /^lycée/i.test(current.name ?? "")
-			? `name=${current.name}`
-			: null;
-	if (lycee && ops.some((o) => o.op === "mod" && o.k === "amenity" && o.v === "college"))
-		lines.push(
-			`The object reads as a lycée (${lycee}), which amenity=college would no longer say: check whether the post-bac school is mapped apart from it`,
-		);
+	lines.push(...lyceeMadeCollege(ops, current));
 	return lines;
 }
 
