@@ -16,7 +16,7 @@ The answer decides what a preset writes, so it must rest on sources, not on memo
    practice wins for French objects. Fetch the `FR:Tag:` page of the feature the question
    is about (`FR:Tag:amenity=school`), not only the page of the key being written.
 2. taginfo for how widely a key or value is used:
-   `https://taginfo.openstreetmap.fr/api/4/key/values?key=<key>` for France,
+   `https://taginfo.geofabrik.de/europe:france/api/4/key/values?key=<key>` for France,
    `taginfo.openstreetmap.org` worldwide.
 3. Local practice, when the wiki is silent or ignored: one Overpass count over the area in
    question (`xh --ignore-stdin --timeout 60 -f POST https://overpass-api.de/api/interpreter data='…out count;'`).
