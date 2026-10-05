@@ -223,23 +223,43 @@ function joinSpans(spans: Iterable<string>): string {
  * Days spelled out one by one (`Mo 09:30-19:45, Tu 09:30-19:45, …`, a split day as two rules)
  * folded into ranges of days with the same spans, which OSM's prettifier does not do. Anything
  * but plain day rules comes back as it was, and so do rules naming a day twice across `;`,
- * where the later one replaces the earlier.
+ * where in OSM the later one replaces the earlier.
+ *
+ * A registry means `Mo-Sa 07:30-12:00;Mo-Sa 13:30-17:30` as one split day, so with `merge` a
+ * day named again after a `;` adds its spans. Spans that overlap the day's earlier ones leave
+ * no reading to trust, and the value comes back empty, which the parser refuses.
  */
-function foldDays(v: string): string {
+export function foldDays(v: string, merge = false): string {
 	const spans = new Map<number, Set<string>>();
+	let earlier = new Map<number, Set<string>>();
 	let repeated = false;
-	for (const rule of v.trim().split(/\s*[;,]\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su)\b)/)) {
-		const m = DAY_RULE.exec(rule);
+	const closing = (span: string) => {
+		const [from, to] = span.split("-");
+		return [from, to < from ? "24:00" : to];
+	};
+	const overlap = (a: string, b: string) => {
+		const [[af, at], [bf, bt]] = [closing(a), closing(b)];
+		return af < bt && bf < at;
+	};
+	const clash = (had: Set<string>, added: string[]) =>
+		joinSpans(had) !== joinSpans(added) && added.some((a) => [...had].some((h) => overlap(a, h)));
+	const parts = v.trim().split(/\s*([;,])\s*(?=(?:Mo|Tu|We|Th|Fr|Sa|Su)\b)/);
+	for (let i = 0; i < parts.length; i += 2) {
+		if (parts[i - 1] === ";") earlier = new Map([...spans].map(([d, s]) => [d, new Set(s)]));
+		const m = DAY_RULE.exec(parts[i]);
 		if (!m) return v;
 		const from = WEEK.indexOf(m[1]);
 		const to = m[2] ? WEEK.indexOf(m[2]) : from;
 		if (to < from) return v;
+		const added = m[3].split(",");
 		for (let d = from; d <= to; d++) {
+			const had = earlier.get(d);
+			if (merge && had && clash(had, added)) return "";
 			repeated ||= spans.has(d);
-			spans.set(d, new Set([...(spans.get(d) ?? []), ...m[3].split(",")]));
+			spans.set(d, new Set([...(spans.get(d) ?? []), ...added]));
 		}
 	}
-	if (repeated && v.includes(";")) return v;
+	if (repeated && !merge && v.includes(";")) return v;
 	const day = (d: number) => joinSpans(spans.get(d) ?? []);
 	if (WEEK.every((_, d) => day(d) === "00:00-24:00")) return "24/7";
 	const out: string[] = [];
