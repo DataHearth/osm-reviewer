@@ -1,7 +1,6 @@
 format: 1
 source: fr/irve
 mapping: FR:charging_station
-# 40 of the file's 52 columns, the ones the current preset reads; the rest are listed before this source ships.
 columns:
   - id_station_itinerance
   - id_pdc_itinerance
@@ -43,11 +42,23 @@ columns:
   - consolidated_code_postal
   - consolidated_commune
   - consolidated_is_lon_lat_correct
+  - contact_amenageur
+  - contact_operateur
+  - id_station_local
+  - id_pdc_local
+  - implantation_station
+  - paiement_autre
+  - raccordement
+  - num_pdl
+  - datagouv_dataset_id
+  - created_at
+  - consolidated_is_code_insee_verified
+  - consolidated_is_code_insee_modified
 
 steps:
   - name: fr.irve/declarations
-    why: A station is declared again and again, by its operator and by aggregators. Only its newest declaration counts, the operator's own file winning a same-day tie.
-    reads: [date_maj, last_modified, datagouv_resource_id, datagouv_organization_or_owner, id_pdc_itinerance]
+    why: A station is declared again and again, by its operator and by aggregators. Only its newest declaration counts, the operator's own file winning a same-day tie. What the newest leaves out is read from an older one of the same point (connectors, and the free and tariff columns).
+    reads: [date_maj, last_modified, datagouv_resource_id, datagouv_organization_or_owner, id_pdc_itinerance, id_station_itinerance, nbre_pdc, gratuit, tarification]
   - name: fr.irve/sites
     why: Operators re-declare one site under new station ids, or declare each charge point as a station. Records are merged into sites by shared point ids, position and name.
     reads: [id_pdc_itinerance, nom_station, adresse_station, coordonneesXY, nom_operateur, nom_amenageur]
@@ -61,7 +72,6 @@ rename:
   siren_amenageur: owner_siren
   nom_enseigne: brand
   telephone_operateur: operator_phone
-  adresse_station: address
   nbre_pdc: point_count
   puissance_nominale: power_kw
   prise_type_ef: socket_ef
@@ -82,6 +92,7 @@ rename:
   station_deux_roues: two_wheelers
   observations: notes
   date_mise_en_service: commissioning_date
+  date_maj: declared_on
   consolidated_is_lon_lat_correct: position_ok
   consolidated_latitude: lat
   consolidated_longitude: lon
@@ -90,14 +101,30 @@ ignored:
   code_insee_commune: used only to build the address shown to the reviewer
   consolidated_code_postal: used only to build the address shown to the reviewer
   consolidated_commune: used only to build the address shown to the reviewer
+  contact_amenageur: a contact address, not a place's
+  contact_operateur: a contact address, not a place's
+  id_station_local: the operator's own id for the station, which is no OSM reference
+  id_pdc_local: the operator's own id for the charge point, which is no OSM reference
+  implantation_station: where the station stands (street, car park, shop), with no OSM key
+  paiement_autre: how else it can be paid, with no OSM key
+  raccordement: how the station is connected to the grid, with no OSM key
+  num_pdl: the grid connection's number, with no OSM key
+  datagouv_dataset_id: which data.gouv.fr dataset a declaration came from; only declarations of one file are compared, through the resource
+  created_at: when the consolidated file was built, the same on every row of a file and no declaration's date
+  consolidated_is_code_insee_verified: the publisher's check of the INSEE code, which the address base replaces
+  consolidated_is_code_insee_modified: the publisher's correction of the INSEE code, which the address base replaces
 
 examples:
   - about: two free points through the register's own columns
     rows:
       - { id_station_itinerance: FRABCP001, nom_station: Parking Mairie, nom_operateur: ABC, gratuit: "true", paiement_cb: "true", condition_acces: Accès libre, reservation: "false", station_deux_roues: "false" }
       - { id_station_itinerance: FRABCP001, nom_station: Parking Mairie, nom_operateur: ABC, gratuit: "true", paiement_cb: "true", condition_acces: Accès libre, reservation: "false", station_deux_roues: "false" }
-    expect: { amenity: charging_station, operator: ABC, fee: no, access: yes, motorcar: yes, payment:credit_cards: yes, reservation: no }
+    expect: { amenity: charging_station, operator: ABC, capacity: "2", ref:EU:EVSE: FR*ABC*P001, fee: no, access: yes, motorcar: yes, payment:credit_cards: yes, reservation: no }
   - about: a station named for bicycles though flagged as a car station gets no vehicle tag
     rows:
       - { id_station_itinerance: FRABCP007, nom_operateur: ABC, nom_station: Station vélos Bellecour, station_deux_roues: "false", paiement_acte: "true" }
-    expect: { amenity: charging_station, operator: ABC, fee: yes, authentication:none: yes }
+    expect: { amenity: charging_station, operator: ABC, capacity: "1", ref:EU:EVSE: FR*ABC*P007, fee: yes, authentication:none: yes }
+  - about: a CCS point's power is its connector's, and its commissioning date is kept
+    rows:
+      - { id_station_itinerance: FRABCP008, id_pdc_itinerance: FRABCE0081, nom_operateur: ABC, prise_type_combo_ccs: "true", puissance_nominale: "150", date_mise_en_service: "2023-05-02", date_maj: "2024-01-10", station_deux_roues: "false" }
+    expect: { amenity: charging_station, operator: ABC, capacity: "1", ref:EU:EVSE: FR*ABC*P008, socket:type2_combo: "1", socket:type2_combo:output: 150 kW, start_date: "2023-05-02", motorcar: yes }

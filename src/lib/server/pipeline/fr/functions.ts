@@ -1,4 +1,5 @@
 import type { TagFunction } from "../mapping/evaluate";
+import { chargingFunctions } from "./charging-functions";
 import { MAILBOX, withheldMailbox } from "./mailbox";
 import { addressOf } from "./school-address";
 import { schoolName } from "./school-name";
@@ -37,6 +38,7 @@ const address: TagFunction = ({
 
 /** The code a mapping's `function` names, by the name it gives. */
 export const functions: Record<string, TagFunction> = {
+	...chargingFunctions,
 	"fr.school/name": name,
 	"fr.school/mailbox": mailbox,
 	"fr.school/address": address,

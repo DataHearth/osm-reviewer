@@ -6,7 +6,8 @@ const functionName = z
 	.string()
 	.regex(/^[a-z]+(\.[a-z_-]+)?\/[A-Za-z0-9]+$/, "scope/name, e.g. fr.school/name");
 
-const conf = z.number().gt(0).lte(1);
+/** A number, or a rule giving one where how far the source is trusted depends on the record. */
+const conf = z.union([z.number().gt(0).lte(1), z.string()]);
 
 /** `true` and `false` written bare in YAML are OSM's `yes` and `no`. */
 const osmValue = z.union([z.string(), z.number(), z.boolean()]).transform((v) => {

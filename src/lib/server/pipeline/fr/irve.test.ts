@@ -4,7 +4,7 @@ import { updateOps } from "../match/ops";
 import { mergeSites } from "../preset";
 import { detectPreset, presetById } from "../presets";
 import type { Row } from "../types";
-import { poolId, siteName } from "./irve";
+import { poolId, siteName } from "./charging-functions";
 
 const irveRow = (over: Row = {}): Row => ({
 	id_station_itinerance: "FRS63P0001",

@@ -24,7 +24,7 @@ const newest = (r: Row) => `${str(r, "date_maj")}|${ownFile(r)}|${str(r, "last_m
  * `E`/`P` type letter, or the `P` some files put before a connector's number
  * (`FRALLEGO002084P1` in 2023 is `FRALLEGO0020841` in 2024).
  */
-const evseId = (id: string) =>
+export const evseId = (id: string) =>
 	id
 		.toUpperCase()
 		.replace(/[\s*]/g, "")

@@ -192,6 +192,48 @@ describe("evaluate", () => {
 		expect(evaluate(p, [row({ note: "2", free: "x" })])?.tags.map((t) => t.key)).toEqual(["fee"]);
 	});
 
+	it("lets a tag's trust be a rule, and a function's answer carry its own trust, mode and evidence", () => {
+		const m = mapping({
+			tags: {
+				fee: { value: 'truthy(free) ? "no" : ""', conf: "truthy(free) ? 0.8 : 0.4", fill: true },
+				"socket:*": { function: "any.thing/sockets", reads: ["note"], conf: 0.9 },
+			},
+		});
+		const functions = {
+			"any.thing/sockets": () => ({
+				"socket:a": "2",
+				"socket:a:output": {
+					value: "22 kW",
+					conf: 0.7,
+					addOnly: true,
+					evidence: { input: "note", shown: "22", kind: "derived" },
+				},
+			}),
+		};
+		const tags = evaluate(program(m), [row({ free: "true" })], functions)?.tags;
+		expect(tags?.map((t) => [t.key, t.conf, t.addOnly, t.evidence])).toEqual([
+			["fee", 0.8, true, undefined],
+			["socket:a", 0.9, false, undefined],
+			["socket:a:output", 0.7, true, { input: "note", shown: "22", kind: "derived" }],
+		]);
+		expect(() => program(mapping({ tags: { x: { value: "note", conf: "note" } } }))).toThrow(
+			/gives string, expected double/,
+		);
+	});
+
+	it("passes a function the site its code step gathered", () => {
+		const m = mapping({
+			tags: {
+				note: { function: "any.thing/site", reads: ["note"], conf: 0.5 },
+				fee: { value: "free", conf: 0.5 },
+			},
+		});
+		const functions = {
+			"any.thing/site": (_: unknown, __: unknown, site?: unknown) => ({ note: String(site) }),
+		};
+		expect(evaluate(program(m), [row({})], functions, "gathered")?.tags[0]?.value).toBe("gathered");
+	});
+
 	it("takes from a function only the key its tag names, unless the tag ends in *", () => {
 		const m = mapping({
 			tags: {
@@ -274,16 +316,24 @@ columns: [ident, gratis, spare]
 rename: { ident: id, gratis: free }
 ${extra}`;
 
-	it("registers every function the school mapping names", () => {
-		const school = mappingSchema.parse(
-			parse(
-				readFileSync(join(import.meta.dirname, "../../../../../mappings/fr/school.yaml"), "utf8"),
-			),
-		);
-		const named = Object.values(school.tags).flatMap((t) => ("function" in t ? [t.function] : []));
-		expect(named.length).toBeGreaterThan(0);
-		for (const name of named) expect(functions).toHaveProperty([name]);
-	});
+	it.each(["school", "charging_station"])(
+		"registers every function the %s mapping names",
+		(kind) => {
+			const shipped = mappingSchema.parse(
+				parse(
+					readFileSync(
+						join(import.meta.dirname, `../../../../../mappings/fr/${kind}.yaml`),
+						"utf8",
+					),
+				),
+			);
+			const named = Object.values(shipped.tags).flatMap((t) =>
+				"function" in t ? [t.function] : [],
+			);
+			expect(named.length).toBeGreaterThan(0);
+			for (const name of named) expect(functions).toHaveProperty([name]);
+		},
+	);
 
 	it("passes every file the app ships", () => {
 		const reports = validate(join(import.meta.dirname, "../../../../.."));

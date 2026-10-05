@@ -6,6 +6,7 @@ type Ok = Extract<Checked, { ok: true }>;
 export interface CompiledTag {
 	key: string;
 	tag: Tag;
+	conf: Ok | number;
 	/** Present for a tag written as a rule; a tag made by a shipped function has none. */
 	value: Ok | null;
 	fill: Ok | boolean;
@@ -75,7 +76,7 @@ export function compile(
 		return [...reads];
 	};
 
-	const check = (source: string, where: string, type: "string" | "bool"): Ok | null => {
+	const check = (source: string, where: string, type: "string" | "bool" | "double"): Ok | null => {
 		const checked = scope.check(source);
 		if (!checked.ok) {
 			problems.push(`${where}: ${checked.error}`);
@@ -119,6 +120,8 @@ export function compile(
 		const fill =
 			typeof tag.fill === "string" ? check(tag.fill, `${where}.fill`, "bool") : !!tag.fill;
 		const unless = tag.unless ? check(tag.unless.value, `${where}.unless.value`, "string") : null;
+		const conf =
+			typeof tag.conf === "string" ? check(tag.conf, `${where}.conf`, "double") : tag.conf;
 		let value: Ok | null = null;
 		let reads: string[];
 		if ("function" in tag) {
@@ -131,8 +134,8 @@ export function compile(
 			value = check(tag.value, where, "string");
 			reads = value ? readsOf(value.names) : [];
 		}
-		if (fill === null || ("value" in tag && value === null)) continue;
-		tags.push({ key: tagKey, tag, value, fill, unless, reads });
+		if (fill === null || conf === null || ("value" in tag && value === null)) continue;
+		tags.push({ key: tagKey, tag, conf, value, fill, unless, reads });
 	}
 
 	const notes: Program["notes"] = [];
