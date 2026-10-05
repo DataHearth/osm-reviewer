@@ -54,7 +54,11 @@ function confident(hit: Feature, q: string): boolean {
 	const p = hit.properties;
 	if (p.score >= MIN_SCORE) return true;
 	const asked = ASKED_NUMBER.exec(q)?.[1];
+	// Asked without its postcode, a line can land on its commune's name as a street elsewhere
+	// ("41 rue des 36 ponts Toulouse" on 41 rue de Toulouse, Limoges): the commune must be the hit's.
+	const there = words(p.city).every((w) => words(q).some((x) => sameWord(w, x)));
 	return (
+		there &&
 		p.score >= NUMBER_AND_STREET_SCORE &&
 		p.type === "housenumber" &&
 		!!asked &&

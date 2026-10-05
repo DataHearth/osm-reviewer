@@ -182,6 +182,33 @@ describe("placeAddress", () => {
 		expect(await placed("82 rue Hénon Lyon", "82", "rue Hénon")).toEqual({});
 	});
 
+	it("takes no hit under the floor from another commune's street named for the one asked", async () => {
+		// The base's answer on 05-10-2026 to the line asked again without its postcode.
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				answer(0.5396, {
+					housenumber: "41",
+					street: "rue de Toulouse",
+					name: "41 rue de Toulouse",
+					label: "41 rue de Toulouse 87000 Limoges",
+					postcode: "87000",
+					city: "Limoges",
+				}),
+			),
+		);
+		const x = await placeAddress({
+			...school(""),
+			tags: [
+				tag("addr:housenumber", "41"),
+				tag("addr:street", "rue des 36 ponts"),
+				tag("addr:city", "Toulouse"),
+			],
+			geocode: { q: "41 rue des 36 ponts 31000 Toulouse", farM: 1000 },
+		});
+		expect(values(x)).toEqual({});
+	});
+
 	it("takes the base's street type, but no address from a street of another name", async () => {
 		const street = (q: string, theirs: string) => {
 			vi.stubGlobal(
