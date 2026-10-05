@@ -156,6 +156,8 @@ async function readRegistrySource(
 		licence: reg.licence,
 		empty: !reg.unchanged && reg.scanned === 0,
 	};
+	const complete = !reg.unchanged && !out.empty;
+	const listed = new Map(areas.map((a) => [a.id, new Set(reg.byArea.get(a.id)?.keys())]));
 	for (const area of areas) {
 		const records: RawRecord[] = [...(reg.byArea.get(area.id) ?? [])].map(([key, rows]) => ({
 			key,
@@ -167,7 +169,7 @@ async function readRegistrySource(
 				db,
 				withLicence,
 				area,
-				{ records, reader: reg.reader, complete: !reg.unchanged && !out.empty },
+				{ records, reader: reg.reader, complete, listed: complete ? listed : undefined },
 				at,
 			);
 			absorb(out, r, area);
@@ -197,6 +199,7 @@ async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Da
 		}
 	}
 	out.empty = reads.length > 0 && out.fetched === 0;
+	const listed = new Map(reads.map(({ area, r }) => [area.id, new Set(r.rows.keys())]));
 	for (const { area, r } of reads) {
 		try {
 			const base = source.endpoint.replace(/[?#].*$/, "");
@@ -211,7 +214,7 @@ async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Da
 				db,
 				source,
 				area,
-				{ records, reader: r.reader, complete: !out.empty },
+				{ records, reader: r.reader, complete: !out.empty, listed: out.empty ? undefined : listed },
 				at,
 			);
 			absorb(out, p, area);

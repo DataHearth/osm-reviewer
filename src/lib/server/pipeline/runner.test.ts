@@ -479,6 +479,51 @@ describe("runSource (registry)", () => {
 		expect(conditional).toEqual([false, true, false, false]);
 	});
 
+	it("hands a record that moved to another area over to it in the same run, whichever area runs first", async () => {
+		db.insert(t.areas)
+			.values({
+				id: "par",
+				name: "Paris",
+				def: "relation",
+				rel: "7444",
+				bbox: [48.8, 2.3, 48.9, 2.4],
+				centerLat: 48.85,
+				centerLon: 2.35,
+				sqkm: 105,
+			})
+			.run();
+		db.insert(t.areaSources).values({ areaId: "par", sourceId: "irve" }).run();
+		csv += `\n${row("FRDONE", "FR*D*E1", 2.34, 48.84)}`;
+		await runSource(db, "irve");
+		const placed = () =>
+			Object.fromEntries(cands().map((c) => [c.sourceRecordKey, c.areaId as string]));
+		expect(placed()).toEqual({ FRS1: "lyo", FRS2: "lyo", FRFAR: "par", FRDONE: "par" });
+		const ids = new Map(cands().map((c) => [c.sourceRecordKey, c.id]));
+		db.insert(t.users)
+			.values({ id: "u1", name: "R", email: "r@x.test", role: "reviewer", initials: "R" })
+			.run();
+		db.insert(t.decisions)
+			.values({
+				candidateId: ids.get("FRDONE") as string,
+				kind: "rejected",
+				userId: "u1",
+				decidedAt: new Date(),
+			})
+			.run();
+		age();
+
+		csv = [
+			HEADER,
+			row("FRS1", "FR*S1*E1", 4.83, 45.76),
+			row("FRS2", "FR*S2*E1", 2.36, 48.86),
+			row("FRFAR", "FR*F*E1", 4.85, 45.78),
+			row("FRDONE", "FR*D*E1", 4.86, 45.79),
+		].join("\n");
+		await runSource(db, "irve");
+		expect(placed()).toEqual({ FRS1: "lyo", FRS2: "par", FRFAR: "lyo", FRDONE: "par" });
+		expect(cands().find((c) => c.sourceRecordKey === "FRS1")?.id).toBe(ids.get("FRS1"));
+	});
+
 	it("writes a failed run, retries soon, and holds the source after three in a row", async () => {
 		fileStatus = 500;
 		await runSource(db, "irve");

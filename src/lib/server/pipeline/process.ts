@@ -44,6 +44,12 @@ export interface AreaInput {
 	elements?: OsmElement[];
 	/** Whether the source was read to the end, which is what makes an unseen candidate gone rather than unread. */
 	complete: boolean;
+	/**
+	 * Each area's record keys in this run's complete read. A record another area holds but no
+	 * longer lists has moved here and is taken over now: left to that area, its sweep would
+	 * drop it whenever that area runs after this one.
+	 */
+	listed?: Map<string, Set<string>>;
 }
 
 export interface AreaOutcome {
@@ -313,6 +319,8 @@ export async function processArea(
 			continue;
 		}
 
+		const movedHere =
+			!!had && had.areaId !== area.id && input.listed?.get(had.areaId)?.has(x.key) === false;
 		const wrote = saveCandidate(
 			db,
 			{
@@ -338,6 +346,7 @@ export async function processArea(
 				seenAt: new Date(),
 			},
 			had,
+			movedHere,
 		);
 		if (wrote) cands += 1;
 	}

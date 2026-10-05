@@ -104,13 +104,19 @@ export function backfillRecord(db: Db, existing: Existing, record: SourceRecord)
 /**
  * Writes one candidate with its tags and evidence. A candidate a reviewer has decided on,
  * or one another area already holds, is left exactly as it is: the unique key is the
- * source's record, so one record cannot be queued twice.
+ * source's record, so one record cannot be queued twice. `takeOver` moves an undecided one
+ * into `w.areaId`, for a record its area no longer lists.
  */
-export function saveCandidate(db: Db, w: CandidateWrite, existing: Existing | undefined): boolean {
-	if (existing && (existing.decided || existing.areaId !== w.areaId)) return false;
+export function saveCandidate(
+	db: Db,
+	w: CandidateWrite,
+	existing: Existing | undefined,
+	takeOver = false,
+): boolean {
+	if (existing && (existing.decided || (existing.areaId !== w.areaId && !takeOver))) return false;
 
 	return db.transaction((tx) => {
-		if (existing && !stillOpen(tx, existing.id, w.areaId)) return false;
+		if (existing && !stillOpen(tx, existing.id, existing.areaId)) return false;
 		const row = {
 			sourceId: w.sourceId,
 			areaId: w.areaId,
