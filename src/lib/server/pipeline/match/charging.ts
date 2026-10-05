@@ -108,9 +108,12 @@ export function otherBorne(a: OsmElement, b: OsmElement): boolean {
 /** Upper bounds, in kW, of the power classes a connector's output falls in. */
 const POWER_CLASSES = [8, 22, 60];
 
+/** A mapper's output in kW unless it names its unit: "7400 W" and "7,4 kW" are one class. */
 const powerClass = (v: string) => {
-	const kw = Number.parseFloat(v);
-	return Number.isNaN(kw) ? null : POWER_CLASSES.filter((top) => kw > top).length;
+	const m = /^\s*(\d+(?:[.,]\d+)?)\s*(kva|kw|w)?(?![a-z])/i.exec(v);
+	if (!m) return null;
+	const kw = Number(m[1].replace(",", ".")) / (m[2]?.toLowerCase() === "w" ? 1000 : 1);
+	return POWER_CLASSES.filter((top) => kw > top).length;
 };
 
 const DC = /^(type2_combo|type1_combo|chademo|tesla_supercharger.*)$/;

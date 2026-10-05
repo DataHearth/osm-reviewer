@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Extraction, OsmElement, ProposedTag } from "../types";
+import { stationFit } from "./charging";
 import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./find";
 import { closureOps, contextTags, disputedOps, newOps, unchangedTags, updateOps } from "./ops";
 import { planUpdate } from "./plan";
@@ -1219,6 +1220,17 @@ describe("stations told apart by what they hold", () => {
 			tag("capacity", capacity),
 		],
 		refs: {},
+	});
+
+	it("reads a mapper's output in watts or with a decimal comma in its own unit", () => {
+		const fitting = (had: string) =>
+			stationFit(
+				{ tags: [tag("socket:type2:output", "7 kW")] },
+				el(1, 0, 0, { "socket:type2:output": had }),
+			);
+		for (const had of ["7400 W", "7400W", "7,4 kW", "7.4kW", "7 kVA", "7"])
+			expect(fitting(had)).toMatchObject({ agree: 1, against: 0 });
+		expect(fitting("22000W")).toMatchObject({ agree: 0, against: 1 });
 	});
 
 	it("leaves an object to the record it fits, and makes the other new", () => {
