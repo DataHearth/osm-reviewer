@@ -1,5 +1,5 @@
 import { overpass } from "$lib/server/config";
-import { type AreaShape, areaBox } from "./geo";
+import { type AreaShape, areaBox, hasShape } from "./geo";
 import { request, sleep } from "./http";
 import { overpassFilter, type Selector } from "./tagfilter";
 import { type OsmElement, PipelineError } from "./types";
@@ -26,16 +26,23 @@ function scope(a: OverpassArea): { head: string; where: string } {
  * OSM object just outside it. Longitude gets 1.5× for the latitudes France sits at.
  */
 const MATCH_MARGIN_DEG = 0.002;
+const MATCH_MARGIN_M = 220;
 
 /**
  * What a candidate is matched against has to cover the same ground its records were cut
- * by, and a relation's records are cut by its box (`inArea`). Fetched with the exact
- * boundary instead, everything in a neighbouring commune's corner of the box finds no OSM
- * object at all and comes out as a new POI, duplicating what is already mapped there.
+ * by, and a relation's records are cut by its box (`inArea`), or by its circle while it has
+ * no box. Fetched with the exact boundary instead, everything in a neighbouring commune's
+ * corner of the box finds no OSM object at all and comes out as a new POI, duplicating what
+ * is already mapped there. A relation with neither box nor size cuts no records at all.
  */
 function matchScope(a: OverpassArea): { head: string; where: string } {
-	if (a.def === "radius" || !a.bbox) return scope(a);
-	const [s, w, n, e] = a.bbox;
+	if (a.def === "radius" && a.radius)
+		return {
+			head: "",
+			where: `(around:${a.radius + MATCH_MARGIN_M},${a.centerLat},${a.centerLon})`,
+		};
+	if (!hasShape(a)) return scope(a);
+	const [s, w, n, e] = areaBox(a);
 	const m = MATCH_MARGIN_DEG;
 	const box = [s - m, w - m * 1.5, n + m, e + m * 1.5].map((x) => Number(x.toFixed(6)));
 	return { head: "", where: `(${box.join(",")})` };

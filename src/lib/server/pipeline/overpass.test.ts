@@ -22,11 +22,17 @@ describe("buildQuery", () => {
 		expect(q).toContain('nwr["amenity"="charging_station"](area.a);');
 	});
 
-	it("scopes a radius area with around", () => {
+	it("matches a radius area, or a relation with only a size, with the same margin as a box", () => {
 		const q = buildQuery({ ...base, def: "radius", rel: null, radius: 1500 }, [
 			{ k: "shop", v: null },
 		]);
-		expect(q).toContain('nwr["shop"](around:1500,45.76,4.83);');
+		expect(q).toContain('nwr["shop"](around:1720,45.76,4.83);');
+
+		const sized = buildQuery({ ...base, def: "relation", rel: "120965", radius: null, km: 1 }, [
+			{ k: "shop", v: null },
+		]);
+		expect(sized).not.toContain("area(id:");
+		expect(sized).toContain('nwr["shop"](45.749017,4.814124,45.770983,4.845876);');
 	});
 
 	it("ANDs required tags onto every alternative", () => {
