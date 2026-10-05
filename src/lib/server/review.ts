@@ -302,7 +302,10 @@ const conflictOf = (
 	},
 });
 
-const clip = (s: string) => (s.length > OSM_MAX ? `${s.slice(0, OSM_MAX - 1)}…` : s);
+function clip(s: string) {
+	const points = [...s];
+	return points.length > OSM_MAX ? `${points.slice(0, OSM_MAX - 1).join("")}…` : s;
+}
 
 /** `#a;#b`, the form OSM's `hashtags` tag takes, from however the setting was typed. */
 const hashtagTag = (raw: string) =>

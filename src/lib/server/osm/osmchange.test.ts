@@ -14,6 +14,10 @@ describe("esc", () => {
 	it("escapes markup and whitespace that attributes cannot hold raw", () => {
 		expect(esc(`a&b<c>"d"'e'\nf`)).toBe("a&amp;b&lt;c&gt;&quot;d&quot;&apos;e&apos;&#10;f");
 	});
+
+	it("drops what XML 1.0 cannot hold, keeping whole surrogate pairs", () => {
+		expect(esc("a\u0000b\u0008\u000Bc\u001F￾d\uD800e\uDC00f😀\tg")).toBe("abcdef😀&#9;g");
+	});
 });
 
 describe("applyOps", () => {

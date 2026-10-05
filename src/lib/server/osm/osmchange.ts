@@ -31,7 +31,15 @@ const ESCAPES: Record<string, string> = {
 	"\t": "&#9;",
 };
 
-export const esc = (s: string) => s.replace(/[&<>"'\n\r\t]/g, (c) => ESCAPES[c]);
+/**
+ * What XML 1.0 cannot carry at all, raw or as a character reference: OSM refuses the whole
+ * upload over one of them. Under `u`, `\p{Cs}` matches a lone surrogate and never half a pair.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: these are the characters being removed
+const NOT_XML = /[\x00-\x08\x0B\x0C\x0E-\x1F￾￿]|\p{Cs}/gu;
+
+export const esc = (s: string) =>
+	s.replace(NOT_XML, "").replace(/[&<>"'\n\r\t]/g, (c) => ESCAPES[c]);
 
 /**
  * Applied to the object's current tags, never to a copy fetched earlier, so a tag
