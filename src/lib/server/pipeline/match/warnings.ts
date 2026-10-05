@@ -3,7 +3,6 @@ import {
 	campus,
 	groundsOf,
 	kindWords,
-	lyceeMadeCollege,
 	maternelleAs,
 	otherPlace,
 	properName,
@@ -544,7 +543,6 @@ export function modWarnings(
 	const lines = ops
 		.filter((o) => o.op === "mod")
 		.map((o) => `OSM has ${o.k}=${o.was} where the source says ${o.v}${why}`);
-	lines.push(...lyceeMadeCollege(ops, current));
 	return lines;
 }
 

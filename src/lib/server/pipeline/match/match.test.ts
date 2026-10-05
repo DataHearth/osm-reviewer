@@ -870,13 +870,6 @@ describe("modWarnings", () => {
 		]);
 		expect(modWarnings(ops, { "survey:date": "2025-06-01" }, now)[0]).toMatch(/on purpose$/);
 	});
-
-	it("says when a lycée would become a college", () => {
-		const ops = [mod("amenity", "school", "college")];
-		expect(modWarnings(ops, { amenity: "school", "school:FR": "lycée" }, now)[1]).toMatch(
-			/^The object reads as a lycée \(school:FR=lycée\)/,
-		);
-	});
 });
 
 describe("what the object is now", () => {
@@ -1867,7 +1860,7 @@ describe("schools of the fifth audit", () => {
 		const plan = planUpdate(saliege, lycee, [lycee]);
 		expect(plan.ops.map((o) => `${o.op} ${o.k}`)).toEqual(["add addr:street"]);
 		expect(plan.notes).toEqual([
-			"A post-bac section, “Campus Saliège”, is housed in this lycée (name=Lycée Privé Saliège): its amenity is left alone, so the object stays a school",
+			"A post-bac section, “Campus Saliège”, is housed in this lycée (school:FR=lycée): its amenity is left alone, so the object stays a school",
 		]);
 		const billieres = {
 			...saliege,
@@ -1882,8 +1875,14 @@ describe("schools of the fifth audit", () => {
 			"school:FR": "lycée",
 		});
 		const kept = planUpdate(billieres, named, [named]);
-		expect(kept.ops.map((o) => `${o.op} ${o.k}`)).toEqual(["mod amenity"]);
-		expect(kept.notes.join("\n")).toMatch(/The object reads as a lycée \(school:FR=lycée\)/);
+		expect(kept.ops).toEqual([]);
+		expect(kept.notes.join("\n")).toMatch(/is housed in this lycée \(school:FR=lycée\)/);
+		const plain = planUpdate(
+			billieres,
+			{ ...named, tags: { amenity: "school", name: "Billières" } },
+			[named],
+		);
+		expect(plain.ops.map((o) => `${o.op} ${o.k}`)).toContain("mod amenity");
 	});
 
 	it("writes a street-only address only on an object near that street", () => {

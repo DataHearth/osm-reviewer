@@ -184,33 +184,21 @@ export const maternelleAs = (x: Pick<Extraction, "name" | "tags">, e: OsmElement
 	(/maternelle/.test(x.tags.findLast((t) => t.k === LEVEL)?.v ?? "") &&
 		(nameScore(x, e) ?? 0) >= NAME_MATCH);
 
-/** A post-bac school's `amenity=college` on an object that reads as a lycée would unsay the lycée. */
-export function lyceeMadeCollege(
-	ops: { op: string; k: string; v: string }[],
-	current: Record<string, string>,
-): string[] {
-	const lycee = /lycée/i.test(current[LEVEL] ?? "")
-		? `${LEVEL}=${current[LEVEL]}`
-		: /^lycée/i.test(current.name ?? "")
-			? `name=${current.name}`
-			: null;
-	return lycee && ops.some((o) => o.op === "mod" && o.k === "amenity" && o.v === "college")
-		? [
-				`The object reads as a lycée (${lycee}), which amenity=college would no longer say: check whether the post-bac school is mapped apart from it`,
-			]
-		: [];
-}
-
 /**
- * A post-bac school whose object is named as a lycée is the lycée's STS or CPGE, housed in it:
- * the object stays a school. One only tagged `school:FR=lycée`, often by an import reading the
- * directory's type, keeps the college with `lyceeMadeCollege`'s line.
+ * A post-bac school whose object reads as a lycée, by its level or its name, is the lycée's
+ * STS or CPGE, housed in it: the object stays a school, since `amenity=college` would unsay
+ * the lycée a mapper wrote.
  */
 export function housedInLycee(
 	x: Pick<Extraction, "name" | "tags">,
 	current: Record<string, string>,
 ): string | null {
 	if (!x.tags.some((t) => t.k === "amenity" && t.v === "college")) return null;
-	if (!/^lycee\b/.test(normaliseName(current.name ?? ""))) return null;
-	return `A post-bac section, “${x.name}”, is housed in this lycée (name=${current.name}): its amenity is left alone, so the object stays a school`;
+	const lycee = /lycée/i.test(current[LEVEL] ?? "")
+		? `${LEVEL}=${current[LEVEL]}`
+		: /^lycee\b/.test(normaliseName(current.name ?? ""))
+			? `name=${current.name}`
+			: null;
+	if (!lycee) return null;
+	return `A post-bac section, “${x.name}”, is housed in this lycée (${lycee}): its amenity is left alone, so the object stays a school`;
 }

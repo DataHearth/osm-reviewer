@@ -291,9 +291,9 @@ mailbox) is never the match, nor by name or distance is a station carrying only 
 operator's EVSE ids. An id on an object that is no longer the place (a `disused:`/`was:` main
 tag, a construction site, another main key) settles nothing, and its name or position does not
 either. A school building carrying the UAI stays the match over grounds named for a campus
-that also hold another establishment. A post-bac school matched to an object named as a lycée
-is a section housed in it: its `amenity` is left alone, with a banner line; one only tagged
-`school:FR=lycée` becomes a college with a line saying so. An unnamed object matches within
+that also hold another establishment. A post-bac school matched to an object that reads as a lycée,
+by its `school:FR` or its name, is a section housed in it: its `amenity` is left alone, with a
+banner line. An unnamed object matches within
 15 m, or within 50 m when its operator, network or brand agrees, and another operator's sign
 counts against an object, as does a poor fit of capacity, connectors and power class, or a
 connector the record counts that an object listing others lacks; an object two records match
