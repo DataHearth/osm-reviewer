@@ -41,7 +41,7 @@ const square = $derived(
 </script>
 
 <div
-	class="grid overflow-hidden rounded-[10px] border {quarantined
+	class="grid shrink-0 overflow-hidden rounded-[10px] border {quarantined
 		? 'border-bad-line'
 		: 'border-line'} lg:grid-cols-[minmax(0,1fr)_minmax(240px,0.9fr)]"
 >
