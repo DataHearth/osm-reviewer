@@ -2,9 +2,8 @@ import { error } from "@sveltejs/kit";
 import type { User } from "$lib/types";
 
 /**
- * The root layout redirects a signed-out request before any page load runs, so
- * this only fires for a form action posted without a session — which is a 401,
- * not a redirect.
+ * `handle` refuses a signed-out request before any load or action runs; this narrows
+ * the type for the caller and stays as a second line behind it.
  */
 export function requireUser(locals: App.Locals): User {
 	if (!locals.user) error(401, "not signed in");

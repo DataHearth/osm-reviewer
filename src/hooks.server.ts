@@ -1,4 +1,5 @@
 import type { Handle, ServerInit } from "@sveltejs/kit";
+import { requireSession } from "$lib/server/auth/guard";
 import { clearSessionCookie, resolveSession, SESSION_COOKIE } from "$lib/server/auth/session";
 import { startBackups } from "$lib/server/backup";
 import { pipeline } from "$lib/server/config";
@@ -24,5 +25,6 @@ export const handle: Handle = ({ event, resolve }) => {
 	event.locals.session = found?.session ?? null;
 	event.locals.sessionToken = found ? (token as string) : null;
 
+	requireSession(event);
 	return resolve(event);
 };

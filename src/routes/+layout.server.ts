@@ -6,9 +6,9 @@ import { loadKeys } from "$lib/server/settings";
 import type { LayoutServerLoad } from "./$types";
 
 /**
- * Every screen but the login is behind the session, and the check runs here so a
- * signed-out request never reaches a page load. The attempted path travels to the
- * login screen so signing in lands there rather than on the queue.
+ * `handle` already refuses a signed-out request for every route but the login; the
+ * redirect here only types `locals.user` for the rest of the load. The attempted path
+ * travels to the login screen so signing in lands there rather than on the queue.
  *
  * The counts and key bindings are here because every screen uses them. Reading
  * `url.pathname` also makes this load rerun on every navigation, so they stay current.

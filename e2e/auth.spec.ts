@@ -68,3 +68,13 @@ test("a signed-out post to a review action is refused, whichever action it names
 		expect(res.status(), action).toBe(401);
 	}
 });
+
+test("a signed-out data request for the page node alone is redirected, not answered", async ({
+	request,
+}) => {
+	const res = await request.get("/history/__data.json?x-sveltekit-invalidated=01");
+	expect(await res.json()).toEqual({
+		type: "redirect",
+		location: "/login?redirectTo=%2Fhistory",
+	});
+});
