@@ -13,7 +13,13 @@ import {
 	OsmError,
 	uploadChange,
 } from "$lib/server/osm/api";
-import { type Change, type OsmElement, osmChange, type TagOp } from "$lib/server/osm/osmchange";
+import {
+	applyOps,
+	type Change,
+	type OsmElement,
+	osmChange,
+	type TagOp,
+} from "$lib/server/osm/osmchange";
 
 export class RefusedError extends Error {}
 
@@ -392,6 +398,50 @@ function failChangeset(
 }
 
 /**
+ * Rows whose objects needed nothing sent ride with a changeset that did send something,
+ * or, when nothing was sent at all, with a row of their own that has no OSM id.
+ */
+function recordUpload(
+	db: Db,
+	userId: string,
+	cs: { id: string; osmId: string | null; comment: string; objects: string },
+	rows: StagedRow[],
+) {
+	db.transaction((tx) => {
+		tx.insert(t.changesets)
+			.values({
+				...cs,
+				url: cs.osmId ? `${osm.url}/changeset/${cs.osmId}` : "",
+				uploadedAt: new Date(),
+				result: "ok",
+				uploadedBy: userId,
+			})
+			.run();
+		tx.update(t.decisions)
+			.set({ changesetId: cs.id })
+			.where(
+				and(
+					t.STAGED,
+					inArray(
+						t.decisions.candidateId,
+						rows.map((r) => r.candidateId),
+					),
+				),
+			)
+			.run();
+	});
+}
+
+/** True for a modify after which the object's tags are exactly what they were. */
+function changesNothing(c: Change) {
+	if (c.kind !== "modify") return false;
+	const before = c.element.tags;
+	const after = applyOps(before, c.ops, c.closure);
+	const keys = Object.keys(after);
+	return keys.length === Object.keys(before).length && keys.every((k) => after[k] === before[k]);
+}
+
+/**
  * Uploads every staged candidate, in changesets of the account's `osmPerChangeset`.
  * Each object is fetched first: one whose version moved past the candidate's base
  * is marked in conflict and nothing is sent, which is what the composer's rebase
@@ -451,17 +501,26 @@ async function uploadStaged(
 	}
 
 	let placeholder = 0;
+	const planned = objects.map((rows) => {
+		const [first] = rows;
+		const ops = rows.flatMap((r) => r.ops);
+		const head = first.osmId ? current.get(first.osmId) : undefined;
+		const change: Change = head
+			? { kind: "modify", element: head, ops, closure: rows.some((r) => r.type === "closure") }
+			: { kind: "create", placeholder: --placeholder, lat: first.lat, lon: first.lon, ops };
+		return { rows, change };
+	});
+	// A mapper may have made the edit already; OSM asks for no version bump that changes nothing.
+	const idle = planned.filter((p) => changesNothing(p.change));
+	let carried = idle.flatMap((p) => p.rows);
+
 	let last = "";
-	for (const batch of batches(objects, account.osmPerChangeset)) {
-		const rows = batch.flat();
-		const changes: Change[] = batch.map((object) => {
-			const [first] = object;
-			const ops = object.flatMap((r) => r.ops);
-			const head = first.osmId ? current.get(first.osmId) : undefined;
-			return head
-				? { kind: "modify", element: head, ops, closure: object.some((r) => r.type === "closure") }
-				: { kind: "create", placeholder: --placeholder, lat: first.lat, lon: first.lon, ops };
-		});
+	for (const batch of batches(
+		planned.filter((p) => !idle.includes(p)),
+		account.osmPerChangeset,
+	)) {
+		const rows = batch.flatMap((p) => p.rows);
+		const changes = batch.map((p) => p.change);
 		const label = objectsLabel(changes);
 		const tags: Record<string, string> = {
 			comment: clip(v.comment),
@@ -505,34 +564,26 @@ async function uploadStaged(
 			if (id) await closeChangeset(token, id);
 		}
 
-		const done = id;
-		db.transaction((tx) => {
-			tx.insert(t.changesets)
-				.values({
-					id: done,
-					osmId: done,
-					url: `${osm.url}/changeset/${done}`,
-					uploadedAt: new Date(),
-					comment: v.comment,
-					objects: label,
-					result: "ok",
-					uploadedBy: userId,
-				})
-				.run();
-			tx.update(t.decisions)
-				.set({ changesetId: done })
-				.where(
-					and(
-						t.STAGED,
-						inArray(
-							t.decisions.candidateId,
-							rows.map((r) => r.candidateId),
-						),
-					),
-				)
-				.run();
-		});
-		last = done;
+		recordUpload(db, userId, { id, osmId: id, comment: v.comment, objects: label }, [
+			...rows,
+			...carried,
+		]);
+		carried = [];
+		last = id;
+	}
+	if (carried.length) {
+		last = `unchanged-${randomUUID()}`;
+		recordUpload(
+			db,
+			userId,
+			{
+				id: last,
+				osmId: null,
+				comment: v.comment,
+				objects: `${objectsLabel(idle.map((p) => p.change))}, already so on OSM — nothing sent`,
+			},
+			carried,
+		);
 	}
 	return { changesetId: last };
 }

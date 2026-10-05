@@ -393,4 +393,32 @@ describe("upload", () => {
 		);
 		expect(calls).toEqual([]);
 	});
+
+	it("sends nothing for an object that already carries what was accepted", async () => {
+		const a = stage("a", "node/1", [add("website", "https://e.example")], 1);
+		const b = stage("b", "node/2", [add("website", "https://f.example")], 2);
+		const calls = fakeOsm({
+			1: { amenity: "school", website: "https://e.example" },
+			2: { amenity: "school" },
+		});
+		await upload(db, "u", { comment: "c" });
+		const [xml] = sent(calls);
+		expect(xml).not.toContain('<node id="1"');
+		expect(xml).toContain('<node id="2"');
+		expect(db.select().from(t.decisions).all()).toMatchObject([
+			{ candidateId: a, changesetId: "77" },
+			{ candidateId: b, changesetId: "77" },
+		]);
+	});
+
+	it("opens no changeset when every object already carries its tags", async () => {
+		stage("a", "node/1", [add("website", "https://e.example")], 1);
+		const calls = fakeOsm({ 1: { amenity: "school", website: "https://e.example" } });
+		const { changesetId } = (await upload(db, "u", { comment: "c" })) as { changesetId: string };
+		expect(calls.map((c) => c.path)).toEqual(["/api/0.6/nodes.json"]);
+		expect(db.select().from(t.changesets).all()).toMatchObject([
+			{ id: changesetId, osmId: null, url: "", result: "ok" },
+		]);
+		expect(db.select().from(t.decisions).get()?.changesetId).toBe(changesetId);
+	});
 });
