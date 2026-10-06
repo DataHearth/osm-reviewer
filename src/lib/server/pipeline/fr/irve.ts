@@ -1,4 +1,4 @@
-import { renameRow } from "../mapping/compile";
+import { type Program, renameRow } from "../mapping/compile";
 import { type EvaluatedTag, type Evidence, evaluate } from "../mapping/evaluate";
 import { programFor } from "../mapping/files";
 import type { Preset } from "../preset";
@@ -122,10 +122,12 @@ const QUOTED: Record<string, (rows: In[], value: string) => Evidence> = {
 	maxheight: () => ({ input: "max_height" }),
 };
 
-/** IRVE "statique" v2.3, consolidated: one row per charge point, grouped into one station. */
-export const irve: Preset = {
+const build = (programOf: () => Program): Preset => ({
 	id: "irve",
 	label: "IRVE charging stations",
+	withProgram: (program) => build(() => program),
+	mapping: "FR:charging_station",
+	source: SOURCE,
 	keyField: "id_station_itinerance",
 	detect: (c) => c.includes("id_station_itinerance") && c.includes("id_pdc_itinerance"),
 	key: stationKey,
@@ -134,7 +136,7 @@ export const irve: Preset = {
 	address: addressBase,
 	link,
 	extract(declared, url) {
-		const program = programFor(SOURCE);
+		const program = programOf();
 		const toInputs = (r: Row) =>
 			renameRow(program, Object.fromEntries([...program.rename.keys()].map((c) => [c, str(r, c)])));
 		const read = readDeclarations(declared, toInputs);
@@ -216,4 +218,7 @@ export const irve: Preset = {
 				: undefined,
 		};
 	},
-};
+});
+
+/** IRVE "statique" v2.3, consolidated: one row per charge point, grouped into one station. */
+export const irve = build(() => programFor(SOURCE));

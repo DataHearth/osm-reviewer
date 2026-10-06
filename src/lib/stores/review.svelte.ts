@@ -556,6 +556,10 @@ class ReviewState {
 		return post("?/runNow", { id: s.id });
 	}
 
+	renameAgain(s: Source) {
+		return post("?/renameAgain", { id: s.id });
+	}
+
 	runPipeline(a: Area) {
 		return post("?/runArea", { id: a.id });
 	}

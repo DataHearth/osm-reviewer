@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 import type { Bindings } from "../../keymap";
 import type { SourceRecord } from "../../types";
+import type { ColumnRenaming } from "../pipeline/mapping/rename";
 
 export const users = sqliteTable(
 	"users",
@@ -80,6 +81,19 @@ export const sources = sqliteTable("sources", {
 	nextRunAt: integer({ mode: "timestamp" }),
 	/** "Run now": the scheduler runs the source at its next tick and clears this when the run starts. */
 	runRequestedAt: integer({ mode: "timestamp" }),
+	/**
+	 * "Rename again": the next run asks the model for the source's column renaming even where
+	 * the columns are known. Unlike `runRequestedAt` it is cleared when a renaming is stored,
+	 * not when the run starts, so a run whose renaming fails its checks leaves it standing.
+	 */
+	renameRequestedAt: integer({ mode: "timestamp" }),
+	/** Which column renaming the last read went through; null until a read has settled one. */
+	renamingUsed: text({ enum: ["shipped", "stored"] }),
+	/**
+	 * Columns a read met only past its sample. They join the column list of every later read, so
+	 * the renaming the model makes for them stays an exact match for the source's columns.
+	 */
+	lateColumns: text({ mode: "json" }).$type<string[]>().notNull().default([]),
 	/** Set while a run is in flight, so a second tick or button press does not start another. */
 	runningSince: integer({ mode: "timestamp" }),
 	/** Opaque runner state between runs: ETag, snapshot hash, page cursor. Only the pipeline reads it. */
@@ -152,6 +166,23 @@ export const sourceAllowedTags = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.sourceId, t.position] })],
 );
+
+/**
+ * The column renaming a model made for a source whose columns the shipped files do not know:
+ * which column is which input of the mapping. A document of its own rather than columns of
+ * `sources`, which every scheduler tick reads whole; one row per source, replaced wholesale.
+ */
+export const sourceRenamings = sqliteTable("source_renamings", {
+	sourceId: text()
+		.primaryKey()
+		.references(() => sources.id, { onDelete: "cascade" }),
+	mapping: text().notNull(),
+	/** The exact columns it was made for: a read with none outside this list reuses it. */
+	columns: text({ mode: "json" }).$type<string[]>().notNull(),
+	renaming: text({ mode: "json" }).$type<ColumnRenaming>().notNull(),
+	model: text().notNull(),
+	madeAt: integer({ mode: "timestamp" }).notNull(),
+});
 
 export const runs = sqliteTable(
 	"runs",
@@ -443,11 +474,16 @@ export const sessionsRelations = relations(sessions, ({ one }) => ({
 	user: one(users, { fields: [sessions.userId], references: [users.id] }),
 }));
 
-export const sourcesRelations = relations(sources, ({ many }) => ({
+export const sourcesRelations = relations(sources, ({ many, one }) => ({
 	allowedTags: many(sourceAllowedTags),
+	renaming: one(sourceRenamings),
 	runs: many(runs),
 	areas: many(areaSources),
 	candidates: many(candidates),
+}));
+
+export const sourceRenamingsRelations = relations(sourceRenamings, ({ one }) => ({
+	source: one(sources, { fields: [sourceRenamings.sourceId], references: [sources.id] }),
 }));
 
 export const sourceAllowedTagsRelations = relations(sourceAllowedTags, ({ one }) => ({

@@ -7,6 +7,7 @@ import { fetchElements } from "$lib/server/osm/api";
 import type { OsmElement } from "$lib/server/osm/osmchange";
 import { unchangedTags } from "$lib/server/pipeline/match/ops";
 import { RefusedError } from "$lib/server/review";
+import { renameRefusal } from "$lib/server/source-display";
 
 /** Every write below runs either directly or inside a transaction. */
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -135,6 +136,20 @@ export function applyAreaDraft(db: Db, d: AreaDraft): string {
 		for (const [sourceId, on] of Object.entries(d.srcs)) setLink(tx, id, sourceId, on);
 		return id;
 	});
+}
+
+/**
+ * "Rename again": the source's next run asks the model for its column renaming where the
+ * shipped one does not cover the columns, and keeps asking until one passes its checks.
+ * Answers why not when no run could honour it, and sets nothing then.
+ */
+export function requestRename(db: Db, id: string, modelConfigured: boolean): string | null {
+	const source = db.select().from(t.sources).where(eq(t.sources.id, id)).get();
+	if (!source) return "This source does not exist.";
+	const refusal = renameRefusal(source, modelConfigured);
+	if (refusal) return refusal.reason;
+	db.update(t.sources).set({ renameRequestedAt: new Date() }).where(eq(t.sources.id, id)).run();
+	return null;
 }
 
 export function setSourceEnabled(db: Db, id: string, enabled: boolean) {

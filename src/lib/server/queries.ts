@@ -27,9 +27,16 @@ import type { QueueQuery, SortKey } from "$lib/schemas/queue";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import { modelLabel } from "$lib/server/pipeline/llm";
 import { contextTags } from "$lib/server/pipeline/match/ops";
 import { claimFresh } from "$lib/server/pipeline/runner";
-import { configRows, KIND_LABEL, metricRows, runRow } from "$lib/server/source-display";
+import {
+	columnMapping,
+	configRows,
+	KIND_LABEL,
+	metricRows,
+	runRow,
+} from "$lib/server/source-display";
 import type {
 	Area,
 	Candidate,
@@ -94,6 +101,7 @@ export async function loadSources(db: Db): Promise<Source[]> {
 		db.query.sources.findMany({
 			with: {
 				allowedTags: { orderBy: (x) => asc(x.position) },
+				renaming: true,
 				runs: { orderBy: (x) => desc(x.startedAt) },
 			},
 			orderBy: (x) => asc(x.id),
@@ -148,6 +156,7 @@ export async function loadSources(db: Db): Promise<Source[]> {
 			extractor: s.extractor,
 			licence: s.licence,
 			allow: s.allowedTags.map((a) => a.pattern),
+			columnMapping: columnMapping(s, s.renaming, modelLabel() !== null),
 			config: configRows(s, last, model),
 			metrics: metricRows({
 				areas: linksBy.get(s.id) ?? 0,

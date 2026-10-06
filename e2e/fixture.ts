@@ -2,6 +2,7 @@ import { hashPassword } from "../src/lib/server/auth/password";
 import { createDb } from "../src/lib/server/db/client";
 import * as t from "../src/lib/server/db/schema";
 import { LOCKOUT_VICTIM, PASSWORD, SSO_ONLY } from "./helpers";
+import { STORED_COLUMNS, STORED_RENAMING } from "./renaming";
 
 const DAY = 86_400_000;
 
@@ -119,7 +120,8 @@ export const CANDIDATES: FixtureCandidate[] = [
 	},
 ];
 
-export const SOURCE_COUNT = 2;
+export const SOURCE_COUNT = 3;
+export const RENAMED_SOURCE = { id: "ecoles", name: "Écoles — custom export" };
 export const FAILED_CHANGESET = {
 	id: "e2e-failed",
 	comment: "Closures from SIRENE cessations",
@@ -180,7 +182,26 @@ export async function insertFixture(path: string) {
 					licence: "Licence Ouverte 2.0",
 				},
 				{ id: "web", name: "Operator website crawl", kind: "crawl", health: "ok", floor: 0.55 },
+				{
+					id: RENAMED_SOURCE.id,
+					name: RENAMED_SOURCE.name,
+					kind: "registry",
+					health: "ok",
+					floor: 0.6,
+					preset: "FR:school",
+					renamingUsed: "stored",
+				},
 			])
+			.run();
+		tx.insert(t.sourceRenamings)
+			.values({
+				sourceId: RENAMED_SOURCE.id,
+				mapping: "FR:school",
+				columns: STORED_COLUMNS,
+				renaming: STORED_RENAMING,
+				model: "qwen3-14b",
+				madeAt: new Date(2026, 8, 14, 6, 12),
+			})
 			.run();
 
 		tx.insert(t.areas)

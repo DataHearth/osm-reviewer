@@ -21,6 +21,7 @@ import {
 } from "./process";
 import { hash } from "./reader";
 import { type RegistryState, readRegistry } from "./registry";
+import { ReaderResolver } from "./renaming";
 import { HOLD_AFTER_FAILURES, nextRunAt, RETRY_AFTER_MS } from "./schedule";
 import { parseMatching } from "./tagfilter";
 import { type OsmElement, osmRef, PipelineError, type RawRecord } from "./types";
@@ -44,6 +45,8 @@ interface Exec {
 	withheld?: number;
 	/** Undefined when nothing was read, which leaves the last read's list standing. */
 	far?: (FarMatch & { area: string })[];
+	/** Said when the source's columns were renamed by the model during the run. */
+	renamed?: string[];
 	/** A read to the end found no rows at all, which says the source broke rather than every record left. */
 	empty?: boolean;
 }
@@ -71,7 +74,8 @@ function absorb(out: Exec, p: AreaOutcome, area: AreaRow) {
 const FAR_ASIDE = "the place may have moved or its id may be stale";
 
 /** What a run set aside on purpose, which the run's line says whether or not it also failed somewhere. */
-const asides = ({ outside = 0, withheld = 0, far = [], empty }: Exec) => [
+const asides = ({ outside = 0, withheld = 0, far = [], empty, renamed = [] }: Exec) => [
+	...renamed,
 	...(empty ? ["the source returned no rows, so nothing was swept"] : []),
 	...(outside === 1 ? ["1 record placed outside the area by its own address"] : []),
 	...(outside > 1 ? [`${outside} records placed outside the area by their own address`] : []),
@@ -143,9 +147,13 @@ async function readRegistrySource(
 	const fingerprint = registryFingerprint(db, source, areas);
 	const force =
 		source.runRequestedAt !== null ||
+		source.renameRequestedAt !== null ||
 		state.fingerprint !== fingerprint ||
 		!lastRunOk(db, source.id);
-	const reg = await readRegistry(source, areas, state, force);
+	const renamed: string[] = [];
+	const readers = new ReaderResolver(db, source, (m) => renamed.push(m));
+	const reg = await readRegistry(source, areas, state, force, readers);
+	readers.finish();
 	// The licence the dataset's own metadata names travels with this run's evidence too.
 	const withLicence = { ...source, licence: source.licence || reg.licence || "" };
 	const out: Exec = {
@@ -155,6 +163,7 @@ async function readRegistrySource(
 		state: { ...(source.syncState ?? {}), registry: { ...reg.state, fingerprint } },
 		licence: reg.licence,
 		empty: !reg.unchanged && reg.scanned === 0,
+		renamed,
 	};
 	const complete = !reg.unchanged && !out.empty;
 	const listed = new Map(areas.map((a) => [a.id, new Set(reg.byArea.get(a.id)?.keys())]));
@@ -184,13 +193,15 @@ async function readRegistrySource(
 
 async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Date): Promise<Exec> {
 	const out = blankExec(source, areas);
+	out.renamed = [];
+	const readers = new ReaderResolver(db, source, (m) => out.renamed?.push(m));
 	let skipped = 0;
 	// Every area is read before any is processed, since only the whole read tells an area
 	// with nothing in it from a source that answered nothing at all.
 	const reads: { area: AreaRow; r: ApiResult }[] = [];
 	for (const area of areas) {
 		try {
-			const r = await readApiArea(source, area);
+			const r = await readApiArea(source, area, readers);
 			out.fetched += r.fetched;
 			skipped += r.skipped;
 			reads.push({ area, r });
@@ -198,6 +209,7 @@ async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Da
 			out.errors.push(`${area.name}: ${msg(err)}`);
 		}
 	}
+	readers.finish();
 	out.empty = reads.length > 0 && out.fetched === 0;
 	const listed = new Map(reads.map(({ area, r }) => [area.id, new Set(r.rows.keys())]));
 	for (const { area, r } of reads) {

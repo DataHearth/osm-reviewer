@@ -11,7 +11,14 @@ let {
 	name,
 	running,
 	onrun,
-}: { label: string; name: string; running: boolean; onrun: () => Promise<PostResult> } = $props();
+	watch = true,
+}: {
+	label: string;
+	name: string;
+	running: boolean;
+	onrun: () => Promise<PostResult>;
+	watch?: boolean;
+} = $props();
 
 const POLL_MS = 3000;
 
@@ -22,11 +29,14 @@ async function run() {
 	asking = true;
 	const res = await onrun();
 	asking = false;
-	if (res.ok) toasts.show(`${name}: run queued`);
+	if (res.ok) toasts.show(`${name}: ${res.message ?? "run queued"}`);
 	else toasts.show(`${name}: ${res.message}`, false);
 }
 
+// A second button on the same run (rename again beside run now) must not poll and
+// toast the finish a second time.
 $effect(() => {
+	if (!watch) return;
 	if (!running) {
 		if (wasRunning) toasts.show(`${name}: run finished`);
 		wasRunning = false;

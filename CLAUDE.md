@@ -231,6 +231,29 @@ A change that must not alter what is proposed is checked with `scripts/audit/gol
 rebuilds the queue on a copy of the database with every HTTP answer recorded to disk, so the
 run before the change and the run after read the same world and their two dumps can be diffed.
 
+A source whose columns are not the ones the app ships a renaming for (`sources/fr/*.yaml`, written
+for the Annuaire and the IRVE file) is read through a **column renaming**: which of its columns is
+which input of the mapping (`FR:school`), which a step of the shipped source reads, and which
+nothing reads. It is made by the model, once, at the point a run first meets the data (`renaming.ts`:
+the first 20 rows of a registry or API read, whose columns are the header for a CSV and the union
+over the sample for jsonl), and stored in `source_renamings` with the exact list of columns it was
+made for. Precedence when a read's columns arrive: all inside the shipped renaming's columns, so
+shipped and no call (a superset match, since that list spans the register's history); else exactly
+the stored list, so stored and no call (a column gone is a change); else, or on a pending "rename
+again", the model. The answer is checked before anything is stored (`checkAnswer`: every column
+answered once, only declared inputs and shipped steps named, nothing sent twice, the key and the
+position supplied, and sample values that read as the phone or the place their input says), and one
+that fails its checks, or a missing model, fails the run and leaves the old renaming and the request
+standing. A renamed source is evaluated by the mapping's own rules, without the overrides of the
+shipped source (the Annuaire's start_date rule): an official source gets its shipped program. A
+column that only appears past the sample is left out of the run and counted in its message; read
+through a stored or model renaming it is also remembered (`late_columns`, part of the column list of
+every later stored-renaming match) with a rename request, so the next run asks the model about it.
+The shipped test looks at the read's own columns alone, and a shipped read sets no request. The
+"rename again" button sets `rename_requested_at`; it is inert, with its reason, where no model is
+configured or where the last read used the shipped renaming (`renaming_used`), and the action
+refuses the same way. A run clears only the request it started with.
+
 The **deterministic** extractor is a preset (`fr/irve.ts`, `fr/education.ts`): `irve` and `annuaire-education`,
 named on the source or detected from the columns, and a source that fits none fails its run
 rather than guessing. Where the source is not sure, the preset proposes nothing rather than a

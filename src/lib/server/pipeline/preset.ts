@@ -1,10 +1,17 @@
 import { distance } from "./geo";
+import type { Program } from "./mapping/compile";
 import { str } from "./row";
 import type { Extraction, ProposedTag, Row } from "./types";
 
 export interface Preset {
 	id: string;
 	label: string;
+	/** The mapping whose rules make this preset's tags, such as `FR:school`. */
+	mapping: string;
+	/** The shipped column renaming of the source the preset was written for, such as `fr/annuaire-education`: the columns its code reads. */
+	source: string;
+	/** The same preset reading through another compiled program of its mapping, such as one without the shipped source's overrides. */
+	withProgram(program: Program): Preset;
 	/** The column the source's own stable id lives in, which is also how a record is looked up again. */
 	keyField: string;
 	detect(columns: string[]): boolean;

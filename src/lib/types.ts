@@ -82,6 +82,42 @@ export interface Run {
 	result: string;
 }
 
+/** Which of a mapping's inputs each column of a source is, as the model stored it. */
+export interface StoredColumns {
+	/** DD-MM-YYYY HH:MM */
+	madeAt: string;
+	model: string;
+	/** The columns it was made for; a read of exactly these columns reuses it. */
+	columns: number;
+	renamed: [column: string, input: string][];
+	/** A column, the step of the shipped source that reads it, and the shipped column it stands for. */
+	steps: [column: string, step: string, as: string][];
+	ignored: [column: string, reason: string][];
+}
+
+/** The mapping a source's records go through, and how its columns reach the mapping's inputs. */
+export interface ColumnMapping {
+	/** `FR:school` */
+	mapping: string;
+	/** Null when the app no longer ships the mapping a stored renaming names. */
+	title: string | null;
+	/** Which renaming the last read went through; null before the first read. */
+	origin: "shipped" | "stored" | null;
+	/** The columns the app ships a renaming for; a read within them needs no model call. */
+	shippedColumns: number;
+	/** Null unless the last read went through a renaming the model made. */
+	stored: StoredColumns | null;
+	/** "Rename again" was asked and no run has honoured it yet. */
+	renameRequested: boolean;
+	/** Set where "rename again" cannot be asked: the button says why instead. */
+	refusal: RenameRefusal | null;
+}
+
+export interface RenameRefusal {
+	label: string;
+	reason: string;
+}
+
 export interface Source {
 	id: string;
 	name: string;
@@ -100,6 +136,8 @@ export interface Source {
 	extractor: "deterministic" | "model";
 	licence: string;
 	allow: string[];
+	/** Null for a model extractor, and for a source no mapping is named for: its columns pick the preset at the first run. */
+	columnMapping: ColumnMapping | null;
 	/** Display rows, built from the columns and the last run at load. */
 	config: ConfigRow[];
 	/** Display rows, derived from runs, candidates and decisions at load. */

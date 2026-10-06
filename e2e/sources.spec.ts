@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { SOURCE_COUNT } from "./fixture";
+import { RENAMED_SOURCE, SOURCE_COUNT } from "./fixture";
 import { ADMIN, postAction, signIn } from "./helpers";
 
 test("a source with a blank name is refused by the server and never reaches the rail", async ({
@@ -32,4 +32,30 @@ test("the new-source form will not submit while the name is empty", async ({ pag
 
 	await expect(page.getByRole("button", { name: "create source" })).toBeDisabled();
 	await expect(page.getByText("name and endpoint are required")).toBeVisible();
+});
+
+test("a source shows the column renaming the model stored, and cannot rename again without a model", async ({
+	page,
+}) => {
+	await signIn(page, ADMIN.email, "/server?s=sources");
+	await page
+		.getByRole("button", { name: new RegExp(RENAMED_SOURCE.name) })
+		.first()
+		.click();
+
+	await expect(page.getByText("COLUMN MAPPING")).toBeVisible();
+	await expect(page.getByText("renamed by qwen3-14b · 14-09-2026 06:12")).toBeVisible();
+	await expect(page.getByText("code_uai", { exact: true })).toBeVisible();
+	await expect(page.getByTitle("code_uai", { exact: true })).toBeVisible();
+	await expect(page.getByText("step sites, as adresse_1")).toBeVisible();
+	await expect(page.getByText("ignored — free text no rule reads").first()).toBeHidden();
+	await page.getByText("6 ignored").click();
+	await expect(page.getByText("ignored — free text no rule reads").first()).toBeVisible();
+	await expect(page.getByRole("button", { name: "rename again · not configured" })).toBeDisabled();
+
+	const refused = await postAction(page, "/server?/renameAgain", { id: RENAMED_SOURCE.id });
+	const result = await refused.json();
+	expect(result.type).toBe("failure");
+	expect(result.status).toBe(409);
+	expect(result.data).toContain("Set LLM_PROVIDER and LLM_MODEL to enable renaming.");
 });

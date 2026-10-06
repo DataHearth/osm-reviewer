@@ -1,5 +1,17 @@
 import { comma, fmtCount, fmtDate, fmtDuration, stamp } from "$lib/format";
-import type { ConfigRow, MetricRow, Run, SourceKind } from "$lib/types";
+import type {
+	ColumnMapping,
+	ConfigRow,
+	MetricRow,
+	RenameRefusal,
+	Run,
+	SourceKind,
+} from "$lib/types";
+import { mappingFor, renamingFor } from "./pipeline/mapping/files";
+import type { ColumnRenaming } from "./pipeline/mapping/rename";
+import { presetById } from "./pipeline/presets";
+
+const MAPPING_ID = /^[A-Z]{2}:/;
 
 export const KIND_LABEL: Record<SourceKind, string> = {
 	registry: "national registry dump",
@@ -33,6 +45,84 @@ export interface RunFacts {
 	message: string | null;
 }
 
+interface StoredFacts {
+	mapping: string;
+	columns: string[];
+	renaming: ColumnRenaming;
+	model: string;
+	madeAt: Date;
+}
+
+type RenameFacts = Pick<SourceFacts, "extractor" | "preset"> & {
+	renameRequestedAt: Date | null;
+	renamingUsed: "shipped" | "stored" | null;
+};
+
+/** Why "rename again" is not offered; the button says the label, the action answers the reason. */
+export function renameRefusal(
+	s: Pick<RenameFacts, "extractor" | "renamingUsed">,
+	modelConfigured: boolean,
+): RenameRefusal | null {
+	if (s.extractor === "model")
+		return { label: "no columns", reason: "This source reads no columns to rename." };
+	if (s.renamingUsed === "shipped")
+		return {
+			label: "shipped columns",
+			reason:
+				"The last read used the renaming shipped with the app, so there is nothing for the model to rename.",
+		};
+	if (!modelConfigured)
+		return {
+			label: "not configured",
+			reason: "Set LLM_PROVIDER and LLM_MODEL to enable renaming.",
+		};
+	return null;
+}
+
+const titleOf = (id: string) => {
+	try {
+		return mappingFor(id).title;
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * The mapping a source reads through: the one its preset names, else the one the model last
+ * renamed its columns for. A source detected by its columns has neither until a run settles it.
+ */
+export function columnMapping(
+	s: RenameFacts,
+	stored: StoredFacts | null,
+	modelConfigured: boolean,
+): ColumnMapping | null {
+	if (s.extractor === "model") return null;
+	const preset = presetById(s.preset);
+	const id = preset?.mapping ?? stored?.mapping;
+	if (!id) return null;
+	const own = s.renamingUsed === "stored" && stored?.mapping === id ? stored : null;
+	return {
+		mapping: id,
+		title: titleOf(id),
+		origin: s.renamingUsed === "shipped" ? "shipped" : own ? "stored" : null,
+		shippedColumns: preset ? renamingFor(preset.source).columns.length : 0,
+		stored: own && {
+			madeAt: stamp(own.madeAt),
+			model: own.model,
+			columns: own.columns.length,
+			renamed: Object.entries(own.renaming.rename),
+			steps: Object.entries(own.renaming.steps).map(([column, step]) => [
+				column,
+				step.name.slice(step.name.indexOf("/") + 1),
+				step.as,
+			]),
+			ignored: Object.entries(own.renaming.ignored),
+		},
+		renameRequested: s.renameRequestedAt !== null,
+		refusal: renameRefusal(s, modelConfigured),
+	};
+}
+
 const unit = (kind: SourceKind) => (kind === "crawl" ? "pages" : "rows");
 
 export function runRow(r: RunFacts, kind: SourceKind): Run {
@@ -61,7 +151,7 @@ export function configRows(s: SourceFacts, last: RunFacts | undefined, model: st
 				: ["extractor", "no model configured", "warn"]
 			: [
 					"extractor",
-					`deterministic field map · ${s.preset ? `preset ${s.preset}` : "no model"}`,
+					`deterministic field map · ${s.preset ? `${MAPPING_ID.test(s.preset) ? "mapping" : "preset"} ${s.preset}` : "no model"}`,
 					"code",
 				];
 	const schedule: ConfigRow = s.failing

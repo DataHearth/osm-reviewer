@@ -143,3 +143,32 @@ export async function* ndjson<T>(body: ReadableStream<Uint8Array>): AsyncGenerat
 }
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** The first `n` items of a stream, and the whole stream again with them back in front. */
+export async function peek<T>(
+	items: AsyncIterable<T>,
+	n: number,
+): Promise<{ head: T[]; all: AsyncIterable<T> }> {
+	const it = items[Symbol.asyncIterator]();
+	const head: T[] = [];
+	let done = false;
+	while (head.length < n) {
+		const next = await it.next();
+		if (next.done) {
+			done = true;
+			break;
+		}
+		head.push(next.value);
+	}
+	return {
+		head,
+		all: (async function* () {
+			yield* head;
+			while (!done) {
+				const next = await it.next();
+				if (next.done) return;
+				yield next.value;
+			}
+		})(),
+	};
+}

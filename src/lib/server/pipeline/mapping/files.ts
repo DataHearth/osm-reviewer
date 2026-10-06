@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { compile, type Program } from "./compile";
-import { mappingSchema, renamingSchema } from "./schema";
+import { type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
 
 /**
  * Bundled to a different depth in dev than in the adapter-node output, so the folder is found
@@ -22,17 +22,45 @@ function root(): string {
 
 const read = (path: string) => parse(readFileSync(join(root(), path), "utf8"));
 
-const programs = new Map<string, Program>();
+const renamings = new Map<string, Renaming>();
+const mappings = new Map<string, Mapping>();
 
-/** A source's column renaming over its mapping, compiled once; a file that does not check throws. */
-export function programFor(source: string): Program {
-	const known = programs.get(source);
+/** The column renaming the app ships for a source, such as `fr/irve`. */
+export function renamingFor(source: string): Renaming {
+	const known = renamings.get(source);
 	if (known) return known;
 	const renaming = renamingSchema.parse(read(`sources/${source}.yaml`));
-	const [country, kind] = renaming.mapping.toLowerCase().split(":");
+	renamings.set(source, renaming);
+	return renaming;
+}
+
+/** A mapping the app ships, by its id such as `FR:school`. */
+export function mappingFor(id: string): Mapping {
+	const known = mappings.get(id);
+	if (known) return known;
+	const [country, kind] = id.toLowerCase().split(":");
 	const mapping = mappingSchema.parse(read(`mappings/${country}/${kind}.yaml`));
-	const { program, problems } = compile(mapping, renaming);
+	mappings.set(id, mapping);
+	return mapping;
+}
+
+const programs = new Map<string, Program>();
+
+/**
+ * A source's column renaming over its mapping, compiled once; a file that does not check throws.
+ * Without overrides it is the mapping's own rules, which is what a source the app does not ship
+ * is read by: the overrides state what one shipped source's data needs, not what any source needs.
+ */
+export function programFor(source: string, { overrides = true } = {}): Program {
+	const id = overrides ? source : `${source}#plain`;
+	const known = programs.get(id);
+	if (known) return known;
+	const renaming = renamingFor(source);
+	const { program, problems } = compile(
+		mappingFor(renaming.mapping),
+		overrides ? renaming : { ...renaming, overrides: undefined },
+	);
 	if (!program) throw new Error(`${source}: ${problems.join("; ")}`);
-	programs.set(source, program);
+	programs.set(id, program);
 	return program;
 }

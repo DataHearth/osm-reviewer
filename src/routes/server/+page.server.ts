@@ -18,10 +18,12 @@ import {
 	applyAreaDraft,
 	applySourceDraft,
 	removeArea,
+	requestRename,
 	setAreaPaused,
 	setSourceEnabled,
 } from "$lib/server/mutations";
 import { sendTest } from "$lib/server/notify";
+import { modelLabel } from "$lib/server/pipeline/llm";
 import { kick, requestRuns, sourcesOfArea } from "$lib/server/pipeline/runner";
 import { loadAreas, loadSources } from "$lib/server/queries";
 import { loadNotif, saveNotif } from "$lib/server/settings";
@@ -86,6 +88,17 @@ export const actions: Actions = {
 		if (!form.valid) return fail(400, { form });
 		if (requestRuns(db, [form.data.id]) === 0)
 			return message(form, "A run of this source is already in progress.", { status: 409 });
+		return { form };
+	},
+
+	renameAgain: async ({ request, locals }) => {
+		requireAdmin(locals);
+		const form = await superValidate(request, zod4(sourceIdSchema));
+		if (!form.valid) return fail(400, { form });
+		const refused = requestRename(db, form.data.id, modelLabel() !== null);
+		if (refused) return message(form, refused, { status: 409 });
+		if (requestRuns(db, [form.data.id]) === 0)
+			return message(form, "A run of this source is in progress; the next one renames again.");
 		return { form };
 	},
 

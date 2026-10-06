@@ -78,7 +78,19 @@ function userMessage(p: PageInput) {
 	return `${known}${keys}Source ${p.url}\n\n<text>\n${p.text}\n</text>`;
 }
 
-export function buildRequest(c: ModelConfig, p: PageInput): { url: string; init: RequestInit } {
+/** One structured-output call: what the model is told, and the JSON Schema its answer must fit. */
+export interface Chat {
+	system: string;
+	user: string;
+	schema: object;
+	/** The answer's schema name, which the OpenAI-style API requires. */
+	name: string;
+	maxTokens?: number;
+}
+
+const ASK_TIMEOUT_MS = 120_000;
+
+export function chatRequest(c: ModelConfig, chat: Chat): { url: string; init: RequestInit } {
 	if (!c.provider || !c.model)
 		throw new PipelineError("no model configured: set LLM_PROVIDER and LLM_MODEL");
 	const json = { "content-type": "application/json" };
@@ -94,13 +106,14 @@ export function buildRequest(c: ModelConfig, p: PageInput): { url: string; init:
 					// Measured on qwen3:14b through ollama: at the default temperature, schema-constrained
 					// output stayed valid JSON while its string values came back corrupted.
 					temperature: 0,
+					...(chat.maxTokens ? { max_tokens: chat.maxTokens } : {}),
 					messages: [
-						{ role: "system", content: SYSTEM },
-						{ role: "user", content: userMessage(p) },
+						{ role: "system", content: chat.system },
+						{ role: "user", content: chat.user },
 					],
 					response_format: {
 						type: "json_schema",
-						json_schema: { name: "extraction", strict: true, schema: SCHEMA },
+						json_schema: { name: chat.name, strict: true, schema: chat.schema },
 					},
 				}),
 			},
@@ -118,17 +131,28 @@ export function buildRequest(c: ModelConfig, p: PageInput): { url: string; init:
 			},
 			body: JSON.stringify({
 				model: c.model,
-				max_tokens: 2048,
-				system: SYSTEM,
-				messages: [{ role: "user", content: userMessage(p) }],
-				output_config: { format: { type: "json_schema", schema: SCHEMA } },
+				max_tokens: chat.maxTokens ?? 2048,
+				system: chat.system,
+				messages: [{ role: "user", content: chat.user }],
+				output_config: { format: { type: "json_schema", schema: chat.schema } },
 			}),
 		},
 	};
 }
 
-/** The model's JSON, or a PipelineError that says why there is none. */
-export function readReply(provider: "openai" | "anthropic", body: unknown): ModelOutput {
+const extraction = (p: PageInput): Chat => ({
+	system: SYSTEM,
+	user: userMessage(p),
+	schema: SCHEMA,
+	name: "extraction",
+});
+
+export function buildRequest(c: ModelConfig, p: PageInput): { url: string; init: RequestInit } {
+	return chatRequest(c, extraction(p));
+}
+
+/** The JSON a reply carries, or a PipelineError that says why there is none. */
+export function replyJson(provider: "openai" | "anthropic", body: unknown): unknown {
 	let text: string | undefined;
 	const b = body as Record<string, unknown>;
 	if (provider === "openai") {
@@ -146,27 +170,39 @@ export function readReply(provider: "openai" | "anthropic", body: unknown): Mode
 		text = block?.text;
 	}
 	if (!text) throw new PipelineError("the model returned no text");
-	let parsed: unknown;
 	try {
-		parsed = JSON.parse(text);
+		return JSON.parse(text);
 	} catch {
 		throw new PipelineError("the model's answer is not JSON");
 	}
-	const ok = OUTPUT.safeParse(parsed);
+}
+
+/** The model's JSON, or a PipelineError that says why there is none. */
+export function readReply(provider: "openai" | "anthropic", body: unknown): ModelOutput {
+	return fitOutput(replyJson(provider, body));
+}
+
+function fitOutput(json: unknown): ModelOutput {
+	const ok = OUTPUT.safeParse(json);
 	if (!ok.success) throw new PipelineError("the model's answer does not fit the schema");
 	return ok.data;
 }
 
-export async function askModel(c: ModelConfig, p: PageInput): Promise<ModelOutput> {
-	const { url, init } = buildRequest(c, p);
-	const res = await request(url, { ...init, timeoutMs: 120_000 });
+/** The raw JSON the model answers a chat with; the caller checks its shape. */
+export async function askJson(c: ModelConfig, chat: Chat): Promise<unknown> {
+	const { url, init } = chatRequest(c, chat);
+	const res = await request(url, { ...init, timeoutMs: ASK_TIMEOUT_MS });
 	let body: unknown;
 	try {
 		body = await res.json();
 	} catch {
 		throw new PipelineError("the model server's answer is not JSON");
 	}
-	return readReply(c.provider as "openai" | "anthropic", body);
+	return replyJson(c.provider as "openai" | "anthropic", body);
+}
+
+export async function askModel(c: ModelConfig, p: PageInput): Promise<ModelOutput> {
+	return fitOutput(await askJson(c, extraction(p)));
 }
 
 const collapse = (s: string) => s.replace(/\s+/g, " ").trim();

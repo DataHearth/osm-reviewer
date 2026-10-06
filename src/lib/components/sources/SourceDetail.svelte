@@ -5,7 +5,7 @@
 import Bar from "$lib/components/Bar.svelte";
 import MetricTiles from "$lib/components/MetricTiles.svelte";
 import RunButton from "$lib/components/RunButton.svelte";
-import { num } from "$lib/format";
+import { INERT_BTN, num } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
 
@@ -24,8 +24,18 @@ const streak = $derived.by(() => {
 });
 const lastOk = $derived(s.runs.find((r) => r.result.startsWith("ok")));
 
+const renameCols =
+	"grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-2.5 lg:grid-cols-[192px_minmax(0,1fr)] lg:gap-x-3";
+const IGNORED_OPEN = 5;
 const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 </script>
+
+{#snippet renameRow(column: string, readAs: string, dim = false)}
+	<div class="{renameCols} items-baseline border-b border-line-faint px-4 py-2 text-[12.5px]">
+		<span class="truncate {dim ? 'text-faint' : 'text-ink-2'}" title={column}>{column}</span>
+		<span class="min-w-0 break-words {dim ? 'text-faint' : 'text-ink'}">{readAs}</span>
+	</div>
+{/snippet}
 
 <div>
 	<div class="flex flex-wrap items-center justify-between gap-5 border-b border-line bg-bar px-[18px] py-3">
@@ -131,6 +141,72 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 			<div class="px-4 py-[9px] text-[11px] text-faint">Enabling an area backfills the last 30 days on its next run.</div>
 		</div>
 	</div>
+
+	{#if s.columnMapping}
+		{@const cm = s.columnMapping}
+		<div class="border-b border-line-soft">
+			<div class="flex flex-wrap items-center justify-between gap-2 border-b border-line-soft px-4 py-[9px]">
+				<span class="font-sans text-[10.5px] tracking-[0.08em] text-muted">COLUMN MAPPING</span>
+				{#if cm.refusal}
+					<button class={INERT_BTN} disabled title={cm.refusal.reason}>rename again · {cm.refusal.label}</button>
+				{:else}
+					{#key s.id}
+						<RunButton label="rename again" name={s.name} running={s.running} watch={false} onrun={() => review.renameAgain(s)} />
+					{/key}
+				{/if}
+			</div>
+			<div class="grid grid-cols-[124px_minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 px-4 py-3 text-[12.5px] lg:grid-cols-[192px_minmax(0,1fr)]">
+				<span class="text-[11px] text-muted">mapping</span>
+				<span class="min-w-0 break-words text-ink">
+					{#if cm.title}
+						{cm.title} <span class="text-[12px] text-faint">{cm.mapping}</span>
+					{:else}
+						<span class="text-warn-ink">mapping {cm.mapping} is no longer shipped</span>
+					{/if}
+				</span>
+				<span class="text-[11px] text-muted">columns</span>
+				<span class="text-ink">
+					{#if cm.stored}
+						renamed by {cm.stored.model} · <span class="whitespace-nowrap">{cm.stored.madeAt}</span>
+					{:else if cm.origin === "shipped"}
+						shipped with the app{cm.shippedColumns ? ` · ${cm.shippedColumns} columns` : ""}
+					{:else}
+						<span class="text-faint">not read yet</span>
+					{/if}
+				</span>
+				{#if cm.renameRequested}
+					<span class="text-[11px] text-muted">pending</span>
+					<span class="text-warn-ink">renamed again on the next run</span>
+				{/if}
+			</div>
+			{#if cm.stored}
+				{@const st = cm.stored}
+				<div class="{renameCols} border-b border-line-faint px-4 py-[7px] font-sans text-[10.5px] tracking-[0.07em] text-faint">
+					<span>COLUMN</span><span>READ AS</span>
+				</div>
+				{#each st.renamed as [column, input] (column)}
+					{@render renameRow(column, input)}
+				{/each}
+				{#each st.steps as [column, step, as] (column)}
+					{@render renameRow(column, `step ${step}, as ${as}`)}
+				{/each}
+				{#if st.ignored.length > 0}
+					<details class="group m-disclose" open={st.ignored.length <= IGNORED_OPEN}>
+						<summary class="flex cursor-pointer list-none items-center gap-2 border-b border-line-faint px-4 py-2 text-[12px] text-muted [&::-webkit-details-marker]:hidden">
+							<span class="shrink-0 text-[11px] text-faint m-turn group-open:rotate-90">›</span>
+							{st.ignored.length} ignored
+						</summary>
+						{#each st.ignored as [column, reason] (column)}
+							{@render renameRow(column, `ignored — ${reason}`, true)}
+						{/each}
+					</details>
+				{/if}
+				<div class="px-4 py-[9px] text-[11px] text-faint">
+					Made for exactly these {st.columns} columns; a read with another list is renamed again.
+				</div>
+			{/if}
+		</div>
+	{/if}
 
 	<div>
 		<div class="border-b border-line-soft px-4 py-[9px] font-sans text-[10.5px] tracking-[0.08em] text-muted">RECENT RUNS</div>

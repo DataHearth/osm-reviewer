@@ -24,6 +24,8 @@ export const E2E_ENV = {
 	// Nothing in the suite may leave the machine: no scheduler, no boot-time fetch.
 	PIPELINE_ENABLED: "false",
 	OSM_CLIENT_ID: "",
+	LLM_PROVIDER: "",
+	LLM_MODEL: "",
 	OSM_URL: "http://127.0.0.1:9",
 	OVERPASS_URL: "http://127.0.0.1:9",
 	NOMINATIM_URL: "http://127.0.0.1:9",

@@ -1,4 +1,4 @@
-import { renameRow } from "../mapping/compile";
+import { type Program, renameRow } from "../mapping/compile";
 import { evaluate } from "../mapping/evaluate";
 import { programFor } from "../mapping/files";
 import type { Preset } from "../preset";
@@ -140,10 +140,12 @@ const withAliases = (r: Row): Row =>
 		Object.entries(ALIASES).map(([column, old]) => [column, str(r, column, old)]),
 	) as Row;
 
-/** Annuaire de l'éducation. */
-export const education: Preset = {
+const build = (programOf: () => Program): Preset => ({
 	id: "annuaire-education",
 	label: "Annuaire de l'éducation",
+	withProgram: (program) => build(() => program),
+	mapping: "FR:school",
+	source: SOURCE,
 	keyField: "identifiant_de_l_etablissement",
 	detect: (c) => c.includes("identifiant_de_l_etablissement") && c.includes("nom_etablissement"),
 	key: (r) => str(r, "identifiant_de_l_etablissement") || null,
@@ -155,7 +157,7 @@ export const education: Preset = {
 		const pos = education.position(r);
 		const key = education.key(r);
 		if (!pos || !key || housedSection(r, rowsOf)) return null;
-		const program = programFor(SOURCE);
+		const program = programOf();
 		const given = { ...r, ...withAliases(r) };
 		const inputs = renameRow(
 			program,
@@ -221,4 +223,7 @@ export const education: Preset = {
 			withheld: withheld(r, tags),
 		};
 	},
-};
+});
+
+/** Annuaire de l'éducation. */
+export const education = build(() => programFor(SOURCE));

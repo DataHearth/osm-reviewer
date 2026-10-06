@@ -23,27 +23,29 @@ const genericReader: Reader = {
 	position: findCoords,
 };
 
-function presetReader(p: Preset): Reader {
+export function presetReader(p: Preset): Reader {
 	return { preset: p, key: (r) => p.key(r), position: (r) => p.position(r), keyField: p.keyField };
 }
 
 /**
- * The deterministic extractor needs a preset: the one the operator named, else the one
- * whose columns the data carries. Neither is a failed run, not a guess.
+ * The preset the operator named, by its id or its mapping's, else the one whose columns the
+ * data carries. Neither is a failed run, not a guess.
  */
-export function readerFor(
-	source: { extractor: "deterministic" | "model"; preset: string | null },
-	columns: string[],
-): Reader {
-	if (source.extractor === "model") return genericReader;
-	const named = presetById(source.preset);
-	if (named) return presetReader(named);
-	const found = detectPreset(columns);
-	if (found) return presetReader(found);
+export function presetFor(source: { preset: string | null }, columns: string[]): Preset {
+	const found = presetById(source.preset) ?? detectPreset(columns);
+	if (found) return found;
 	throw new PipelineError(
 		"no preset matches these fields (" +
 			columns.slice(0, 6).join(", ") +
 			(columns.length > 6 ? ", …" : "") +
-			"): name a preset or use the model extractor",
+			"): point the source at a mapping or use the model extractor",
 	);
+}
+
+/** The deterministic extractor needs a preset; the model extractor reads whatever it is given. */
+export function readerFor(
+	source: { extractor: "deterministic" | "model"; preset: string | null },
+	columns: string[],
+): Reader {
+	return source.extractor === "model" ? genericReader : presetReader(presetFor(source, columns));
 }

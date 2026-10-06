@@ -1,6 +1,7 @@
 import { type AreaShape, areaBox } from "./geo";
-import { DOWNLOAD_TIMEOUT_MS, getJson, ndjson, request } from "./http";
-import { type Reader, readerFor } from "./reader";
+import { DOWNLOAD_TIMEOUT_MS, getJson, ndjson, peek, request } from "./http";
+import type { Reader } from "./reader";
+import { type Resolves, SAMPLE_ROWS, unaided } from "./renaming";
 import { PipelineError, type Row } from "./types";
 
 export interface ApiSource {
@@ -41,10 +42,10 @@ const geoField = (fields: Field[]) =>
  * and a skipped record would be swept as gone. Ordered by the reader's key, a record's rows
  * sit together, so a key is never skipped whole even where rows tie.
  */
-function orderField(source: ApiSource, fields: Field[]): string | null {
+function orderField(readers: Resolves, fields: Field[]): string | null {
 	const names = fields.map((f) => f.name);
 	try {
-		const key = readerFor(source, names).keyField;
+		const key = readers.keyColumn(names);
 		return key && names.includes(key) ? key : null;
 	} catch {
 		return null;
@@ -68,25 +69,29 @@ export interface ApiResult {
 }
 
 /** Records inside one area, keyed by the reader's key. Pages while it can, exports when the area is too big to page. */
-export async function readApiArea(source: ApiSource, area: AreaShape): Promise<ApiResult> {
+export async function readApiArea(
+	source: ApiSource,
+	area: AreaShape,
+	readers: Resolves = unaided(source),
+): Promise<ApiResult> {
 	const headers: Record<string, string> = source.apiKey
 		? { authorization: `Apikey ${source.apiKey}` }
 		: {};
 	const base = datasetBase(source.endpoint);
 	const fields = await datasetFields(base, headers);
 	const where = whereClause(geoField(fields), area);
-	const order = orderField(source, fields);
+	const order = orderField(readers, fields);
 	const orderBy = order ? `&order_by=${encodeURIComponent(order)}` : "";
 
 	const rows = new Map<string, Row[]>();
 	let fetched = 0;
 	let skipped = 0;
 	let rd: Reader | null = null;
-	const take = (row: Row) => {
+	const take = (row: Row, read: Reader) => {
 		fetched += 1;
-		rd ??= readerFor(source, Object.keys(row));
-		const key = rd.key(row);
-		if (!key || !rd.position(row)) {
+		readers.late(row);
+		const key = read.key(row);
+		if (!key || !read.position(row)) {
 			skipped += 1;
 			return;
 		}
@@ -113,10 +118,17 @@ export async function readApiArea(source: ApiSource, area: AreaShape): Promise<A
 				timeoutMs: DOWNLOAD_TIMEOUT_MS,
 			});
 			if (!res.body) throw new PipelineError("the export answered with no body");
-			for await (const row of ndjson<Row>(res.body)) take(row);
+			const { head, all } = await peek(ndjson<Row>(res.body), SAMPLE_ROWS);
+			if (head.length > 0) {
+				rd = await readers.resolve(head);
+				for await (const row of all) take(row, rd);
+			}
 			break;
 		}
-		for (const row of page.results) take(row);
+		if (page.results.length > 0) {
+			rd = await readers.resolve(page.results.slice(0, SAMPLE_ROWS));
+			for (const row of page.results) take(row, rd);
+		}
 		if (page.results.length < PAGE || offset + PAGE >= total) break;
 	}
 	return { rows, reader: rd, fetched, skipped };

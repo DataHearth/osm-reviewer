@@ -1,7 +1,8 @@
 import { deserialize } from "$app/forms";
 import { invalidateAll } from "$app/navigation";
 
-export type PostResult = { ok: true } | { ok: false; message: string };
+/** `message` on success is the action's own answer, for a request it took but did not start anything for. */
+export type PostResult = { ok: true; message?: string } | { ok: false; message: string };
 
 /**
  * A write behind a control that is already a plain button — a checkbox, a slider,
@@ -25,9 +26,9 @@ export async function post(
 	if (result.type === "error")
 		return { ok: false, message: result.error?.message ?? "request failed" };
 	await invalidateAll();
-	if (result.type === "failure") {
-		const form = result.data?.form as { message?: string } | undefined;
-		return { ok: false, message: form?.message ?? "rejected" };
-	}
-	return { ok: true };
+	const form = (result.type === "redirect" ? undefined : result.data?.form) as
+		| { message?: string }
+		| undefined;
+	if (result.type === "failure") return { ok: false, message: form?.message ?? "rejected" };
+	return { ok: true, message: form?.message };
 }

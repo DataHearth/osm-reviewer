@@ -2,8 +2,9 @@ import { Readable } from "node:stream";
 import { parse } from "csv-parse";
 import { datasetFile } from "./fr/datagouv";
 import { type AreaShape, inArea } from "./geo";
-import { DOWNLOAD_TIMEOUT_MS, ndjson, request } from "./http";
-import { type Reader, readerFor } from "./reader";
+import { DOWNLOAD_TIMEOUT_MS, ndjson, peek, request } from "./http";
+import type { Reader } from "./reader";
+import { type Resolves, SAMPLE_ROWS, unaided } from "./renaming";
 import { PipelineError, type Row } from "./types";
 
 export interface RegistrySource {
@@ -86,6 +87,7 @@ export async function readRegistry(
 	areas: ({ id: string } & AreaShape)[],
 	state: RegistryState,
 	force: boolean,
+	readers: Resolves = unaided(source),
 ): Promise<RegistryResult> {
 	const headers: Record<string, string> = source.apiKey
 		? { authorization: `Apikey ${source.apiKey}` }
@@ -123,7 +125,7 @@ export async function readRegistry(
 	const lines =
 		/ndjson|jsonl/i.test(res.headers.get("content-type") ?? "") ||
 		/\.(jsonl|ndjson)(\?|$)/.test(file.url);
-	const rows = lines
+	const stream = lines
 		? ndjson<Row>(res.body)
 		: csvRows(res.body, () => {
 				skipped += 1;
@@ -133,21 +135,26 @@ export async function readRegistry(
 	let reader: Reader | null = null;
 	let scanned = 0;
 	try {
-		for await (const row of rows) {
-			reader ??= readerFor(source, Object.keys(row));
-			scanned += 1;
-			const pos = reader.position(row);
-			const key = reader.key(row);
-			if (!pos || !key) {
-				skipped += 1;
-				continue;
-			}
-			for (const a of areas) {
-				if (!inArea(a, pos[0], pos[1])) continue;
-				const group = byArea.get(a.id) as Map<string, Row[]>;
-				const rowsOfKey = group.get(key);
-				if (rowsOfKey) rowsOfKey.push(row);
-				else group.set(key, [row]);
+		const { head, all } = await peek(stream, SAMPLE_ROWS);
+		const read = head.length > 0 ? await readers.resolve(head) : null;
+		reader = read;
+		if (read) {
+			for await (const row of all) {
+				scanned += 1;
+				if (lines) readers.late(row);
+				const pos = read.position(row);
+				const key = read.key(row);
+				if (!pos || !key) {
+					skipped += 1;
+					continue;
+				}
+				for (const a of areas) {
+					if (!inArea(a, pos[0], pos[1])) continue;
+					const group = byArea.get(a.id) as Map<string, Row[]>;
+					const rowsOfKey = group.get(key);
+					if (rowsOfKey) rowsOfKey.push(row);
+					else group.set(key, [row]);
+				}
 			}
 		}
 	} catch (err) {
