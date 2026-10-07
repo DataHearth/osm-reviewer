@@ -2,7 +2,7 @@ import { OSM_MAX } from "$lib/changeset";
 import type { TagFunction } from "../mapping/evaluate";
 import { openingHours, truthy } from "../row";
 import { normaliseName, tokens } from "../text";
-import { company } from "./irve-declarations";
+import { company, NOT_A_POINT } from "./irve-declarations";
 import { defaultSite, has, type In, type Site } from "./irve-site";
 import { readSockets } from "./irve-sockets";
 import { digits, mobileFR, phoneFR } from "./text";
@@ -102,20 +102,27 @@ const capacity: TagFunction = (_, rows, site) => {
 const sockets: TagFunction = (_, rows, site) => readSockets(rows, siteOf(rows, site)).sockets;
 
 const pool: TagFunction = (_, rows, site) => {
-	const stations = siteOf(rows, site)
-		.current.map((s) => s.id)
-		.filter(Boolean);
+	const { current, declared } = siteOf(rows, site);
+	const stations = current.map((s) => s.id).filter(Boolean);
 	const pools = [...new Set(stations.map(poolId).filter((v) => v !== null))].join(";");
+	// Every id ever declared here, a station since declared again included: a mapper may have
+	// copied any of them.
+	const known = [
+		...new Set(
+			declared.flatMap((r) =>
+				[r.station_id, r.point_id].filter((id) => id && !NOT_A_POINT.test(id)),
+			),
+		),
+	].join(";");
 	// A mapper's pool id is often finer than the registry's (PLYON13011 under PLYON130), and
 	// matching already reads both, so a differing id is never overwritten.
-	return pools && pools.length <= OSM_MAX
-		? {
-				"ref:EU:EVSE": {
-					value: pools,
-					evidence: { input: "station_id", shown: stations.join(";") },
-				},
-			}
-		: {};
+	return {
+		"ref:EU:EVSE": {
+			value: pools && pools.length <= OSM_MAX ? pools : "",
+			ref: known,
+			evidence: { input: "station_id", shown: stations.join(";") },
+		},
+	};
 };
 
 const hours: TagFunction = (_, rows, site) => {

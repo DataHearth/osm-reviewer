@@ -33,6 +33,12 @@ record:
     !(postbac || medico) && (kind == "" ||
     kind.imatches("^(service administratif|information et orientation)$") || nature_code == "809")
   closed: 'state.imatches("^ferm")'
+  address: 'streetQuery(street, address_line_2 + " " + address_line_3, postcode, city)'
+  # A school's grounds can stretch a few hundred metres from its gate.
+  farM: 1000
+  pick: nearest
+  tieBreak: name
+  withheld: [phone, email]
 
 let:
   postbac: 'nature_code == "400"'
@@ -71,9 +77,11 @@ tags:
   ref:UAI:
     value: id
     conf: 0.98
+    ref: true
   ref:FR:SIRET:
     value: 'siret14.matches(r"^\d{14}$") ? siret14 : ""'
     conf: 0.95
+    ref: true
   phone:
     value: 'mobile(phoneFr) ? "" : phoneFr'
     conf: 0.85

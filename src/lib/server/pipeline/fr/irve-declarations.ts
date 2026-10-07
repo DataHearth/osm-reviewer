@@ -206,9 +206,13 @@ export function stationPosition(r: Row): [number, number] | null {
 	return c ? coord(c[0], c[1]) : null;
 }
 
+/** What two records on one spot under one operator share, as the mapping's key for a row naming no station reads it too. */
+export const siteOf = (pos: [number, number], operator: string) =>
+	`${pos[0].toFixed(6)},${pos[1].toFixed(6)}|${company(operator)}`;
+
 export function stationSite(r: Row): string | null {
 	const pos = stationPosition(r);
-	return pos ? `${pos[0].toFixed(6)},${pos[1].toFixed(6)}|${operatorOf(r)}` : null;
+	return pos ? siteOf(pos, str(r, "nom_operateur") || str(r, "nom_amenageur")) : null;
 }
 
 export function stationKey(r: Row): string | null {

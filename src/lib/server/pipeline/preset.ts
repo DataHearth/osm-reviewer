@@ -1,5 +1,6 @@
 import { distance } from "./geo";
-import type { Program } from "./mapping/compile";
+import { inputsOf, type Program } from "./mapping/compile";
+import { type Head, readRecord } from "./mapping/record";
 import { str } from "./row";
 import type { Extraction, ProposedTag, Row } from "./types";
 
@@ -17,6 +18,8 @@ export interface Preset {
 	detect(columns: string[]): boolean;
 	key(row: Row): string | null;
 	position(row: Row): [number, number] | null;
+	/** The mapping says this row is not a place: it is dropped from the read, and not counted as unreadable. */
+	skip(row: Row): boolean;
 	/**
 	 * `rows` are every row that shares the key; `url` is the record's own address; `gaps`, for
 	 * a key at several sites, how far each row's address lies from its point (`addressGaps`);
@@ -40,6 +43,32 @@ export interface Preset {
 	 * every row of the record `row` belongs to.
 	 */
 	link?(row: Row, record: Row[]): SiteLink[];
+}
+
+/**
+ * A row's key, position, skip and address line as the program's `record` block reads them. A
+ * row is renamed and read once, however many of them are asked for. The address is asked for
+ * only where the mapping picks among the rows of a key by it.
+ */
+export function readingOf(
+	programOf: () => Program,
+): Pick<Preset, "key" | "position" | "skip" | "siteQuery"> {
+	const heads = new WeakMap<Row, Head>();
+	const head = (row: Row) => {
+		let known = heads.get(row);
+		if (!known) {
+			const program = programOf();
+			known = readRecord(program, inputsOf(program, row));
+			heads.set(row, known);
+		}
+		return known;
+	};
+	return {
+		key: (row) => head(row).key,
+		position: (row) => head(row).position,
+		skip: (row) => head(row).skip,
+		siteQuery: (row) => (programOf().record.pick ? head(row).address || null : null),
+	};
 }
 
 /** What a country's address base answers. */

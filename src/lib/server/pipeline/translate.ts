@@ -40,6 +40,7 @@ export function translated(base: Preset, native: ReadonlyMap<string, string>): P
 		keyField: back.get(base.keyField) ?? base.keyField,
 		key: (row) => base.key(to(row)),
 		position: (row) => base.position(to(row)),
+		skip: (row) => base.skip(to(row)),
 		siteQuery: base.siteQuery && ((row) => base.siteQuery?.(to(row)) ?? null),
 		site: base.site && ((row) => base.site?.(to(row)) ?? null),
 		link: base.link && ((row, record) => base.link?.(to(row), record.map(to)) ?? []),

@@ -10,6 +10,8 @@ export interface Reader {
 	preset: Preset | null;
 	key(row: Row): string | null;
 	position(row: Row): [number, number] | null;
+	/** Rows the mapping says are not places, dropped from the read. */
+	skip(row: Row): boolean;
 	/** The preset's key column, if any, so a record can be looked up again. */
 	keyField: string | null;
 }
@@ -21,10 +23,17 @@ const genericReader: Reader = {
 	keyField: null,
 	key: (r) => str(r, "id", "recordid", "record_id", ...ID_FIELDS) || `h:${hash(JSON.stringify(r))}`,
 	position: findCoords,
+	skip: () => false,
 };
 
 export function presetReader(p: Preset): Reader {
-	return { preset: p, key: (r) => p.key(r), position: (r) => p.position(r), keyField: p.keyField };
+	return {
+		preset: p,
+		key: (r) => p.key(r),
+		position: (r) => p.position(r),
+		skip: (r) => p.skip(r),
+		keyField: p.keyField,
+	};
 }
 
 /**

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { COUNTRIES, inCountry } from "../fr/country";
 import { coord, str } from "../row";
 import type { Row } from "../types";
-import { compile } from "./compile";
+import { compile, type Program } from "./compile";
 import type { Mapping, Renaming } from "./schema";
 
 /** A column renaming a model made: which column of a source is which input of a mapping. */
@@ -126,13 +126,17 @@ const FIT = 0.5;
 
 const list = (xs: string[]) => xs.map((x) => `"${x}"`).join(", ");
 const declares = (mapping: Mapping, input: string) => Object.hasOwn(mapping.inputs, input);
-const plain = (expression: string, mapping: Mapping) =>
-	declares(mapping, expression) ? expression : null;
+/** The one input a rule reads, where it reads exactly one. */
+const soleInput = (names: ReadonlySet<string>, mapping: Mapping) => {
+	const inputs = [...names].filter((n) => declares(mapping, n));
+	return inputs.length === 1 ? inputs[0] : null;
+};
 const record = <T>() => Object.create(null) as Record<string, T>;
 
 function valueProblems(
 	{ mapping, sample }: RenameContext,
 	rename: Record<string, string>,
+	program: Program,
 ): string[] {
 	const country = COUNTRIES[mapping.id.split(":")[0]];
 	if (!country) return [];
@@ -149,8 +153,8 @@ function valueProblems(
 			);
 	}
 
-	const latInput = plain(mapping.record.lat, mapping);
-	const lonInput = plain(mapping.record.lon, mapping);
+	const latInput = soleInput(program.record.lat.names, mapping);
+	const lonInput = soleInput(program.record.lon.names, mapping);
 	const latColumn = latInput && columnOf.get(latInput);
 	const lonColumn = lonInput && columnOf.get(lonInput);
 	if (latColumn && lonColumn) {
@@ -271,6 +275,6 @@ export function checkAnswer(
 		problems.push(
 			`no column was renamed to ${list(absent)}, which ${mapping.id} needs to key and place a record`,
 		);
-	problems.push(...valueProblems(ctx, renaming.rename));
+	problems.push(...valueProblems(ctx, renaming.rename, program));
 	return problems.length > 0 ? { problems } : { renaming };
 }

@@ -95,6 +95,7 @@ export async function readApiArea(
 			skipped += 1;
 			return;
 		}
+		if (read.skip(row)) return;
 		const group = rows.get(key);
 		if (group) group.push(row);
 		else rows.set(key, [row]);

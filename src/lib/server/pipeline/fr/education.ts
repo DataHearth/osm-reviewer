@@ -1,15 +1,14 @@
-import { type Program, renameRow } from "../mapping/compile";
+import { inputsOf, type Program } from "../mapping/compile";
 import { evaluate } from "../mapping/evaluate";
 import { programFor } from "../mapping/files";
-import type { Preset } from "../preset";
+import { closedEvidence, pickRow } from "../mapping/record";
+import { type Preset, readingOf } from "../preset";
 import { findCoords, str } from "../row";
 import type { ProposedTag, Row } from "../types";
 import { addressBase } from "./ban";
 import { functions } from "./functions";
-import { MAILBOX } from "./mailbox";
-import { SCHOOL_FAR_M, schoolAddress } from "./school-address";
 import { alsoAtOtherSites } from "./school-sites";
-import { fold, phoneFR } from "./text";
+import { fold } from "./text";
 
 const SOURCE = "fr/annuaire-education";
 
@@ -53,23 +52,6 @@ function housedSection(r: Row, rowsOf?: (key: string) => Row[] | undefined): boo
 /** Two rows of a UAI at one address and point are the directory repeating itself, not two sites. */
 const placeOf = (r: Row) =>
 	[fold(str(r, "adresse_1")), str(r, "code_postal"), findCoords(r)?.join(",")].join("|");
-
-/** Addresses this close to the point are one site as far as the point can tell. */
-const ONE_ADDRESS_M = 100;
-
-/**
- * One UAI over several sites comes as several rows, each at the one point the directory has
- * for the UAI: the main site is the one whose address is at that point. Where the address
- * base cannot tell, the main row carries the plain name and its annexes a suffix ("Collège
- * Michelet - annexe", "… - Site St Didier").
- */
-function mainSite(rows: Row[], gaps?: Map<Row, number>): Row {
-	const gap = (r: Row) => gaps?.get(r) ?? Number.POSITIVE_INFINITY;
-	const nearest = Math.min(...rows.map(gap));
-	return rows
-		.filter((r) => gap(r) <= nearest + ONE_ADDRESS_M || nearest === Number.POSITIVE_INFINITY)
-		.sort((a, b) => str(a, "nom_etablissement").length - str(b, "nom_etablissement").length)[0];
-}
 
 interface Quote {
 	field: string;
@@ -125,16 +107,6 @@ function quoted(key: string, r: Row): Pick<ProposedTag, "path" | "kind" | "parts
 	};
 }
 
-/** What the source gave and no tag carries: a mobile number, a mailbox that reads as a person's. */
-function withheld(r: Row, tags: ProposedTag[]): number {
-	const has = (k: string) => tags.some((t) => t.k === k);
-	const mail = str(r, "mail");
-	return (
-		(phoneFR(str(r, "telephone")) && !has("phone") ? 1 : 0) +
-		(MAILBOX.test(mail) && !has("email") ? 1 : 0)
-	);
-}
-
 const withAliases = (r: Row): Row =>
 	Object.fromEntries(
 		Object.entries(ALIASES).map(([column, old]) => [column, str(r, column, old)]),
@@ -148,23 +120,16 @@ const build = (programOf: () => Program): Preset => ({
 	source: SOURCE,
 	keyField: "identifiant_de_l_etablissement",
 	detect: (c) => c.includes("identifiant_de_l_etablissement") && c.includes("nom_etablissement"),
-	key: (r) => str(r, "identifiant_de_l_etablissement") || null,
-	position: (r) => findCoords(r),
+	...readingOf(programOf),
 	address: addressBase,
-	siteQuery: (r) => schoolAddress(r)?.query ?? null,
 	extract(rows, url, gaps, rowsOf) {
-		const r = mainSite(rows, gaps);
-		const pos = education.position(r);
-		const key = education.key(r);
-		if (!pos || !key || housedSection(r, rowsOf)) return null;
 		const program = programOf();
-		const given = { ...r, ...withAliases(r) };
-		const inputs = renameRow(
-			program,
-			Object.fromEntries([...program.rename.keys()].map((column) => [column, str(given, column)])),
-		);
+		const toInputs = (row: Row) => inputsOf(program, { ...row, ...withAliases(row) });
+		const r = pickRow(program, rows, toInputs, gaps);
+		if (housedSection(r, rowsOf)) return null;
+		const inputs = toInputs(r);
 		const made = evaluate(program, [inputs], functions);
-		if (!made) return null;
+		if (!made?.position || !made.key) return null;
 
 		const name = made.tags.find((t) => t.key === "name")?.value ?? "";
 		const tags: ProposedTag[] = made.tags.map((t) => ({
@@ -177,13 +142,10 @@ const build = (programOf: () => Program): Preset => ({
 		}));
 		alsoAtOtherSites(tags, rows, r);
 
-		const siret = str(r, "siren_siret", "numero_siren_siret").replace(/\s/g, "");
-		const at = schoolAddress(r);
 		const places = new Set(rows.map(placeOf)).size;
 		const precision = str(r, "precision_localisation");
-		const state = str(r, "etat", "etat_etablissement");
 		return {
-			key,
+			key: made.key,
 			url,
 			name,
 			addr: [
@@ -192,22 +154,10 @@ const build = (programOf: () => Program): Preset => ({
 			]
 				.filter(Boolean)
 				.join(", "),
-			lat: pos[0],
-			lon: pos[1],
-			closedBy: made.closed
-				? {
-						path: "etat",
-						kind: "dataset row",
-						parts: [
-							{ text: "etat: ", mark: false },
-							{ text: state, mark: true },
-						],
-					}
-				: undefined,
-			refs: { "ref:UAI": key, ...(siret.length === 14 ? { "ref:FR:SIRET": siret } : {}) } as Record<
-				string,
-				string
-			>,
+			lat: made.position[0],
+			lon: made.position[1],
+			closedBy: made.closed ? closedEvidence(program, inputs) : undefined,
+			refs: made.refs,
 			tags,
 			notes: [
 				...(places > 1
@@ -219,8 +169,8 @@ const build = (programOf: () => Program): Preset => ({
 					? [`The directory places it only to the precision of: ${precision}`]
 					: []),
 			],
-			geocode: at ? { q: at.query, farM: SCHOOL_FAR_M } : undefined,
-			withheld: withheld(r, tags),
+			geocode: made.geocode,
+			withheld: made.withheld,
 		};
 	},
 });

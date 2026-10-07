@@ -1,5 +1,8 @@
+import { COUNTRIES } from "../fr/country";
+import { MAILBOX } from "../fr/mailbox";
 import { coord } from "../row";
 import type { Program } from "./compile";
+import { scopeOf } from "./record";
 
 export interface EvaluatedTag {
 	key: string;
@@ -14,6 +17,8 @@ export interface EvaluatedTag {
 	evidence?: Evidence;
 	/** The mapping inputs the rule read; `Program.columnOf` names the columns they came from. */
 	reads: string[];
+	/** The inputs the evidence shows instead of `reads`, when the tag names some. */
+	quote?: string[];
 }
 
 /** An input the value was read from, what to show of it where it is not the input's own text, and how it was got. */
@@ -23,12 +28,24 @@ export interface Evidence {
 	kind?: string;
 }
 
-/** What a function may say about one tag beyond its value: where a record's tags differ in trust or evidence. */
+/**
+ * What a function may say about one tag beyond its value: where a record's tags differ in trust or
+ * evidence, and what it found about the record that no tag carries. An answer with an empty
+ * value proposes no tag but its `ref`, `absent`, `fit` and `notes` still count.
+ */
 export interface Answer {
 	value: string;
 	conf?: number;
 	addOnly?: boolean;
 	evidence?: Evidence;
+	/** For a `ref` tag, the identifiers to match on where they are not the tag's own value. */
+	ref?: string;
+	/** Keys the source rules out: an object still carrying one is shown to the reviewer, not edited. */
+	absent?: string[];
+	/** Counts the source lists but does not propose, weighed only when telling which object is the place. */
+	fit?: { k: string; v: string }[];
+	/** Lines for the reviewer, after the mapping's own. */
+	notes?: string[];
 }
 
 export interface Evaluated {
@@ -37,6 +54,14 @@ export interface Evaluated {
 	closed: boolean;
 	tags: EvaluatedTag[];
 	notes: string[];
+	/** Each `ref` tag's key and the identifiers it matches on. */
+	refs: Record<string, string>;
+	absent: string[];
+	fit: { k: string; v: string }[];
+	/** Where to ask the address base about the record, and how far its point may sit from the answer. */
+	geocode?: { q: string; farM: number; wrongM?: number };
+	/** How many of `record.withheld`'s inputs read as a phone number or a mailbox and reach no tag. */
+	withheld: number;
 }
 
 /**
@@ -61,25 +86,17 @@ export function evaluate(
 	if (given.length > 1 && !program.grouped) {
 		throw new Error(`${program.id} has no record.groupBy, so a record is one row`);
 	}
-	const rows = given.map((row) =>
-		Object.fromEntries(program.inputs.map((input) => [input, row[input] ?? ""])),
-	);
-	const context: Record<string, unknown> = { ...rows[0] };
-	if (program.grouped) context.rows = rows;
-
-	const run = (check: { run: (c: Record<string, unknown>) => unknown }, where: string) => {
-		try {
-			return check.run(context);
-		} catch (error) {
-			throw new Error(`${program.id} ${where}: ${(error as Error).message.split("\n")[0]}`);
-		}
-	};
+	const { rows, context, run } = scopeOf(program, given);
 
 	for (const { name, check } of program.lets) context[name] = run(check, `let.${name}`);
 	const { record } = program;
 	if (record.skip && run(record.skip, "record.skip")) return null;
 
 	const tags: EvaluatedTag[] = [];
+	const refs: Record<string, string> = {};
+	const absent: string[] = [];
+	const fit: { k: string; v: string }[] = [];
+	const found: string[] = [];
 	for (const { key, tag, conf: compiledConf, value, fill, unless, reads } of program.tags) {
 		const made: Record<string, string | Answer | undefined> = value
 			? { [key]: String(run(value, `tags.${key}`)) }
@@ -96,8 +113,14 @@ export function evaluate(
 		const unlessValue = unless ? String(run(unless, `tags.${key}.unless.value`)) : null;
 		for (const [k, answer] of Object.entries(made)) {
 			if (answer === undefined) continue;
-			const given = typeof answer === "string" ? { value: answer } : answer;
-			if (given.value === "" || (!key.endsWith("*") && k !== key)) continue;
+			const given: Answer = typeof answer === "string" ? { value: answer } : answer;
+			if (!key.endsWith("*") && k !== key) continue;
+			absent.push(...(given.absent ?? []));
+			fit.push(...(given.fit ?? []));
+			found.push(...(given.notes ?? []));
+			const ref = given.ref ?? given.value;
+			if (tag.ref && ref !== "") refs[k] = ref;
+			if (given.value === "") continue;
 			tags.push({
 				key: k,
 				value: given.value,
@@ -109,15 +132,42 @@ export function evaluate(
 				mappedWithin: tag.mappedWithin,
 				group: tag.group,
 				reads,
+				...(tag.quote ? { quote: tag.quote } : {}),
 			});
 		}
 	}
+
+	const farM =
+		record.farM === null || typeof record.farM === "number"
+			? record.farM
+			: Number(run(record.farM, "record.farM"));
+	const address = record.address ? String(run(record.address, "record.address")) : "";
+	const reached = new Set(tags.flatMap((t) => t.reads));
+	const country = COUNTRIES[program.id.split(":")[0]];
+	const withheld = record.withheld.filter((input) => {
+		const v = rows[0][input];
+		return v !== "" && !reached.has(input) && (country?.phone(v) != null || MAILBOX.test(v));
+	}).length;
 
 	return {
 		key: String(run(record.key, "record.key")),
 		position: coord(run(record.lat, "record.lat"), run(record.lon, "record.lon")),
 		closed: record.closed ? !!run(record.closed, "record.closed") : false,
 		tags,
-		notes: program.notes.filter((n) => run(n.when, `notes.${n.text}`)).map((n) => n.text),
+		notes: [
+			...program.notes.filter((n) => run(n.when, `notes.${n.text}`)).map((n) => n.text),
+			...found,
+		],
+		refs,
+		absent,
+		fit,
+		geocode: address
+			? {
+					q: address,
+					farM: farM !== null && farM > 0 ? farM : Number.POSITIVE_INFINITY,
+					...(record.wrongM ? { wrongM: record.wrongM } : {}),
+				}
+			: undefined,
+		withheld,
 	};
 }

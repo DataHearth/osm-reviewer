@@ -148,6 +148,7 @@ export async function readRegistry(
 					skipped += 1;
 					continue;
 				}
+				if (read.skip(row)) continue;
 				for (const a of areas) {
 					if (!inArea(a, pos[0], pos[1])) continue;
 					const group = byArea.get(a.id) as Map<string, Row[]>;

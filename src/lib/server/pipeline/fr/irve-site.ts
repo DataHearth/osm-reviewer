@@ -135,7 +135,7 @@ export function readDeclarations(declared: Row[], toInputs: (r: Row) => In) {
 		keys: rows.map(stationKey),
 		recovered: [...own.keys()].filter((r) => !history.has(r)).length,
 	};
-	const inputs = rows.map((r) => ({
+	const inputs: In[] = rows.map((r) => ({
 		...toInputs(r),
 		free: said(r, "gratuit"),
 		tariff: said(r, "tarification"),

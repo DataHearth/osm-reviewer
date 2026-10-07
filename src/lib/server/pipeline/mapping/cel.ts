@@ -1,4 +1,5 @@
 import { Environment } from "@marcbachmann/cel-js";
+import { celFunctions } from "../fr/cel-functions";
 import { mobileFR, phoneFR } from "../fr/text";
 import { truthy, website } from "../row";
 
@@ -46,7 +47,7 @@ const receiver = (
 
 /** Patterns are JavaScript's, which rejects RE2 inline flags such as (?i); the library has no case-insensitive match or regex replace. */
 function baseEnvironment(): Environment {
-	return new Environment()
+	const env = new Environment()
 		.registerFunction("truthy(string): bool", (v: string) => truthy(v.trim()))
 		.registerFunction("website(string): string", (v: string) => website(v) ?? "")
 		.registerFunction("phone(string, string): string", (raw: string, country: string) =>
@@ -62,6 +63,8 @@ function baseEnvironment(): Environment {
 		.registerFunction(
 			receiver("replace", "string", ["from", "to"], (s, from, to) => s.replaceAll(from, to)),
 		);
+	for (const [signature, handler] of celFunctions) env.registerFunction(signature, handler);
+	return env;
 }
 
 /** The names a rule may read: the declared inputs, `rows` for a grouped record, and each `let` once checked. */

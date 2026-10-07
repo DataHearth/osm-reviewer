@@ -35,18 +35,33 @@ inputs:
   commissioning_date: the date the station went into service
   declared_on: the day this declaration of the station was made
   position_ok: yes/no, the publisher's own check of the coordinates
+  station_address: the station's address as its operator wrote it
+  postcode: the postcode the publisher consolidated
+  city: the commune the publisher consolidated
+  insee: the commune's INSEE code
   lat: latitude, WGS84
   lon: longitude, WGS84
 
+# Stations whose id says "non concerné" name no station: such a row is keyed by where it stands and who runs it.
 record:
-  key: station_id
+  key: 'unnamed ? (where != "" ? station_id + " " + where : "") : station_id'
   groupBy: station_id
-  lat: lat
-  lon: lon
-  skip: 'position_ok != "" && !truthy(position_ok)'
+  lat: 'pointOk ? lat : ""'
+  lon: 'pointOk ? lon : ""'
+  skip: '!pointOk'
+  address: 'station_address != "" ? addressQuery(stationAddress(station_address, postcode, city, insee), "", "") : ""'
+  # Operators place a station in its car park, often well away from its door, so only a coarse point
+  # (four decimals is 11 m) moves to its address; a precise one stays.
+  farM: 'coarse ? 100.0 : 0.0'
+  # Past this from a housenumber in its own postcode even a precise point is a mistyped one.
+  wrongM: 2000
 
 # `free` and `tariff` are each point's newest stated value, which the source's declarations step picks.
 let:
+  pointOk: 'position_ok == "" || truthy(position_ok)'
+  unnamed: 'station_id.imatches("^non concern")'
+  where: 'stationSite(lat, lon, operator_name != "" ? operator_name : owner_name)'
+  coarse: '!(lat.matches(r"\.\d{5,}$") && lon.matches(r"\.\d{5,}$"))'
   allFree: 'rows.all(r, truthy(r.free))'
   someNotFree: 'rows.exists(r, r.free != "" && !truthy(r.free))'
   statesPrice: 'rows.exists(r, r.tariff.imatches(r"\d\s*(€|eur|cts?\b)|€\s*\d") && !r.tariff.imatches("gratuit"))'
@@ -83,6 +98,7 @@ tags:
     reads: [station_id]
     conf: 0.95
     fill: true
+    ref: true
     rule: The station's pool id in the standard's spelling. A mapper's finer id is never overwritten.
   socket:*:
     function: any.charging_station/sockets

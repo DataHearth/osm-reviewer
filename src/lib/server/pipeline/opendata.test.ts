@@ -20,6 +20,7 @@ const source = {
 const school = (i: number) => ({
 	identifiant_de_l_etablissement: `U${i}`,
 	nom_etablissement: `Ecole ${i}`,
+	type_etablissement: "Collège",
 	latitude: 45.76,
 	longitude: 4.83,
 });

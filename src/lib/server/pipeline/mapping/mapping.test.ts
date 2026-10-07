@@ -6,6 +6,7 @@ import { parse } from "yaml";
 import { functions } from "../fr/functions";
 import { compile } from "./compile";
 import { evaluate } from "./evaluate";
+import { closedEvidence, pickRow, readRecord } from "./record";
 import { type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
 import { validate } from "./validate";
 
@@ -49,6 +50,210 @@ const official = {
 		allow: ["amenity", "fee"],
 	},
 };
+
+describe("the record block", () => {
+	const place = (record: Record<string, unknown>, over: Record<string, unknown> = {}) =>
+		mapping({
+			id: "FR:thing",
+			inputs: {
+				id: "its id",
+				note: "remarks",
+				state: "open or closed",
+				street: "its street",
+				phone: "its phone",
+				email: "its mailbox",
+				lat: "latitude",
+				lon: "longitude",
+			},
+			record: { key: "id", lat: "lat", lon: "lon", ...record },
+			tags: {
+				amenity: { value: '"thing"', conf: 0.9 },
+				misc: { value: "note + state + street", conf: 0.5 },
+				phone: { value: 'mobile(phone) ? "" : phone(phone, "33")', conf: 0.8 },
+				email: { value: 'email.matches("@ecole") ? email : ""', conf: 0.8 },
+			},
+			...over,
+		});
+
+	it("gives a geocode from the address, with a distance that may be a rule and 0 for never", () => {
+		const at = (record: Record<string, unknown>, o: Record<string, string> = {}) =>
+			evaluate(program(place({ address: 'street + ", Lyon"', ...record })), [row(o)])?.geocode;
+		expect(at({ farM: 1000 }, { street: "1 rue X" })).toEqual({ q: "1 rue X, Lyon", farM: 1000 });
+		expect(
+			at({ farM: 'note == "coarse" ? 100.0 : 0.0', wrongM: 2000 }, { note: "coarse" }),
+		).toEqual({
+			q: ", Lyon",
+			farM: 100,
+			wrongM: 2000,
+		});
+		expect(at({ farM: 'note == "coarse" ? 100.0 : 0.0' })?.farM).toBe(Number.POSITIVE_INFINITY);
+		expect(at({})?.farM).toBe(Number.POSITIVE_INFINITY);
+		expect(
+			evaluate(program(place({ address: 'street == "" ? "" : street' })), [row({})])?.geocode,
+		).toBeUndefined();
+	});
+
+	it("refuses a distance, a pick or a tie-break without what they belong to", () => {
+		const problems = (record: Record<string, unknown>) =>
+			compile(place(record)).problems.join("; ");
+		expect(problems({ farM: 100 })).toContain("record.farM: there is no record.address");
+		expect(problems({ wrongM: 100 })).toContain("record.wrongM: there is no record.address");
+		expect(problems({ pick: "nearest" })).toContain("record.pick: there is no record.address");
+		expect(problems({ address: "street", pick: "nearest", groupBy: "id" })).toContain(
+			"cannot also group",
+		);
+		expect(problems({ tieBreak: "note" })).toContain("record.tieBreak: there is no record.pick");
+		expect(problems({ withheld: ["nope"] })).toContain('record: "nope" is not an input');
+		expect(problems({ farM: "note", address: "street" })).toContain(
+			"gives string, expected double",
+		);
+	});
+
+	it("counts the phones and mailboxes it declares that reach no tag", () => {
+		const count = (o: Record<string, string>, withheld: string[] | null = ["phone", "email"]) =>
+			evaluate(program(place(withheld ? { withheld } : {})), [row(o)])?.withheld;
+		expect(count({ phone: "04 72 00 00 01", email: "contact@ecole.fr" })).toBe(0);
+		expect(count({ phone: "06 12 34 56 78", email: "someone@gmail.com" })).toBe(2);
+		expect(count({ phone: "06 12 34 56 78", email: "someone@gmail.com" }, null)).toBe(0);
+		expect(count({ phone: "not a number", email: "not a mailbox" })).toBe(0);
+	});
+
+	it("reads a row's key, point, skip and address with only the lets they need", () => {
+		const m = place(
+			{
+				key: 'prefixed ? "x" + id : id',
+				skip: 'note == "no"',
+				address: "street",
+			},
+			{ let: { prefixed: 'state == "open"', never: "double(note)" } },
+		);
+		const p = program(m);
+		expect(p.record.lets.map((l) => l.name)).toEqual(["prefixed"]);
+		expect(readRecord(p, row({ state: "open", street: "1 rue X", note: "no" }))).toEqual({
+			key: "xA",
+			position: [45, 5],
+			skip: true,
+			address: "1 rue X",
+		});
+		expect(readRecord(p, row({ id: "" })).key).toBeNull();
+	});
+
+	it("picks among a key's rows the one whose address is nearest, the shortest tie-break winning among equals", () => {
+		const p = program(place({ address: "street", pick: "nearest", tieBreak: "note" }));
+		const [main, annex, far] = [
+			{ id: "A", note: "Ecole" },
+			{ id: "A", note: "Ecole - annexe" },
+			{ id: "A", note: "Ecole - site" },
+		];
+		const pick = (gaps: [number, number, number]) =>
+			pickRow(
+				p,
+				[annex, main, far],
+				(r) => ({ ...r }),
+				new Map([
+					[main, gaps[0]],
+					[annex, gaps[1]],
+					[far, gaps[2]],
+				]),
+			);
+		expect(pick([40, 3000, 3000])).toBe(main);
+		expect(pick([3000, 50, 3000])).toBe(annex);
+		expect(pick([40, 90, 3000])).toBe(main);
+		expect(
+			pick([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]),
+		).toBe(main);
+		expect(pickRow(program(place({})), [annex, main], (r) => ({ ...r }))).toBe(annex);
+	});
+
+	it("quotes the inputs a closed rule read, with the column each came from", () => {
+		const p = program(place({ closed: 'state.imatches("^ferm")' }), {
+			format: 1,
+			source: "xx/own",
+			mapping: "FR:thing",
+			columns: ["etat"],
+			rename: { etat: "state" },
+		});
+		expect(closedEvidence(p, { state: "FERMÉ" })).toEqual({
+			path: "etat",
+			kind: "dataset row",
+			parts: [
+				{ text: "etat: ", mark: false },
+				{ text: "FERMÉ", mark: true },
+			],
+		});
+	});
+});
+
+describe("refs, quotes and what a function says about the record", () => {
+	it("puts a ref tag's value among the refs, or the identifiers its function answers with", () => {
+		const m = mapping({
+			tags: {
+				...mapping().tags,
+				"ref:A": { value: "id", conf: 0.9, ref: true },
+				"ref:B": { function: "any.thing/ids", reads: ["note"], conf: 0.9, ref: true },
+				"ref:C": { function: "any.thing/ids", reads: ["note"], conf: 0.9 },
+			},
+		});
+		const functions = {
+			"any.thing/ids": () => ({
+				"ref:B": { value: "", ref: "b1;b2" },
+				"ref:C": { value: "c", ref: "c1" },
+			}),
+		};
+		const made = evaluate(program(m), [row({ note: "n" })], functions);
+		expect(made?.refs).toEqual({ "ref:A": "A", "ref:B": "b1;b2" });
+		expect(made?.tags.map((t) => t.key)).toEqual(["amenity", "note", "ref:A", "ref:C"]);
+	});
+
+	it("counts a quoted input as read, and names one that is not an input", () => {
+		const base = {
+			inputs: { id: "its id", note: "remarks", lat: "latitude", lon: "longitude" },
+		};
+		const quoted = mapping({
+			...base,
+			tags: { amenity: { value: '"thing"', conf: 0.9, quote: ["note"] } },
+		});
+		const made = evaluate(program(quoted), [row({})]);
+		expect(made?.tags[0]).toMatchObject({ reads: [], quote: ["note"] });
+		const unread = mapping({ ...base, tags: { amenity: { value: '"thing"', conf: 0.9 } } });
+		expect(compile(unread).problems.join()).toContain('input "note" is read by nothing');
+		const unknown = mapping({
+			tags: { amenity: { value: '"thing"', conf: 0.9, quote: ["nope"] } },
+		});
+		expect(compile(unknown).problems.join()).toContain(
+			'tags.amenity.quote: "nope" is not an input',
+		);
+	});
+
+	it("collects what answers say of the record: keys ruled out, counts that fit, lines for the reviewer", () => {
+		const m = mapping({
+			tags: {
+				...mapping().tags,
+				"socket:*": { function: "any.thing/sockets", reads: ["note"], conf: 0.9 },
+			},
+			notes: [{ when: 'note == "x"', text: "The mapping's own line" }],
+		});
+		const functions = {
+			"any.thing/sockets": () => ({
+				"socket:a": "2",
+				"socket:b": {
+					value: "",
+					absent: ["socket:c"],
+					fit: [{ k: "socket:d", v: "1" }],
+					notes: ["Declared as 3"],
+				},
+			}),
+		};
+		const made = evaluate(program(m), [row({ note: "x" })], functions);
+		expect(made?.tags.map((t) => t.key)).toContain("socket:a");
+		expect(made?.tags.map((t) => t.key)).not.toContain("socket:b");
+		expect(made).toMatchObject({
+			absent: ["socket:c"],
+			fit: [{ k: "socket:d", v: "1" }],
+			notes: ["The mapping's own line", "Declared as 3"],
+		});
+	});
+});
 
 describe("compile", () => {
 	it("names a rule that reads something undeclared", () => {

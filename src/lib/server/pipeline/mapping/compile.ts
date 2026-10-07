@@ -1,3 +1,5 @@
+import { str } from "../row";
+import type { Row } from "../types";
 import { type Checked, Scope } from "./cel";
 import { type Mapping, type Renaming, type Tag, tagSchema } from "./schema";
 
@@ -23,7 +25,25 @@ export interface Program {
 	columnOf: ReadonlyMap<string, string>;
 	rename: ReadonlyMap<string, string>;
 	lets: { name: string; check: Ok }[];
-	record: { key: Ok; lat: Ok; lon: Ok; groupBy: string | null; skip: Ok | null; closed: Ok | null };
+	record: {
+		key: Ok;
+		lat: Ok;
+		lon: Ok;
+		groupBy: string | null;
+		skip: Ok | null;
+		closed: Ok | null;
+		/** The inputs `closed` read, which are its evidence. */
+		closedReads: string[];
+		address: Ok | null;
+		/** Metres, or a rule giving them; null where the record carries no address to move to. */
+		farM: Ok | number | null;
+		wrongM: number | null;
+		pick: "nearest" | null;
+		tieBreak: string | null;
+		withheld: string[];
+		/** The lets the key, position, skip and address need, in order: all a reader evaluates beside them. */
+		lets: { name: string; check: Ok }[];
+	};
 	tags: CompiledTag[];
 	notes: { text: string; when: Ok }[];
 }
@@ -65,6 +85,7 @@ export function compile(
 	const scope = new Scope(inputs, groupBy !== null);
 	const read = new Set<string>();
 	const letReads = new Map<string, Set<string>>();
+	const letNames = new Map<string, ReadonlySet<string>>();
 
 	const readsOf = (names: ReadonlySet<string>) => {
 		const reads = new Set<string>();
@@ -98,6 +119,7 @@ export function compile(
 			continue;
 		}
 		letReads.set(name, new Set(readsOf(checked.names)));
+		letNames.set(name, checked.names);
 		scope.declare(name, checked.type);
 		lets.push({ name, check: checked });
 	}
@@ -113,6 +135,22 @@ export function compile(
 	const lon = check(record.lon, "record.lon", "string");
 	const skip = record.skip ? check(record.skip, "record.skip", "bool") : null;
 	const closed = record.closed ? check(record.closed, "record.closed", "bool") : null;
+	const closedReads = closed ? readsOf(closed.names) : [];
+	const address = record.address ? check(record.address, "record.address", "string") : null;
+	const farM =
+		typeof record.farM === "string"
+			? check(record.farM, "record.farM", "double")
+			: (record.farM ?? null);
+	for (const key of ["farM", "wrongM"] as const)
+		if (record[key] !== undefined && !address)
+			problems.push(`record.${key}: there is no record.address`);
+	if (record.pick && !address) problems.push("record.pick: there is no record.address");
+	if (record.pick && groupBy !== null)
+		problems.push("record.pick: a record that picks one of its rows cannot also group them");
+	if (record.tieBreak && !record.pick) problems.push("record.tieBreak: there is no record.pick");
+	for (const input of [...(record.tieBreak ? [record.tieBreak] : []), ...(record.withheld ?? [])])
+		if (!isInput.has(input)) problems.push(`record: "${input}" is not an input`);
+	if (record.tieBreak) read.add(record.tieBreak);
 
 	const tags: CompiledTag[] = [];
 	for (const [tagKey, tag] of Object.entries(mergeTags(mapping, renaming, problems))) {
@@ -124,6 +162,10 @@ export function compile(
 			typeof tag.conf === "string" ? check(tag.conf, `${where}.conf`, "double") : tag.conf;
 		let value: Ok | null = null;
 		let reads: string[];
+		for (const q of tag.quote ?? []) {
+			if (isInput.has(q)) read.add(q);
+			else problems.push(`${where}.quote: "${q}" is not an input`);
+		}
 		if ("function" in tag) {
 			for (const r of tag.reads) {
 				if (isInput.has(r)) read.add(r);
@@ -150,6 +192,14 @@ export function compile(
 	if (problems.length > 0 || !key || !lat || !lon) return { program: null, problems };
 
 	const rename = new Map(Object.entries(renaming?.rename ?? {}));
+	const recordLets = new Set<string>();
+	const need = (name: string) => {
+		const own = letNames.get(name);
+		if (!own || recordLets.has(name)) return;
+		recordLets.add(name);
+		for (const n of own) need(n);
+	};
+	for (const c of [key, lat, lon, skip, address]) for (const n of c?.names ?? []) need(n);
 	return {
 		program: {
 			id: mapping.id,
@@ -158,7 +208,22 @@ export function compile(
 			columnOf: new Map([...rename].map(([column, input]) => [input, column])),
 			rename,
 			lets,
-			record: { key, lat, lon, groupBy, skip, closed },
+			record: {
+				key,
+				lat,
+				lon,
+				groupBy,
+				skip,
+				closed,
+				closedReads,
+				address,
+				farM,
+				wrongM: record.wrongM ?? null,
+				pick: record.pick ?? null,
+				tieBreak: record.tieBreak ?? null,
+				withheld: record.withheld ?? [],
+				lets: lets.filter((l) => recordLets.has(l.name)),
+			},
 			tags,
 			notes,
 		},
@@ -174,3 +239,10 @@ export function renameRow(program: Program, row: Record<string, string>): Record
 	}
 	return out;
 }
+
+/** A source row, whatever its values' types, under the mapping's input names. */
+export const inputsOf = (program: Program, row: Row): Record<string, string> =>
+	renameRow(
+		program,
+		Object.fromEntries([...program.rename.keys()].map((column) => [column, str(row, column)])),
+	);

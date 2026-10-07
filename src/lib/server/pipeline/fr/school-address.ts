@@ -7,12 +7,6 @@ import { addressQuery, expandStreet, spacedNumber } from "./text";
 const STREET =
 	/^(rue|ruelle|avenue|boulevard|cheminement|chemin|place|port|allée|allées|impasse|route|quai|cours|cour|square|voie|passage|esplanade|rond-point|carrefour|montée|chaussée|parvis|promenade|sentier|traverse|venelle|faubourg|clos|cité|résidence|lotissement|domaine|villa|mail|parc|grande? rue|petite rue)(?![\p{L}\d])/iu;
 
-/**
- * How far the directory's point may sit from its own housenumber before the address is taken
- * over the point. A school's grounds can stretch a few hundred metres from its gate.
- */
-export const SCHOOL_FAR_M = 1000;
-
 interface Lines {
 	/** The line holding the housenumber and the street. */
 	street: string;

@@ -138,13 +138,14 @@ rename:
   date_mise_en_service: commissioning_date
   date_maj: declared_on
   consolidated_is_lon_lat_correct: position_ok
+  adresse_station: station_address
+  consolidated_code_postal: postcode
+  consolidated_commune: city
+  code_insee_commune: insee
   consolidated_latitude: lat
   consolidated_longitude: lon
 
 ignored:
-  code_insee_commune: used only to build the address shown to the reviewer
-  consolidated_code_postal: used only to build the address shown to the reviewer
-  consolidated_commune: used only to build the address shown to the reviewer
   contact_amenageur: a contact address, not a place's
   contact_operateur: a contact address, not a place's
   id_station_local: the operator's own id for the station, which is no OSM reference

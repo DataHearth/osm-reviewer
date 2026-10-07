@@ -24,6 +24,10 @@ const common = {
 	unless: z.strictObject({ key: z.string(), value: z.string() }).optional(),
 	mappedWithin: z.number().int().positive().optional(),
 	group: z.string().optional(),
+	/** The tag's value is an identifier OSM may already carry, matched before any distance is looked at. */
+	ref: z.boolean().optional(),
+	/** The inputs the evidence shows where they are not the ones the rule reads. */
+	quote: z.array(name).min(1).optional(),
 };
 
 const expressionTag = z.strictObject({ value: z.string(), ...common });
@@ -57,6 +61,18 @@ export const mappingSchema = z.strictObject({
 		lon: z.string(),
 		skip: z.string().optional(),
 		closed: z.string().optional(),
+		/** The line the country's address base is asked for; empty where the record has none. */
+		address: z.string().optional(),
+		/** How far the point may sit from its own housenumber before the address is taken over it: metres, or a rule giving them (0 or less never moves it). */
+		farM: z.union([z.number().positive(), z.string()]).optional(),
+		/** Farther than this from a housenumber in the record's postcode, the point is an error however precisely it is written. */
+		wrongM: z.number().positive().optional(),
+		/** For a key the source lists at several sites, the row whose address the base places nearest its point is the record. */
+		pick: z.literal("nearest").optional(),
+		/** The input whose shortest value wins among rows `pick` finds equally near. */
+		tieBreak: name.optional(),
+		/** Inputs holding a phone number or a mailbox that a record leaves out are counted, for the run's message. */
+		withheld: z.array(name).min(1).optional(),
 	}),
 	let: z
 		.record(
