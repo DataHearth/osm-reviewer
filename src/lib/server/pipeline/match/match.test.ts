@@ -113,6 +113,7 @@ describe("findMatch", () => {
 			el(11, 45.7, 4.8, { name: "Blagnac Supercharger", "ref:EU:EVSE": "FR*TSL*P16979" }),
 		];
 		const x = {
+			kind: "FR:charging_station",
 			lat: 45.7,
 			lon: 4.8,
 			name: "Leclerc Blagnac",
@@ -204,6 +205,7 @@ describe("findMatch", () => {
 			el(17, 45.7, 4.8, { name: "Parvis Saint Martin - B02", "ref:EU:EVSE": "FR*M31*E31555*030" }),
 		];
 		const x = {
+			kind: "FR:charging_station",
 			lat: 45.7,
 			lon: 4.8,
 			name: "Parvis Saint Martin",
@@ -454,6 +456,7 @@ describe("updateOps", () => {
 
 	it("never replaces another establishment's UAI or SIRET, and says which the object carries", () => {
 		const calandreta = {
+			kind: "FR:school",
 			lat: 43.57643348998152,
 			lon: 1.389875951209224,
 			name: "Collège Calandreta del País Tolzan",
@@ -647,6 +650,7 @@ describe("matchWarnings", () => {
 
 	it("does not take a sibling school with its own UAI for a duplicate", () => {
 		const school = {
+			kind: "FR:school",
 			lat: 45.7,
 			lon: 4.8,
 			name: "ESARC",
@@ -659,6 +663,7 @@ describe("matchWarnings", () => {
 
 	it("does not take another operator's or a private station for a part of the site", () => {
 		const lidl = {
+			kind: "FR:charging_station",
 			lat: 45.7,
 			lon: 4.8,
 			name: "Lidl",
@@ -678,6 +683,7 @@ describe("matchWarnings", () => {
 
 	it("names the kind of object it found, and sees an institute mapped as a school", () => {
 		const ime = {
+			kind: "FR:school",
 			lat: 45.7,
 			lon: 4.8,
 			name: "IME",
@@ -690,6 +696,7 @@ describe("matchWarnings", () => {
 
 	it("names a school carrying another UAI at the record's address or phone, never matching it", () => {
 		const college = {
+			kind: "FR:school",
 			lat: 45.7406,
 			lon: 4.8493,
 			name: "Collège privé la Chrysalide",
@@ -719,6 +726,7 @@ describe("matchWarnings", () => {
 
 	it("does not take another school in the same building for a part of the site", () => {
 		const school = {
+			kind: "FR:school",
 			lat: 45.7,
 			lon: 4.8,
 			name: "ESARC",
@@ -739,6 +747,7 @@ describe("matchWarnings", () => {
 
 	it("takes another object carrying the record's own id for a part of the site, however far", () => {
 		const louis = {
+			kind: "FR:school",
 			lat: 45.7,
 			lon: 4.8,
 			name: "École maternelle Louis Armand",
@@ -762,7 +771,7 @@ describe("matchWarnings", () => {
 	});
 
 	it("says a school mapped only as its building gets its amenity", () => {
-		const school = { ...x, name: "ISC", tags: [tag("amenity", "college")] };
+		const school = { ...x, kind: "FR:school", name: "ISC", tags: [tag("amenity", "college")] };
 		const isc = el(9, 45.7, 4.8, { building: "university", name: "ISC" });
 		expect(matchWarnings(school, isc, [isc])).toEqual([
 			"OSM maps this school only as building=university: amenity=college is added to the building",
@@ -770,7 +779,7 @@ describe("matchWarnings", () => {
 	});
 
 	it("sees an unnamed school building, a charge point or a health centre as a possible duplicate", () => {
-		const school = { ...x, name: "ADONIS", tags: [tag("amenity", "college")] };
+		const school = { ...x, kind: "FR:school", name: "ADONIS", tags: [tag("amenity", "college")] };
 		const bare = el(10, 45.7001, 4.8, { building: "college" });
 		expect(matchWarnings(school, null, [bare])).toEqual([
 			"Possible duplicate: building=college already mapped at node/10, 11 m away",
@@ -876,6 +885,7 @@ describe("modWarnings", () => {
 
 describe("what the object is now", () => {
 	const school = {
+		kind: "FR:school",
 		lat: 45.7,
 		lon: 4.8,
 		name: "Cours Diderot",
@@ -917,6 +927,7 @@ describe("what the object is now", () => {
 
 describe("far from the record's address", () => {
 	const x = {
+		kind: "FR:school",
 		lat: 45.7,
 		lon: 4.8,
 		atAddress: { lat: 45.7, lon: 4.8, label: "1 Rue X 69001 Lyon" },
@@ -963,6 +974,7 @@ describe("far from the record's address", () => {
 
 describe("new records whose point stayed put", () => {
 	const x = {
+		kind: "FR:charging_station",
 		key: "a",
 		lat: 43.61665,
 		lon: 1.352185,
@@ -995,6 +1007,7 @@ describe("new records whose point stayed put", () => {
 
 describe("split sites", () => {
 	const toulibeo = {
+		kind: "FR:charging_station",
 		key: "FRTLSP31555021",
 		lat: 45.7,
 		lon: 4.8,
@@ -1021,6 +1034,7 @@ describe("split sites", () => {
 
 describe("which object", () => {
 	const station = (who: [string, string][]) => ({
+		kind: "FR:charging_station",
 		lat: 45.7,
 		lon: 4.8,
 		name: "TOULOUSE - Avenue de Collignon",
@@ -1049,6 +1063,7 @@ describe("which object", () => {
 
 	it("prefers the way holding the school's UAI over a bare node beside it", () => {
 		const x = {
+			kind: "FR:school",
 			lat: 45.7,
 			lon: 4.8,
 			name: "Collège Stendhal",
@@ -1064,6 +1079,7 @@ describe("which object", () => {
 	it("matches the grounds a school building carrying the UAI stands in, or leaves its amenity and name out", () => {
 		const name = "Collège Notre-Dame du Bon Conseil";
 		const x = {
+			kind: "FR:school",
 			lat: 45.7,
 			lon: 4.8,
 			name,
@@ -1090,6 +1106,7 @@ describe("which object", () => {
 			tags: ProposedTag[],
 			evse: string,
 		) => ({
+			kind: "FR:charging_station",
 			key: evse,
 			lat,
 			lon,
@@ -1193,6 +1210,7 @@ describe("which object", () => {
 		// + E/F points; OSM maps the car units and, a few metres off, an e-bike locker, a bicycle
 		// station and a scooter station.
 		const francheville = {
+			kind: "FR:charging_station",
 			key: "FREVCP000141",
 			lat: 45.7342931,
 			lon: 4.7746172,
@@ -1292,6 +1310,7 @@ describe("which object", () => {
 
 describe("duplicates of a new record", () => {
 	const x = {
+		kind: "FR:school",
 		lat: 45.7,
 		lon: 4.8,
 		name: "École maternelle privée Les Petites Familles 2",
@@ -1326,6 +1345,7 @@ describe("duplicates of a new station", () => {
 	it("names an object without another station's id first, and says when the one it names has one", () => {
 		// Brasserie Stade Toulousain (SOLVEO, DKMONE4198725).
 		const x = {
+			kind: "FR:charging_station",
 			lat: 43.621588,
 			lon: 1.413705,
 			name: "Brasserie Stade Toulousain",
@@ -1354,6 +1374,7 @@ describe("duplicates of a new station", () => {
 	it("says how many more objects of its kind stand within 25 m of the one it names", () => {
 		// Lidl TOULOUSE Labège (FRLDLPLFR1522EVCP): three nodes of the site, 2, 6 and 15 m off.
 		const x = {
+			kind: "FR:charging_station",
 			lat: 43.559239,
 			lon: 1.503482,
 			name: "LFR1522EVCP03",
@@ -1464,6 +1485,7 @@ describe("schools of the fifth audit", () => {
 		tags: ProposedTag[] = [],
 		refs: Record<string, string> = {},
 	) => ({
+		kind: "FR:school",
 		key,
 		lat,
 		lon,
@@ -1746,6 +1768,7 @@ describe("schools of the fifth audit", () => {
 
 	it("sees an unnamed school building beside an institute as a possible duplicate", () => {
 		const ditep = {
+			kind: "FR:school",
 			lat: 45.7303986425007,
 			lon: 4.832871750576011,
 			name: "DITEP Gerland",
@@ -1840,6 +1863,7 @@ describe("schools of the fifth audit", () => {
 
 	it("leaves a lycée a school when a post-bac section housed in it is matched to it", () => {
 		const saliege = {
+			kind: "FR:school",
 			lat: 43.60412513198991,
 			lon: 1.4951799762460685,
 			name: "Campus Saliège",
@@ -1927,6 +1951,7 @@ describe("a commissioning date and the object's own history", () => {
 
 describe("one object, several establishments", () => {
 	const x = {
+		kind: "FR:school",
 		lat: 45.7,
 		lon: 4.8,
 		name: "École privée multilingue Ombrosa",
@@ -1963,6 +1988,7 @@ describe("one object, several establishments", () => {
 
 describe("a duplicate of the matched object", () => {
 	const x = {
+		kind: "FR:school",
 		lat: 43.5505,
 		lon: 1.4868,
 		name: "École technique privée ISPRA Institut",
@@ -1985,6 +2011,7 @@ describe("a duplicate of the matched object", () => {
 
 describe("stations told apart by what they hold", () => {
 	const station = (key: string, capacity: string, operator = "Bouygues Energies & Services") => ({
+		kind: "FR:charging_station",
 		key,
 		lat: 43.604,
 		lon: 1.4503,
@@ -2052,6 +2079,7 @@ describe("stations told apart by what they hold", () => {
 
 	it("matches the network's station a few metres off under a lost name or a renumbered pool id", () => {
 		const x = {
+			kind: "FR:charging_station",
 			lat: 43.637548,
 			lon: 1.375103,
 			name: "Electra Blagnac - BYD & Quick",
@@ -2081,6 +2109,7 @@ describe("stations told apart by what they hold", () => {
 
 describe("plain refs on stations", () => {
 	const x = {
+		kind: "FR:charging_station",
 		key: "FRTLSP31555059",
 		lat: 43.61227,
 		lon: 1.47655,
@@ -2110,6 +2139,7 @@ describe("plain refs on stations", () => {
 	it("read a list of a borne's point ids as the points it names", () => {
 		// TOULOUSE - Avenue de Castres: node/12455535934 lists its two connectors' ids.
 		const castres = {
+			kind: "FR:charging_station",
 			key: "FRTLSP31555007",
 			lat: 43.59472,
 			lon: 1.48832,

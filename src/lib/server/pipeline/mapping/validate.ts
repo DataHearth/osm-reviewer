@@ -11,7 +11,7 @@ import {
 } from "../fr/functions";
 import { KITS } from "../kits";
 import { lib } from "../match/kinds";
-import { type Kit, type KitFactory, METHODS } from "../match/kit";
+import { type KitFactory, METHODS } from "../match/kit";
 import { allowedBy } from "../tagfilter";
 import { compile, type Program, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
@@ -225,33 +225,6 @@ function checkAcrossMappings(mappings: Mapping[], kits: Record<string, KitFactor
 	return problems;
 }
 
-/**
- * Which kinds each kit method reaches without their own kit defining it: a record takes its own
- * kit's method, else the one kit that defines it, so a rule written for one kind keeps running on
- * the others. A second definer ends that for the method.
- */
-export function fallbackSummary(mappings: Mapping[], kits: Record<string, KitFactory>): string {
-	const built = new Map<string, Kit>();
-	for (const m of mappings) {
-		const name = m.matching.kit;
-		if (name && kits[name] && !built.has(name)) built.set(name, kits[name](lib()));
-	}
-	const lines: string[] = [];
-	for (const method of METHODS) {
-		const definers = [...built].filter(([, kit]) => kit[method]).map(([name]) => name);
-		if (definers.length === 0) continue;
-		if (definers.length > 1) {
-			lines.push(`${method}: defined by ${definers.join(" and ")}, so no fallback`);
-			continue;
-		}
-		const reached = mappings
-			.filter((m) => m.matching.kit && m.matching.kit !== definers[0])
-			.map((m) => m.id);
-		lines.push(`${method} (${definers[0]}) -> ${reached.join(", ") || "none"}`);
-	}
-	return lines.join("; ");
-}
-
 function checkMapping(
 	file: string,
 	root: string,
@@ -384,7 +357,7 @@ export function validate(dir: string, kits: Record<string, KitFactory> = KITS): 
 	if (all.length > 0)
 		shown.push({
 			file: "matching",
-			summary: fallbackSummary(all, kits),
+			summary: "",
 			problems: checkAcrossMappings(all, kits),
 		});
 	return shown;

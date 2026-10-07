@@ -2,9 +2,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { KITS } from "../kits";
 import { type Mapping, mappingSchema } from "../mapping/schema";
-import { fallbackSummary, validate } from "../mapping/validate";
+import { validate } from "../mapping/validate";
 import { lookalike, lookalikeSelectors, sameKind, selectorsFromTags, shell } from "../tagfilter";
 import type { Extraction, OsmElement, ProposedTag } from "../types";
 import { contextTags } from "./context";
@@ -162,11 +161,13 @@ describe("the registry the shipped mappings declare", () => {
 });
 
 describe("the kit a record answers to", () => {
-	it("is its own kind's, else the one kit defining the method, as the code it replaced ran for any record", () => {
-		expect(kit({}, "fit")).toBeDefined();
-		expect(kit({ kind: "FR:school" }, "fit")).toBe(kit({}, "fit"));
-		expect(kit({ kind: "FR:charging_station" }, "pick")).toBe(kit({}, "pick"));
-		expect(kit({ kind: "XX:nothing" }, "counts")).toBe(kit({}, "counts"));
+	it("is its own kind's, never another kind's, and none for a record with no kind", () => {
+		expect(kit({ kind: "FR:charging_station" }, "fit")).toBeDefined();
+		expect(kit({ kind: "FR:school" }, "fit")).toBeUndefined();
+		expect(kit({ kind: "FR:school" }, "pick")).toBeDefined();
+		expect(kit({ kind: "FR:charging_station" }, "pick")).toBeUndefined();
+		expect(kit({ kind: "XX:nothing" }, "pick")).toBeUndefined();
+		expect(kit({}, "fit")).toBeUndefined();
 	});
 
 	it("is none for a kind that declares no kit, whatever other kinds define", () => {
@@ -175,9 +176,9 @@ describe("the kit a record answers to", () => {
 		expect(kit({ kind: "FR:defibrillator" }, "newBanners")).toBeUndefined();
 	});
 
-	it("gives a record with no kind and a capacity the station fit and its score", () => {
-		const fitOf = kit({}, "fit");
-		const x = record({ tags: [tag("capacity", "4")] });
+	it("gives a station a capacity fit and its score", () => {
+		const fitOf = kit({ kind: "FR:charging_station" }, "fit");
+		const x = record({ kind: "FR:charging_station", tags: [tag("capacity", "4")] });
 		expect(fitOf?.(x, el(1, 45.7, 4.8, { capacity: "4" }))).toMatchObject({
 			agree: 1,
 			against: 0,
@@ -193,13 +194,13 @@ describe("the kit a record answers to", () => {
 		const own = (id: number, ref: string) =>
 			el(id, 43.6, 1.4, { amenity: "charging_station", ref });
 		const [a, b] = [own(1, "BRN06A"), own(2, "BRN07A")];
-		const excludes = kit({}, "excludes");
-		const x = record();
+		const excludes = kit({ kind: "FR:charging_station" }, "excludes");
+		const x = record({ kind: "FR:charging_station" });
 		expect(excludes?.(x, b, a)).toBe(true);
 		expect(excludes?.(x, b)).toBe(false);
 	});
 
-	it("leaves a station beside a node named as a campus undated, and passes over an unnamed school building", () => {
+	it("dates a station beside a node named as a campus, a school rule not being its own", () => {
 		const station = record({
 			kind: "FR:charging_station",
 			name: "Parking",
@@ -209,7 +210,7 @@ describe("the kit a record answers to", () => {
 			amenity: "charging_station",
 			name: "Parking École Collège Lycée",
 		});
-		expect(planUpdate(station, campus, [campus]).ops.map((o) => o.k)).not.toContain("start_date");
+		expect(planUpdate(station, campus, [campus]).ops.map((o) => o.k)).toContain("start_date");
 		const building = el(2, 45.7, 4.8, { building: "school" });
 		expect(findMatch(station, [building], indexRefs([building], []))).toBeNull();
 	});
@@ -332,18 +333,16 @@ describe("a kind with a block and no kit", () => {
 		).toHaveLength(1);
 	});
 
-	it("shows which kinds a method reaches by fallback, and none once a second kit defines it", () => {
+	it("runs a kit method only for the kind that owns the kit", () => {
 		const a = mapping("XX:alpha", { main: ["amenity"], kit: "xx.alpha" });
 		const b = mapping("XX:beta", { main: ["amenity"], kit: "xx.beta" });
 		const c = mapping("XX:gamma", { main: ["amenity"] });
-		const pick = stub({ pick: () => null });
-		expect(fallbackSummary([a, b, c], { "xx.alpha": pick, "xx.beta": stub({}) })).toBe(
-			"pick (xx.alpha) -> XX:beta",
-		);
-		expect(fallbackSummary([a, b, c], { "xx.alpha": pick, "xx.beta": pick })).toBe(
-			"pick: defined by xx.alpha and xx.beta, so no fallback",
-		);
-		expect(fallbackSummary([a, c], KITS)).toBe("");
+		const pick = () => null;
+		useMappings([a, b, c], { "xx.alpha": stub({ pick }), "xx.beta": stub({}) });
+		expect(kit({ kind: "XX:alpha" }, "pick")).toBe(pick);
+		expect(kit({ kind: "XX:beta" }, "pick")).toBeUndefined();
+		expect(kit({ kind: "XX:gamma" }, "pick")).toBeUndefined();
+		expect(kit({}, "pick")).toBeUndefined();
 	});
 });
 

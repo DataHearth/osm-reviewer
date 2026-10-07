@@ -224,10 +224,9 @@ replaced, whether it names the organisation). `match/kinds.ts` reads every mappi
 into the registry the engine asks; nothing evaluates it while modules load. A kind that needs
 code owns one **kit**, named by `matching.kit` and registered in `kits.ts` (`any.charging_station`
 in `any/charging-station.ts`, `fr.school` in `fr/school.ts`): a record's rule is its own kind's kit,
-else the one kit that defines it, else the engine's default, so a rule written for one kind
-keeps running on the others until a second kit defines it. A kind that declares no kit gets no
-fallback: school grounds and EVSE sockets have no business on a defibrillator. `validate` checks
-the block and prints which kits' kinds each method reaches by fallback. A kind with nothing
+else the engine's default. A kit never runs on another kind's records, and a kind that declares no
+kit gets none: school grounds and EVSE sockets have no business on a defibrillator. `validate`
+checks the block. A kind with nothing
 special writes `main: [...]` and no kit: `FR:defibrillator`, read from Géo'DAE (`sources/fr/geodae.yaml`, the
 register on data.gouv.fr), is that kind and has no TypeScript on its path. Its ref is a tag with
 `ref: true` and no rule, so another value of `ref:FR:GeoDAE` on an object never rules it out (the

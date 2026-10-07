@@ -5,7 +5,6 @@ import type { Selector } from "../tagfilter";
 import { sameKind, shell as shellOf } from "../tagfilter";
 import type { Extraction } from "../types";
 import type { Kit, KitFactory, KitMethod, Lib, RefHooks } from "./kit";
-import { METHODS } from "./kit";
 import { keyOn, mainOf } from "./ops";
 import { idsOn, rulesOut } from "./refs";
 import { sameValue } from "./values";
@@ -41,12 +40,10 @@ export interface Registry {
 	schemes: Map<string, Scheme>;
 	labelKeys: string[];
 	kitOf: Map<string, Kit>;
-	kitless: Set<string>;
 	kits: Kit[];
 	accepts: Map<string, NonNullable<Kit["accepts"]>[string]>;
 	lookalikeHooks: Map<string, NonNullable<Kit["lookalikes"]>[string]>;
 	same: Map<string, NonNullable<Kit["same"]>[string]>;
-	definers: Map<KitMethod, Kit[]>;
 }
 
 const toSelector = (s: {
@@ -77,7 +74,6 @@ export function buildRegistry(
 	const lookalikes = new Map<string, Selector[]>();
 	const schemes = new Map<string, Scheme>();
 	const kitOf = new Map<string, Kit>();
-	const kitless = new Set<string>();
 	const built = new Map<string, Kit>();
 	let shell = null as Shell | null;
 	for (const m of all) {
@@ -96,7 +92,7 @@ export function buildRegistry(
 			const kit = built.get(b.kit) ?? factory(forKits);
 			built.set(b.kit, kit);
 			kitOf.set(m.id, kit);
-		} else kitless.add(m.id);
+		}
 	}
 	const kits = [...built.values()];
 	const accepts: Registry["accepts"] = new Map();
@@ -111,9 +107,6 @@ export function buildRegistry(
 			if (s) schemes.set(key, { ...s, ...hooks });
 		}
 	}
-	const definers = new Map<KitMethod, Kit[]>(
-		METHODS.map((name) => [name, kits.filter((kit) => kit[name])]),
-	);
 	const lookalikeKeys = [...lookalikes.values()].flatMap((sels) =>
 		sels.filter((s) => s.v !== null).map((s) => s.k),
 	);
@@ -127,12 +120,10 @@ export function buildRegistry(
 		schemes,
 		labelKeys: unique([...mainKeys, ...lookalikeKeys, ...(shell ? [shell.k] : [])]),
 		kitOf,
-		kitless,
 		kits,
 		accepts,
 		lookalikeHooks,
 		same,
-		definers,
 	};
 }
 
@@ -167,22 +158,12 @@ export const labelKeys = () => registry().labelKeys;
 
 export const kinValues = (k: string, v: string) => registry().kin.get(`${k}=${v}`) ?? [v];
 
-/**
- * The kit method answering for a record: its own kind's kit, else the one kit that defines it
- * (so a rule written for one kind keeps running on the others, as it always has), else none.
- * A kind that declares no kit at all gets none: another kind's grounds, sockets or campuses have
- * no business on its records.
- */
+/** The kit method answering for a record: its own kind's kit, else none. */
 export function kit<M extends KitMethod>(
 	x: Pick<Extraction, "kind"> | { kind?: string },
 	method: M,
 ): Kit[M] | undefined {
-	const r = registry();
-	const own = x.kind ? r.kitOf.get(x.kind) : undefined;
-	if (own?.[method]) return own[method];
-	if (x.kind && r.kitless.has(x.kind)) return undefined;
-	const definers = r.definers.get(method) ?? [];
-	return definers.length === 1 ? definers[0][method] : undefined;
+	return x.kind ? registry().kitOf.get(x.kind)?.[method] : undefined;
 }
 
 export const sameHook = (key: string) => registry().same.get(key);
