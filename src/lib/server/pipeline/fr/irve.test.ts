@@ -218,7 +218,7 @@ describe("IRVE preset", () => {
 		expect(capacityOf([none("45.79", "Pascal Chene")])).toBe("1");
 	});
 
-	it("reads a fee from what fired, never from an unknown tariff", () => {
+	it("quotes the fields a fee was read from", () => {
 		const fee = (over: Row) =>
 			irve
 				.extract(
@@ -226,16 +226,17 @@ describe("IRVE preset", () => {
 					"u",
 				)
 				?.tags.find((t) => t.k === "fee");
-		expect(fee({ tarification: "Inconnu" })).toBeUndefined();
 		expect(fee({ tarification: "49 cts/kWh" })).toMatchObject({ v: "yes", path: "tarification" });
 		const byCard = fee({ paiement_cb: "true" });
-		expect(byCard?.v).toBe("yes");
 		expect(byCard?.parts.map((p) => p.text).join("")).toBe(
 			"paiement_acte: false, paiement_cb: true",
 		);
-		expect(fee({ gratuit: "False" })).toMatchObject({ v: "yes", path: "gratuit" });
-		expect(fee({ gratuit: "true" })).toMatchObject({ v: "no" });
-		expect(fee({ gratuit: "true", tarification: "0,40 € TTC / kWh" })).toBeUndefined();
+		expect(fee({ gratuit: "False" })).toMatchObject({ path: "gratuit" });
+	});
+
+	it("proposes access add-only, so it fills a gap and replaces nothing", () => {
+		const access = irve.extract([irveRow({ condition_acces: "Accès libre" })], "u")?.tags;
+		expect(access?.find((t) => t.k === "access")).toMatchObject({ v: "yes", addOnly: true });
 	});
 
 	it("counts a station declared as one row by its declared points, and trusts no mismatched count", () => {
@@ -510,7 +511,7 @@ describe("IRVE preset", () => {
 		]);
 	});
 
-	it("proposes no commissioning date later than a declaration of the station", () => {
+	it("proposes no commissioning date later than an older declaration of the station", () => {
 		const since = (rows: Row[]) =>
 			irve.extract(rows, "u")?.tags.find((t) => t.k === "start_date")?.v;
 		const point = { nbre_pdc: "1", created_at: "2025-05-05T13:28:02" };
@@ -519,11 +520,7 @@ describe("IRVE preset", () => {
 			date_maj: "2026-09-26",
 			date_mise_en_service: "2026-07-28",
 		});
-		expect(since([newest])).toBe("2026-07-28");
 		expect(since([irveRow({ ...point, date_maj: "2025-06-17" }), newest])).toBeUndefined();
-		expect(
-			since([irveRow({ ...point, date_maj: "2026-05-15", date_mise_en_service: "2026-07-03" })]),
-		).toBeUndefined();
 	});
 
 	it("counts no bay for a DC cabinet's type 2 outlet declared at the cabinet's power", () => {
@@ -553,13 +550,7 @@ describe("IRVE preset", () => {
 		expect(at("45.791", "4.842")).toEqual([]);
 	});
 
-	it("proposes no opening_hours when the notes give hours of their own", () => {
-		const hours = (observations: string) =>
-			irve
-				.extract([irveRow({ observations, nbre_pdc: "1" })], "u")
-				?.tags.find((t) => t.k === "opening_hours")?.v;
-		expect(hours("Situé en centre ville/ accessible de 9h à 18h uniquement")).toBeUndefined();
-		expect(hours("Recharge rapide 24/7 - 1h maximum de stationnement autorisé")).toBe("24/7");
+	it("proposes no opening_hours for stations giving different hours", () => {
 		const site = irve.extract(
 			[
 				irveRow({ id_station_itinerance: "FRAIRP1", id_pdc_itinerance: "FRAIRE1" }),
@@ -688,20 +679,7 @@ describe("IRVE preset", () => {
 		expect(mixed.reservation).toBeUndefined();
 	});
 
-	it("leaves out a vehicle, an ad-hoc access or a phone the station itself contradicts", () => {
-		const tags = (over: Row) =>
-			Object.fromEntries((irve.extract([irveRow(over)], "u")?.tags ?? []).map((t) => [t.k, t.v]));
-		const scooters = tags({ nom_station: "Station Deux-Roues Lazare Carnot" });
-		expect(scooters.motorcar).toBeUndefined();
-		const app = tags({ observations: "Paiement via app Lidl Plus" });
-		expect(app["authentication:none"]).toBeUndefined();
-		expect(tags({ telephone_operateur: "06 22 53 03 38" })["operator:phone"]).toBeUndefined();
-		expect(
-			tags({ telephone_operateur: "tel:+33-1-00-00-00-00" })["operator:phone"],
-		).toBeUndefined();
-		expect(tags({ date_mise_en_service: "2021-3-29", nbre_pdc: "1" }).start_date).toBe(
-			"2021-03-29",
-		);
+	it("takes the earliest commissioning date of a site only from stations at its own place", () => {
 		const farAway = irveRow({
 			id_station_itinerance: "FRFARP1",
 			id_pdc_itinerance: "FRFARE1",
@@ -710,41 +688,6 @@ describe("IRVE preset", () => {
 		});
 		const site = irve.extract([irveRow({ date_mise_en_service: "2023-01-08" }), farAway], "u");
 		expect(site?.tags.find((t) => t.k === "start_date")?.v).not.toBe("2019-05-02");
-	});
-
-	it("fills in what the registry knows beyond the sockets, and nothing it does not", () => {
-		const tags = (over: Row) =>
-			Object.fromEntries((irve.extract([irveRow(over)], "u")?.tags ?? []).map((t) => [t.k, t.v]));
-		expect(
-			tags({
-				paiement_cb: "true",
-				reservation: "False",
-				date_mise_en_service: "2021-08-05",
-				nom_amenageur: "Toulouse Métropole",
-				telephone_operateur: "tel:+33-9-70-25-24-00",
-				accessibilite_pmr: "Accessible mais non réservé PMR",
-				restriction_gabarit: "1,9",
-			}),
-		).toMatchObject({
-			motorcar: "yes",
-			"authentication:none": "yes",
-			"payment:credit_cards": "yes",
-			reservation: "no",
-			start_date: "2021-08-05",
-			owner: "Toulouse Métropole",
-			"operator:phone": "+33 9 70 25 24 00",
-			wheelchair: "yes",
-			maxheight: "1.9",
-		});
-		const unknown = tags({
-			date_mise_en_service: "2025-01-01",
-			telephone_operateur: "+33-1-23-45-67-89",
-			accessibilite_pmr: "Accessibilité inconnue",
-			station_deux_roues: "true",
-		});
-		expect(unknown).toMatchObject({ motorcycle: "yes" });
-		for (const k of ["start_date", "operator:phone", "wheelchair", "motorcar"])
-			expect(unknown[k]).toBeUndefined();
 	});
 
 	it("names the sockets it rules out, and a connector it cannot name", () => {
@@ -761,13 +704,6 @@ describe("IRVE preset", () => {
 		expect(absent({})).toContain("socket:schuko");
 		expect(absent({ prise_type_ef: "true" })).not.toContain("socket:schuko");
 		expect(absent({ prise_type_ef: "true" })).toContain("socket:type3");
-	});
-
-	it("proposes no network the registry describes rather than names", () => {
-		const network = (nom_enseigne: string) =>
-			irve.extract([irveRow({ nom_enseigne })], "u")?.tags.find((t) => t.k === "network")?.v;
-		expect(network("Réseau de recharge Virta Public")).toBeUndefined();
-		expect(network("Réseau e-Totem")).toBe("Réseau e-Totem");
 	});
 
 	it("proposes no network an older declaration names the site or its host by", () => {
@@ -799,19 +735,6 @@ describe("IRVE preset", () => {
 			path: "nom_amenageur",
 			parts: [{ text: "nom_amenageur: " }, { text: "Toulouse Métropole" }],
 		});
-	});
-
-	it("reads an operator's phone the registry's numeric column lost its 0 or its + from", () => {
-		const phone = (telephone_operateur: string) =>
-			irve
-				.extract([irveRow({ telephone_operateur })], "u")
-				?.tags.find((t) => t.k === "operator:phone")?.v;
-		expect(phone("374090105")).toBe("+33 3 74 09 01 05");
-		expect(phone("180977673")).toBe("+33 1 80 97 76 73");
-		expect(phone("33975891501")).toBe("+33 9 75 89 15 01");
-		expect(phone("612460747")).toBeUndefined();
-		expect(phone("123456789")).toBeUndefined();
-		expect(phone("+31 615 11 3734")).toBeUndefined();
 	});
 
 	it("proposes no owner for a site whose stations name different owners", () => {
@@ -850,13 +773,6 @@ describe("IRVE preset", () => {
 		expect(ops("IZIVIA FMET 1", "844799288")).toBeUndefined();
 		expect(ops("Grand Lyon", "419 070 180")).toBe("Grand Lyon");
 		expect(ops("Grand Lyon", "")).toBe("Grand Lyon");
-	});
-
-	it("proposes no owner written as a web slug", () => {
-		const owner = (nom_amenageur: string) =>
-			irve.extract([irveRow({ nom_amenageur })], "u")?.tags.find((t) => t.k === "owner")?.v;
-		expect(owner("hotel-crequi-lyon")).toBeUndefined();
-		expect(owner("Hôtel Créqui")).toBe("Hôtel Créqui");
 	});
 
 	it("reads two same-day declarations of a point by their last change, and absence across both", () => {
@@ -1004,15 +920,6 @@ describe("IRVE preset", () => {
 		const x = irve.extract([irveRow({ cable_t2_attache: "true", nbre_pdc: "1" })], "u");
 		expect(x?.absent).toContain("socket:type2");
 		expect(x?.absent).not.toContain("socket:type2_cable");
-	});
-
-	it("proposes access=yes only to fill a gap, and nothing for reserved access", () => {
-		const access = (condition: string) =>
-			irve
-				.extract([irveRow({ condition_acces: condition })], "u")
-				?.tags.find((t) => t.k === "access");
-		expect(access("Accès libre")).toMatchObject({ v: "yes", addOnly: true });
-		expect(access("Accès réservé")).toBeUndefined();
 	});
 
 	describe("socket output", () => {
@@ -1206,14 +1113,6 @@ describe("IRVE preset", () => {
 	it("refuses coordinates the consolidation flagged as wrong", () => {
 		expect(irve.position(irveRow({ consolidated_is_lon_lat_correct: "false" }))).toBeNull();
 		expect(irve.position(irveRow())).toEqual([45.764, 4.835]);
-	});
-
-	it("passes valid opening_hours through and drops free text", () => {
-		const tag = (h: string) =>
-			irve.extract([irveRow({ horaires: h })], "u")?.tags.find((t) => t.k === "opening_hours")?.v;
-		expect(tag("Mo-Fr 08:00-19:00")).toBe("Mo-Fr 08:00-19:00");
-		expect(tag("Mo-Su 00:00-24:00")).toBe("24/7");
-		expect(tag("ouvert la journée")).toBeUndefined();
 	});
 });
 

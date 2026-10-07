@@ -172,3 +172,63 @@ examples:
     rows:
       - { id: 0690009J, kind: Collège, nature_code: "340", location_precision: Parfaite }
     expect: { amenity: school, school:FR: collège, ref:UAI: 0690009J }
+  - about: a maternelle
+    rows:
+      - { id: 0690044K, kind: Ecole, has_maternelle: "1", has_elementaire: "0" }
+    expect: { amenity: school, school:FR: maternelle, ref:UAI: 0690044K }
+  - about: an élémentaire
+    rows:
+      - { id: 0690045K, kind: Ecole, has_maternelle: "0", has_elementaire: "1" }
+    expect: { amenity: school, school:FR: "élémentaire", ref:UAI: 0690045K }
+  - about: a lycée
+    rows:
+      - { id: 0690046K, kind: "Lycée", has_maternelle: "1", has_elementaire: "1" }
+    expect: { amenity: school, school:FR: "lycée", ref:UAI: 0690046K }
+  - about: a post-bac establishment is a college with no school:FR
+    rows:
+      - { id: 0690047K, kind: "", has_maternelle: "1", has_elementaire: "1", nature_code: "400" }
+    expect: { amenity: college, ref:UAI: 0690047K }
+  - about: an école of nature 809 is an office, not a school
+    rows:
+      - { id: 0690048K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", nature_code: "809" }
+    expect: null
+  - about: the name's accent restored
+    rows:
+      - { id: 0690049K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", name: "Ecole Jean Jaurès" }
+    expect: { amenity: school, school:FR: primaire, name: "École Jean Jaurès", ref:UAI: 0690049K }
+  - about: an académie's mailbox is kept
+    rows:
+      - { id: 0690050K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", email: "ce.0690001A@ac-lyon.fr" }
+    expect: { amenity: school, school:FR: primaire, ref:UAI: 0690050K, email: "ce.0690001A@ac-lyon.fr" }
+  - about: a private status against a public SIRET proposes no operator:type
+    rows:
+      - { id: 0690051K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", status: "Privé", siret: "26690008300012" }
+    expect: { amenity: school, school:FR: primaire, ref:UAI: 0690051K, ref:FR:SIRET: "26690008300012" }
+  - about: a public status against a private SIRET proposes none
+    rows:
+      - { id: 0690052K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", status: Public, siret: "77564661500564" }
+    expect: { amenity: school, school:FR: primaire, ref:UAI: 0690052K, ref:FR:SIRET: "77564661500564" }
+  - about: a private status over a private SIRET is private
+    rows:
+      - { id: 0690053K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", status: "Privé", siret: "77564661500564" }
+    expect: { amenity: school, school:FR: primaire, ref:UAI: 0690053K, ref:FR:SIRET: "77564661500564", operator:type: private }
+  - about: a private status with no SIRET is private
+    rows:
+      - { id: 0690054K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", status: "Privé", siret: "" }
+    expect: { amenity: school, school:FR: primaire, ref:UAI: 0690054K, operator:type: private }
+  - about: a webmail mailbox naming the school
+    rows:
+      - { id: 0690055K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", name: "Ecole professionnelle privée Atelier d'Apprentissage de Gorge de Loup", street: "105  AVENUE SIDOINE APOLLINAIRE", postcode: "69003", city: "Lyon 9e  Arrondissement", email: "gorge.de.loup@wanadoo.fr" }
+    expect: { amenity: school, school:FR: primaire, name: "École professionnelle privée Atelier d'Apprentissage de Gorge de Loup", ref:UAI: 0690055K, email: "gorge.de.loup@wanadoo.fr", addr:housenumber: "105", addr:street: "AVENUE SIDOINE APOLLINAIRE", addr:postcode: "69003", addr:city: Lyon }
+  - about: a webmail mailbox naming the school, spelt with dots
+    rows:
+      - { id: 0690056K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", name: "Collège de l'école Juive de Lyon", street: "40 rue Alexandre Boutin", postcode: "69003", city: Villeurbanne, email: "ecole.juive.de.lyon@wanadoo.fr" }
+    expect: { amenity: school, school:FR: primaire, name: "Collège de l'école Juive de Lyon", ref:UAI: 0690056K, email: "ecole.juive.de.lyon@wanadoo.fr", addr:housenumber: "40", addr:street: "Rue Alexandre Boutin", addr:postcode: "69003", addr:city: Villeurbanne }
+  - about: a webmail mailbox naming a person
+    rows:
+      - { id: 0690057K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", name: "Ecole secondaire privée La Fourmi", street: "16 rue JEAN DESPARMET", postcode: "69003", city: "Lyon 8e  Arrondissement", email: "sophiejery@gmail.com" }
+    expect: { amenity: school, school:FR: primaire, name: "École secondaire privée La Fourmi", ref:UAI: 0690057K, addr:housenumber: "16", addr:street: "Rue JEAN DESPARMET", addr:postcode: "69003", addr:city: Lyon }
+  - about: a webmail mailbox naming nothing of the school
+    rows:
+      - { id: 0690058K, kind: Ecole, has_maternelle: "1", has_elementaire: "1", name: "Ecole élémentaire privée des Savoirs Partagés", postcode: "69003", city: Lyon, street: "2 rue Jaurès", email: "fatemi60@orange.fr" }
+    expect: { amenity: school, school:FR: primaire, name: "École élémentaire privée des Savoirs Partagés", ref:UAI: 0690058K, addr:housenumber: "2", addr:street: "Rue Jaurès", addr:postcode: "69003", addr:city: Lyon }

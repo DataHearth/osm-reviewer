@@ -2,7 +2,13 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { parse } from "yaml";
 import type { ZodType } from "zod";
-import { functions } from "../fr/functions";
+import {
+	functions,
+	notesFunctions,
+	steps as registeredSteps,
+	sitesFunctions,
+	skipFunctions,
+} from "../fr/functions";
 import { allowedBy } from "../tagfilter";
 import { compile, type Program, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
@@ -81,19 +87,26 @@ function runExamples(
 	return passed;
 }
 
-/** `any` or the mapping's country, then optionally the mapping's kind: `fr.school/name`. */
-function checkFunctionScopes(mapping: Mapping, problems: string[]) {
+/** Every function a mapping names is registered, and `any` or the mapping's country scopes it, then optionally its kind: `fr.school/name`. */
+function checkFunctions(mapping: Mapping, problems: string[]) {
 	const [country, kind] = mapping.id.toLowerCase().split(":");
 	const named = [
 		...Object.entries(mapping.tags).flatMap(([key, tag]) =>
-			"function" in tag ? [{ where: `tags.${key}`, name: tag.function }] : [],
+			"function" in tag ? [{ where: `tags.${key}`, name: tag.function, table: functions }] : [],
 		),
-		...(["skipBy", "sitesBy", "notesBy"] as const).flatMap((by) => {
+		...(
+			[
+				["skipBy", skipFunctions],
+				["sitesBy", sitesFunctions],
+				["notesBy", notesFunctions],
+			] as const
+		).flatMap(([by, table]) => {
 			const own = mapping.record[by];
-			return own ? [{ where: `record.${by}`, name: own.function }] : [];
+			return own ? [{ where: `record.${by}`, name: own.function, table }] : [];
 		}),
 	];
-	for (const { where, name } of named) {
+	for (const { where, name, table } of named) {
+		if (!Object.hasOwn(table, name)) problems.push(`${where}: function ${name} is not registered`);
 		const [scopeCountry, scopeKind] = name.split("/")[0].split(".");
 		if (scopeCountry !== "any" && scopeCountry !== country) {
 			problems.push(`${where}: function ${name} is scoped to another country`);
@@ -119,7 +132,7 @@ function checkMapping(file: string, root: string): { report: Report; mapping: Ma
 	const [country, kind] = mapping.id.toLowerCase().split(":");
 	const expected = join(root, "mappings", country, `${kind}.yaml`);
 	if (file !== expected) problems.push(`id ${mapping.id} belongs in ${relative(root, expected)}`);
-	checkFunctionScopes(mapping, problems);
+	checkFunctions(mapping, problems);
 	const { program, problems: compiled } = compile(mapping);
 	problems.push(...compiled);
 	if (program) checkEvidence(program, problems);
@@ -190,6 +203,8 @@ function checkColumns(renaming: Renaming, mapping: Mapping, problems: string[]) 
 	for (const step of steps) {
 		if (!step.name.startsWith(sourceScope))
 			problems.push(`step ${step.name} is not scoped to ${renaming.source}`);
+		if (!Object.hasOwn(registeredSteps, step.name))
+			problems.push(`step ${step.name} is not registered`);
 	}
 	for (const column of readByStep) {
 		if (!columns.has(column)) problems.push(`a step reads "${column}", which is not a column`);

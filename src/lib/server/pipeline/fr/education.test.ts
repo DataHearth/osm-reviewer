@@ -27,38 +27,7 @@ describe("Annuaire de l'éducation preset", () => {
 		...over,
 	});
 
-	it("proposes tags with normalised phone and website", () => {
-		const x = edu.extract([row()], "u");
-		const tags = Object.fromEntries((x?.tags ?? []).map((t) => [t.k, t.v]));
-		expect(tags).toMatchObject({
-			amenity: "school",
-			"school:FR": "primaire",
-			name: "École Jean Jaurès",
-			"ref:UAI": "0690001A",
-			"ref:FR:SIRET": "21690001000019",
-			phone: "+33 4 72 00 00 01",
-			website: "https://ecole-jaures.fr",
-			"operator:type": "public",
-		});
-		expect(x?.closedBy).toBeUndefined();
-	});
-
-	it("maps every level to amenity=school with its school:FR, post-bac to college", () => {
-		const kind = (r: Row) => {
-			const tags = edu.extract([r], "u")?.tags ?? [];
-			return [tags.find((t) => t.k === "amenity")?.v, tags.find((t) => t.k === "school:FR")?.v];
-		};
-		expect(kind(row({ ecole_elementaire: "0" }))).toEqual(["school", "maternelle"]);
-		expect(kind(row({ ecole_maternelle: "0" }))).toEqual(["school", "élémentaire"]);
-		expect(kind(row({ type_etablissement: "Collège" }))).toEqual(["school", "collège"]);
-		expect(kind(row({ type_etablissement: "Lycée" }))).toEqual(["school", "lycée"]);
-		expect(kind(row({ type_etablissement: "", code_nature: "400" }))).toEqual([
-			"college",
-			undefined,
-		]);
-	});
-
-	it("maps a medico-social institute as a social facility, leaving a mapped one's main tag", () => {
+	it("proposes a social facility's main tag add-only, so a mapped one's is left alone", () => {
 		const tags = edu.extract(
 			[row({ type_etablissement: "Médico-social", code_nature: "240" })],
 			"u",
@@ -67,8 +36,6 @@ describe("Annuaire de l'éducation preset", () => {
 			v: "social_facility",
 			addOnly: true,
 		});
-		expect(tags?.find((t) => t.k === "social_facility:for")?.v).toBe("disabled");
-		expect(tags?.find((t) => t.k === "school:FR")).toBeUndefined();
 	});
 
 	it("reads a UAI over several sites from its main site, and says so", () => {
@@ -110,22 +77,14 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(site?.also).toBeUndefined();
 	});
 
-	it("quotes the kind and the level flags a school's level comes from, and skips a webmail address", () => {
-		const tags = edu.extract([row({ mail: "someone@gmail.com" })], "u")?.tags ?? [];
+	it("quotes the kind and the level flags a school's level comes from", () => {
+		const tags = edu.extract([row()], "u")?.tags ?? [];
 		expect(
 			tags
 				.find((t) => t.k === "school:FR")
 				?.parts.map((p) => p.text)
 				.join(""),
 		).toBe("type_etablissement: Ecole, ecole_maternelle: 1, ecole_elementaire: 1");
-		expect(tags.find((t) => t.k === "email")).toBeUndefined();
-	});
-
-	it("says when the directory places a school only roughly", () => {
-		expect(edu.extract([row({ precision_localisation: "Rue" })], "u")?.notes).toEqual([
-			"The directory places it only to the precision of: Rue",
-		]);
-		expect(edu.extract([row({ precision_localisation: "Parfaite" })], "u")?.notes).toEqual([]);
 	});
 
 	it("proposes nothing for a section housed in its parent establishment", () => {
@@ -182,30 +141,6 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(edu.extract([college, lycee], "u")?.notes).toEqual([]);
 	});
 
-	it("proposes nothing for an office that is not a school", () => {
-		expect(edu.extract([row({ type_etablissement: "Service Administratif" })], "u")).toBeNull();
-		expect(edu.extract([row({ type_etablissement: "" })], "u")).toBeNull();
-		expect(edu.extract([row({ code_nature: "809" })], "u")).toBeNull();
-	});
-
-	it("proposes the directory's email and opening date", () => {
-		const tags = Object.fromEntries(
-			(
-				edu.extract(
-					[
-						row({
-							mail: "ce.0690001A@ac-lyon.fr",
-							date_ouverture: "2023-09-01",
-							ecole_elementaire: "0",
-						}),
-					],
-					"u",
-				)?.tags ?? []
-			).map((t) => [t.k, t.v]),
-		);
-		expect(tags).toMatchObject({ email: "ce.0690001A@ac-lyon.fr", start_date: "2023-09-01" });
-	});
-
 	it("leaves out a person's own mailbox and a mobile, and counts them", () => {
 		const x = edu.extract(
 			[row({ mail: "audrey.lagane@lespetitesfamilles.fr", telephone: "06 70 75 01 33" })],
@@ -218,50 +153,38 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(edu.extract([row({ mail: "contact@ecole-jaures.fr" })], "u")?.withheld).toBe(0);
 	});
 
-	it("proposes a webmail mailbox naming the school or its place, and withholds the others", () => {
-		const email = (over: Row) => {
-			const x = edu.extract([row(over)], "u");
-			return [x?.tags.find((t) => t.k === "email")?.v, x?.withheld];
-		};
+	it("counts a webmail mailbox that names neither the school, its place nor a role as withheld", () => {
+		const withheld = (over: Row) => edu.extract([row(over)], "u")?.withheld;
 		expect(
-			email({
+			withheld({
 				nom_etablissement: "Ecole professionnelle privée Atelier d'Apprentissage de Gorge de Loup",
 				adresse_1: "105  AVENUE SIDOINE APOLLINAIRE",
 				nom_commune: "Lyon 9e  Arrondissement",
 				mail: "gorge.de.loup@wanadoo.fr",
 			}),
-		).toEqual(["gorge.de.loup@wanadoo.fr", 0]);
+		).toBe(0);
 		expect(
-			email({
+			withheld({
 				nom_etablissement: "Collège de l'école Juive de Lyon",
 				adresse_1: "40 rue Alexandre Boutin",
 				nom_commune: "Villeurbanne",
 				mail: "ecole.juive.de.lyon@wanadoo.fr",
 			}),
-		).toEqual(["ecole.juive.de.lyon@wanadoo.fr", 0]);
+		).toBe(0);
 		expect(
-			email({
+			withheld({
 				nom_etablissement: "Ecole secondaire privée La Fourmi",
 				adresse_1: "16 rue JEAN DESPARMET",
 				nom_commune: "Lyon 8e  Arrondissement",
 				mail: "sophiejery@gmail.com",
 			}),
-		).toEqual([undefined, 1]);
+		).toBe(1);
 		expect(
-			email({
+			withheld({
 				nom_etablissement: "Ecole élémentaire privée des Savoirs Partagés",
 				mail: "fatemi60@orange.fr",
 			}),
-		).toEqual([undefined, 1]);
-	});
-
-	it("proposes no operator:type where the SIREN and the directory's status disagree", () => {
-		const type = (over: Row) =>
-			edu.extract([row(over)], "u")?.tags.find((t) => t.k === "operator:type")?.v;
-		expect(type({ statut_public_prive: "Privé", siren_siret: "26690008300012" })).toBeUndefined();
-		expect(type({ statut_public_prive: "Public", siren_siret: "77564661500564" })).toBeUndefined();
-		expect(type({ statut_public_prive: "Privé", siren_siret: "77564661500564" })).toBe("private");
-		expect(type({ statut_public_prive: "Privé", siren_siret: "" })).toBe("private");
+		).toBe(1);
 	});
 
 	it("asks the address base for its address, a kilometre off before its point moves", () => {

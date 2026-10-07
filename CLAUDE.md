@@ -223,11 +223,14 @@ registered in `functions.ts` beside the functions), the address base (`ban.ts`, 
 data.gouv.fr dataset pages (`datagouv.ts`), French spelling (`text.ts`, `school-name.ts`,
 `words.ts`), the tags OSM France uses (`tags.ts`: UAI, SIRET, `school:FR` and its levels), which
 kinds stand for one another (`kinds.ts`) and how French schools are matched (`school.ts`). A new
-dataset is a mapping file and a shipped renaming (`mappings/`, `sources/`), read by the one
-`Extractor` (`extractor.ts`), which is built from a table of columns and the mapping's functions and
-steps, with code only for what no rule can say; a new identifier is one entry in a `schemes` table. The generic part still
+dataset is a mapping file and a shipped renaming of its columns (`mappings/`, `sources/`), read by
+the one `Extractor` (`extractor.ts`), with code only for what no rule can say: a **function** the
+mapping names (for a tag, or on `record` for skipping a row, the other sites' values and notes) or
+a **step** the renaming declares to rebuild and join rows before the renaming (the IRVE
+declarations). Both are registered in `fr/functions.ts`, and `validate` refuses a file that names
+one that is not. A new identifier is one entry in a `schemes` table. The generic part still
 imports `fr/` directly, since France is the only country: `rg 'fr/' src/lib/server/pipeline -g
-'!fr/**'` lists every place a second country would have to be chosen by area instead.
+'!**/fr/**'` lists every place a second country would have to be chosen by area instead.
 
 A change that must not alter what is proposed is checked with `scripts/audit/golden.mjs`: it
 rebuilds the queue on a copy of the database with every HTTP answer recorded to disk, so the
@@ -271,10 +274,17 @@ mapping. Nothing is stored, so editing either takes the mark off. The review scr
 beside the source with the tags the shipped renaming overrides, which apply to any source read
 through it and to none read through a renaming the model made.
 
-The **deterministic** extractor is the mapping's (`extractor.ts`): the mapping is named on the source
-(an older row may hold the name of its shipped source, `irve` or `annuaire-education`), or the
-shipped source whose columns hold the read's is used, and a source that fits none fails its run
-rather than guessing. Where the source is not sure, the mapping proposes nothing rather than a
+The **deterministic** extractor is `Extractor` (`extractor.ts`), built once per table of columns,
+which is the shipped renaming's or a stored model one, over the mapping named on the source (an
+older row may hold the name of its shipped source, `irve` or `annuaire-education`); a source that
+names none is read through the shipped source whose columns hold the read's, and one that fits
+none fails its run rather than guessing. A record goes rows, steps, column renaming, mapping, and
+everything after the renaming reads inputs, never a column: the mapping's `record` block gives
+its key, position and skip, the line to ask the address base for (`address`, `farM`, `wrongM`),
+which of a key's rows is its main site (`pick: nearest`), the name and address the review screen
+shows, and which inputs count as withheld; each tag's evidence is the inputs its rule read or its
+`quote`, shown under the table's own column names, so a source renamed by the model quotes its
+columns, not the register's. Where the source is not sure, the mapping proposes nothing rather than a
 guess: no socket output above what the connector can deliver (43.5 kW on type 2, 400 kW on
 CCS and CHAdeMO, where the registry holds cabinet totals, and no type 2 output from a DC unit's
 own type 2 outlet), a type 2 point whose `cable_t2_attache` is blank (in its newest declaration

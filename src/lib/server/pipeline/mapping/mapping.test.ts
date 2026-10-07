@@ -1,9 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
-import { functions, notesFunctions, sitesFunctions, skipFunctions } from "../fr/functions";
 import { compile, inputsOf, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
 import {
@@ -762,29 +760,23 @@ columns: [ident, gratis, spare]
 rename: { ident: id, gratis: free }
 ${extra}`;
 
-	it.each(["school", "charging_station"])(
-		"registers every function the %s mapping names",
-		(kind) => {
-			const shipped = mappingSchema.parse(
-				parse(
-					readFileSync(
-						join(import.meta.dirname, `../../../../../mappings/fr/${kind}.yaml`),
-						"utf8",
-					),
+	it("refuses a function or a step a file names that nothing registered", () => {
+		const root = tree({
+			"mappings/xx/thing.yaml": mappingYaml
+				.replace("  fee:", "  name: { function: any/nothing, reads: [id], conf: 0.5 }\n  fee:")
+				.replace(
+					"record: { key: id,",
+					"record: { notesBy: { function: xx/noted, reads: [id] }, key: id,",
 				),
-			);
-			const named = Object.values(shipped.tags).flatMap((t) =>
-				"function" in t ? [t.function] : [],
-			);
-			expect(named.length).toBeGreaterThan(0);
-			for (const name of named) expect(functions).toHaveProperty([name]);
-			const { skipBy, sitesBy } = shipped.record;
-			if (skipBy) expect(skipFunctions).toHaveProperty([skipBy.function]);
-			if (sitesBy) expect(sitesFunctions).toHaveProperty([sitesBy.function]);
-			const { notesBy } = shipped.record;
-			if (notesBy) expect(notesFunctions).toHaveProperty([notesBy.function]);
-		},
-	);
+			"sources/xx/own.yaml": sourceYaml(
+				"steps:\n  - { name: xx.own/rebuild, why: it rebuilds, reads: [spare] }\n",
+			),
+		});
+		const problems = validate(root).flatMap((r) => r.problems);
+		expect(problems).toContain("tags.name: function any/nothing is not registered");
+		expect(problems).toContain("record.notesBy: function xx/noted is not registered");
+		expect(problems).toContain("step xx.own/rebuild is not registered");
+	});
 
 	it("lets a renaming send several columns to one input", () => {
 		const root = tree({
