@@ -68,4 +68,24 @@ describe("pickResource", () => {
 		]);
 		expect(picked?.url).toBe("https://x.test/data.csv");
 	});
+
+	it("ignores the dynamic data a dataset lists beside its static registry", () => {
+		const picked = pickResource([
+			{
+				format: "csv",
+				type: "main",
+				url: "https://x.test/static.csv",
+				title: "Base nationale consolidée - données statiques",
+				last_modified: "2026-10-07T03:23",
+			},
+			{
+				format: "csv",
+				type: "main",
+				url: "https://x.test/dynamic.csv",
+				title: "Base nationale consolidée - données dynamiques",
+				last_modified: "2026-10-07T03:37",
+			},
+		]);
+		expect(picked?.url).toBe("https://x.test/static.csv");
+	});
 });

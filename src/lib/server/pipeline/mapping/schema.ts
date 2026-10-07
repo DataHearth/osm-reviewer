@@ -82,8 +82,8 @@ export const officialSchema = z.strictObject({
 	licence: z.string().min(1),
 	/** The dataset's own page, which a person can open to check the other two. */
 	address: httpsUrl,
-	/** The OSM community's page or thread on using this dataset. */
-	discussion: httpsUrl,
+	/** The OSM community's pages and threads on using this dataset. */
+	discussion: z.array(httpsUrl).min(1),
 	source: z.strictObject({
 		kind: z.enum(SOURCE_KINDS),
 		endpoint: httpsUrl,

@@ -1,8 +1,47 @@
 format: 1
 source: fr/irve
 mapping: FR:charging_station
-# No official block: the publisher marks this dataset as replaced by the PAN's consolidation and removes it on 31-12-2026,
-# so it has no stable address. Add one once the replacement has a stable address and its own columns are mapped.
+official:
+  title: "[BETA] Bases Nationales des Points de Recharge pour Véhicules Électriques en France (IRVE)"
+  publisher:
+    name: Point d'Accès National transport.data.gouv.fr
+    relation: consolidates the files that operators of charging points must publish under the arrêté du 4 mai 2021, and replaces data.gouv.fr as the national registry
+  licence: Licence Ouverte 2.0
+  address: https://transport.data.gouv.fr/datasets/beta-bases-nationales-des-points-de-recharge-pour-vehicules-electriques-en-france-irve
+  discussion:
+    - https://wiki.openstreetmap.org/wiki/France/data.gouv.fr/Bornes_de_Recharge_pour_Véhicules_Électriques
+    - https://forum.openstreetmap.fr/t/rdv-avec-le-pan-au-sujet-des-bornes-de-recharge-irve-en-septembre/36334
+  source:
+    kind: registry
+    endpoint: https://www.data.gouv.fr/api/1/datasets/685965d0ab901919e14a4a1b/
+    formerEndpoints:
+      - https://www.data.gouv.fr/api/1/datasets/5448d3e0c751df01f85d0572/
+      - https://www.data.gouv.fr/api/1/datasets/base-nationale-des-irve-data-gouv-infrastructures-de-recharge-pour-vehicules-electriques-donnees-statiques/
+      - https://www.data.gouv.fr/api/1/datasets/base-nationale-des-irve-infrastructures-de-recharge-pour-vehicules-electriques/
+      - https://www.data.gouv.fr/api/1/datasets/fichier-consolide-des-bornes-de-recharge-pour-vehicules-electriques/
+    schedule: daily
+    matching: amenity=charging_station
+    floor: 0.7
+    allow:
+      - amenity
+      - operator
+      - network
+      - capacity
+      - ref:EU:EVSE
+      - socket:*
+      - fee
+      - access
+      - opening_hours
+      - motorcycle
+      - motorcar
+      - authentication:none
+      - payment:credit_cards
+      - reservation
+      - start_date
+      - owner
+      - operator:phone
+      - wheelchair
+      - maxheight
 columns:
   - id_station_itinerance
   - id_pdc_itinerance
@@ -56,11 +95,14 @@ columns:
   - created_at
   - consolidated_is_code_insee_verified
   - consolidated_is_code_insee_modified
+  - dataset_title
+  - datagouv_last_modified
+  - deduplication_status
 
 steps:
   - name: fr.irve/declarations
     why: A station is declared again and again, by its operator and by aggregators. Only its newest declaration counts, the operator's own file winning a same-day tie. What the newest leaves out is read from an older one of the same point (connectors, and the free and tariff columns).
-    reads: [date_maj, last_modified, datagouv_resource_id, datagouv_organization_or_owner, id_pdc_itinerance, id_station_itinerance, nbre_pdc, gratuit, tarification]
+    reads: [date_maj, last_modified, datagouv_last_modified, datagouv_resource_id, datagouv_organization_or_owner, id_pdc_itinerance, id_station_itinerance, nbre_pdc, gratuit, tarification]
   - name: fr.irve/sites
     why: Operators re-declare one site under new station ids, or declare each charge point as a station. Records are merged into sites by shared point ids, position and name.
     reads: [id_pdc_itinerance, nom_station, adresse_station, coordonneesXY, nom_operateur, nom_amenageur]
@@ -115,6 +157,8 @@ ignored:
   created_at: when the consolidated file was built, the same on every row of a file and no declaration's date
   consolidated_is_code_insee_verified: the publisher's check of the INSEE code, which the address base replaces
   consolidated_is_code_insee_modified: the publisher's correction of the INSEE code, which the address base replaces
+  dataset_title: the title of the dataset a declaration came from, a label with no OSM key
+  deduplication_status: the publisher's own verdict on which of a point's declarations to keep; every declaration is read and the newest of a station wins, whatever the verdict
 
 examples:
   - about: two free points through the register's own columns

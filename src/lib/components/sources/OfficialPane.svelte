@@ -37,7 +37,7 @@ const section =
 
 <form method="POST" action="?/officialAdd" use:enhance>
 	<div class="flex flex-wrap items-baseline justify-between gap-4 border-b border-line bg-bar px-[18px] py-3">
-		<span class="shrink-0 text-[14px] font-medium whitespace-nowrap text-ink">{official.title}</span>
+		<span class="min-w-0 text-[14px] font-medium text-ink">{official.title}</span>
 		<span class="text-[11.5px] text-faint">official source · nothing is fetched until you switch it on</span>
 	</div>
 

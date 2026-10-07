@@ -29,8 +29,14 @@ interface DatagouvResource {
 export function pickResource(resources: DatagouvResource[]): DatagouvResource | undefined {
 	// IRVE also publishes "Documentation sur la consolidation" as a CSV, newer than the data
 	// and with the same word in its title; only "main" resources are the dataset itself.
+	// The PAN's consolidation lists the live status of the points as a second main CSV, newer
+	// than the registry and with the same word in its title.
 	const csv = resources.filter(
-		(r) => r.url && (r.format ?? "").toLowerCase() === "csv" && (r.type ?? "main") === "main",
+		(r) =>
+			r.url &&
+			(r.format ?? "").toLowerCase() === "csv" &&
+			(r.type ?? "main") === "main" &&
+			!/dynamique/i.test(r.title ?? ""),
 	);
 	const score = (r: DatagouvResource) => (/consolid/i.test(r.title ?? "") ? 1 : 0);
 	return csv.sort(

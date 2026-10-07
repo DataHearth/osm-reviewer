@@ -100,6 +100,9 @@ test("a source made from a shipped file shows its checklist, and one that was ed
 	await expect(
 		page.getByRole("link", { name: /wiki\.openstreetmap\.org\/wiki\/France\/data\.gouv\.fr/ }),
 	).toHaveAttribute("href", /^https:\/\/wiki\.openstreetmap\.org\//);
+	await expect(
+		page.getByRole("link", { name: /forum\.openstreetmap\.fr\/t\/school-fr-et-osmose/ }),
+	).toHaveAttribute("href", "https://forum.openstreetmap.fr/t/school-fr-et-osmose/12801");
 	await expect(page.getByText("start_date", { exact: true })).toBeVisible();
 
 	await page.getByRole("button", { name: new RegExp(`^${RENAMED_SOURCE.name}`) }).click();
@@ -111,7 +114,7 @@ test("a shipped source no row is made from is offered, and switching it on creat
 	page,
 }) => {
 	await signIn(page, ADMIN.email, "/server?s=sources");
-	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeHidden();
+	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeVisible();
 
 	await page.getByRole("button", { name: new RegExp(`^${OFFICIAL_SOURCE.name}`) }).click();
 	await page.getByRole("button", { name: "edit", exact: true }).click();
@@ -120,7 +123,7 @@ test("a shipped source no row is made from is offered, and switching it on creat
 	await page.getByRole("button", { name: "save changes" }).click();
 	await expect(page.getByText("OFFICIAL SOURCE")).toBeHidden();
 
-	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeVisible();
+	await expect(page.getByText("OFFICIAL · 2 TO SWITCH ON")).toBeVisible();
 	await page.getByRole("button", { name: new RegExp(`^${OFFICIAL_SOURCE.name}`) }).click();
 
 	await expect(page.getByText("CHECKLIST")).toBeVisible();
@@ -128,7 +131,7 @@ test("a shipped source no row is made from is offered, and switching it on creat
 	await expect(page.getByText("amenity=school", { exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "switch on" }).click();
 
-	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeHidden();
+	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeVisible();
 	await expect(page.getByText("OFFICIAL SOURCE")).toBeVisible();
 	await expect(page.getByText("official", { exact: true })).toBeVisible();
 	await expect(page.getByText("deterministic field map · mapping FR:school")).toBeVisible();

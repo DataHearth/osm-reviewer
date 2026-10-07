@@ -17,7 +17,8 @@ const AGGREGATORS = new Set(["qualicharge"]);
 const ownFile = (r: Row) =>
 	AGGREGATORS.has(str(r, "datagouv_organization_or_owner").toLowerCase()) ? 0 : 1;
 
-const newest = (r: Row) => `${str(r, "date_maj")}|${ownFile(r)}|${str(r, "last_modified")}`;
+const newest = (r: Row) =>
+	`${str(r, "date_maj")}|${ownFile(r)}|${str(r, "last_modified", "datagouv_last_modified")}`;
 
 /**
  * An EVSE id the way two declarations of one point or station are compared: without `*`, the
@@ -95,8 +96,8 @@ const SAME_SPOT_M = 2;
  * The consolidated file keeps every declaration a station has had: an operator's own file
  * beside its aggregator's, and older ones listing points since removed. Each station is read
  * from its newest declaration whole, by `date_maj`, then the operator's or owner's own file over
- * an aggregator's copy, then `last_modified` (an operator's file and its aggregator's often
- * share the day), rather than from a union that counts what no longer exists.
+ * an aggregator's copy, then `last_modified` (`datagouv_last_modified` in the PAN's file; an
+ * operator's file and its aggregator's often share the day), rather than from a union that counts what no longer exists.
  *
  * A station is gone when newer ones list all its points (a pool taking in the stations an
  * operator declared one per point), or a newer one in another file declares it again: some of

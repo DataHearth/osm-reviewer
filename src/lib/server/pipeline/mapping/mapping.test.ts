@@ -39,7 +39,7 @@ const official = {
 	publisher: { name: "The ministry", relation: "runs the things" },
 	licence: "Licence Ouverte 2.0",
 	address: "https://example.test/things",
-	discussion: "https://example.test/things/talk",
+	discussion: ["https://example.test/things/talk"],
 	source: {
 		kind: "registry",
 		endpoint: "https://example.test/things.csv",
@@ -335,7 +335,7 @@ official:
   publisher: { name: The ministry, relation: runs the things }
   licence: Licence Ouverte 2.0
   address: https://example.test/things
-  discussion: https://example.test/things/talk
+  discussion: [https://example.test/things/talk]
   source:
     kind: registry
     endpoint: https://example.test/things.csv

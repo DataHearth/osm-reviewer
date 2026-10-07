@@ -41,7 +41,7 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 <div>
 	<div class="flex flex-wrap items-center justify-between gap-5 border-b border-line bg-bar px-[18px] py-3">
 		<div class="flex min-w-0 flex-wrap items-baseline gap-3">
-			<span class="text-[14px] font-medium whitespace-nowrap text-ink">{s.name}</span>
+			<span class="text-[14px] font-medium text-ink">{s.name}</span>
 			<span class="text-[11.5px] text-faint">{s.kindLabel}</span>
 			{#if s.official}<span class="text-[11.5px] text-ok">official</span>{/if}
 		</div>

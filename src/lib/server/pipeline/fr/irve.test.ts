@@ -875,6 +875,21 @@ describe("IRVE preset", () => {
 		}
 	});
 
+	it("reads a declaration's last change from the PAN's file, which names the column for the dataset", () => {
+		const point = { id_pdc_itinerance: "FR*S63*E0001*1", date_maj: "2026-10-03" };
+		const old = irveRow({
+			...point,
+			nom_enseigne: "Stale",
+			datagouv_last_modified: "2026-10-02T06:00:00.000000+0000",
+		});
+		const fresh = irveRow({ ...point, datagouv_last_modified: "2026-10-03T06:00:00.000000+0000" });
+		for (const rows of [
+			[old, fresh],
+			[fresh, old],
+		])
+			expect(irve.extract(rows, "u")?.tags.find((t) => t.k === "network")?.v).toBe("ReseauCharge");
+	});
+
 	it("reads each point's cable from its newest declaration that states it before ruling a socket out", () => {
 		// RELAIS TOULOUSE ESPAGNE: the 2026 copy says both type 2 points carry a cable, the
 		// operator's 2024 file leaves the column blank. way/1493526842 maps socket:type2=4.

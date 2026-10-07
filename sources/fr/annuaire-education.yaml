@@ -8,7 +8,9 @@ official:
     relation: runs the public schools and supervises the private ones it lists
   licence: Licence Ouverte 2.0
   address: https://data.education.gouv.fr/explore/dataset/fr-en-annuaire-education/
-  discussion: https://wiki.openstreetmap.org/wiki/France/data.gouv.fr/Établissements_scolaires
+  discussion:
+    - https://forum.openstreetmap.fr/t/school-fr-et-osmose/12801
+    - https://wiki.openstreetmap.org/wiki/France/data.gouv.fr/Établissements_scolaires
   source:
     kind: api
     endpoint: https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-annuaire-education/records

@@ -64,15 +64,16 @@ describe("officialFile", () => {
 		);
 	});
 
-	it("does not mark a row read through a shipped source that has no official block", () => {
-		expect(irve.official).toBeUndefined();
-		expect(
-			officialFile({
-				endpoint: "https://www.data.gouv.fr/api/1/datasets/5448d3e0c751df01f85d0572/",
-				preset: irve.mapping,
-				extractor: "deterministic",
-			}),
-		).toBeNull();
+	it("marks a row still made from the IRVE dataset data.gouv.fr is retiring, until it is moved", () => {
+		const file = irve as OfficialRenaming;
+		expect(file.official.source.formerEndpoints).toContain(
+			"https://www.data.gouv.fr/api/1/datasets/fichier-consolide-des-bornes-de-recharge-pour-vehicules-electriques/",
+		);
+		for (const endpoint of file.official.source.formerEndpoints ?? [])
+			expect(officialFile(row(file, { endpoint }))?.source).toBe("fr/irve");
+		expect(file.official.source.formerEndpoints).toContain(
+			"https://www.data.gouv.fr/api/1/datasets/5448d3e0c751df01f85d0572/",
+		);
 	});
 
 	it("drops the mark when the endpoint, the kind of place or the extractor is changed", () => {
@@ -149,6 +150,7 @@ describe("switching a shipped source on", () => {
 	it("creates the row from the file, once, and then stops offering it", async () => {
 		expect(loadOffered(await loadSources(db)).map((o) => o.file)).toEqual([
 			"fr/annuaire-education",
+			"fr/irve",
 		]);
 
 		const id = addOfficialSource(db, education, { a1: true });
@@ -182,7 +184,7 @@ describe("switching a shipped source on", () => {
 
 		const sources = await loadSources(db);
 		expect(sources[0].official?.file).toBe("fr/annuaire-education");
-		expect(loadOffered(sources)).toEqual([]);
+		expect(loadOffered(sources).map((o) => o.file)).toEqual(["fr/irve"]);
 		expect(addOfficialSource(db, education, {})).toBeNull();
 	});
 });

@@ -123,8 +123,8 @@ export interface OfficialSource {
 	licence: string;
 	/** The dataset's own page. */
 	address: string;
-	/** The OSM community's page on using it. */
-	discussion: string;
+	/** The OSM community's pages and threads on using it. */
+	discussion: string[];
 	kind: SourceKind;
 	kindLabel: string;
 	endpoint: string;
