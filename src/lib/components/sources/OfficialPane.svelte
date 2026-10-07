@@ -72,7 +72,7 @@ const section =
 		<button type="submit" class={primaryBtn(true)}>switch on</button>
 		<button
 			type="button"
-			class="cursor-pointer rounded-md border border-line bg-transparent px-[14px] py-[7px] text-[13px] text-faint hover:text-ink"
+			class="btn-cancel"
 			onclick={() => (review.srcDraft = null)}>cancel</button
 		>
 		<span class="text-[11.5px] {$message ? 'text-bad' : 'text-faint'}">
