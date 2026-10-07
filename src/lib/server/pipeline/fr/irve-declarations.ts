@@ -181,7 +181,7 @@ export function currentStations(rows: Row[]): Station[] {
 }
 
 /** The coordinates `position` reads, as the registry wrote them. */
-export function rawCoords(r: Row): [string, string] | null {
+function rawCoords(r: Row): [string, string] | null {
 	if (coord(r.consolidated_latitude, r.consolidated_longitude))
 		return [str(r, "consolidated_latitude"), str(r, "consolidated_longitude")];
 	const xy = /(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/.exec(str(r, "coordonneesXY"));

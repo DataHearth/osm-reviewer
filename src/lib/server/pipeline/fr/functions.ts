@@ -1,6 +1,7 @@
 import type { TagFunction } from "../mapping/evaluate";
-import type { SitesFunction, SkipFunction } from "../mapping/record";
+import type { NotesFunction, SitesFunction, SkipFunction } from "../mapping/record";
 import { chargingFunctions } from "./charging-functions";
+import { positionPrecision } from "./irve-position";
 import { MAILBOX, withheldMailbox } from "./mailbox";
 import { addressOf } from "./school-address";
 import { housedSection } from "./school-housed";
@@ -55,4 +56,9 @@ export const skipFunctions: Record<string, SkipFunction> = {
 /** The code a mapping's `record.sitesBy` names. */
 export const sitesFunctions: Record<string, SitesFunction> = {
 	"fr.school/sites": alsoAtOtherSites,
+};
+
+/** The code a mapping's `record.notesBy` names. */
+export const notesFunctions: Record<string, NotesFunction> = {
+	"fr.charging_station/precision": positionPrecision,
 };

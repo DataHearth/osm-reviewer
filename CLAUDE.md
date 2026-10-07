@@ -269,7 +269,7 @@ mapping. Nothing is stored, so editing either takes the mark off. The review scr
 beside the source with the tags the shipped renaming overrides, which apply to any source read
 through it and to none read through a renaming the model made.
 
-The **deterministic** extractor is a preset (`fr/irve.ts`, `fr/school-preset.ts`): `irve` and `annuaire-education`,
+The **deterministic** extractor is a preset (`fr/irve-preset.ts`, `fr/school-preset.ts`): `irve` and `annuaire-education`,
 named on the source or detected from the columns, and a source that fits none fails its run
 rather than guessing. Where the source is not sure, the preset proposes nothing rather than a
 guess: no socket output above what the connector can deliver (43.5 kW on type 2, 400 kW on

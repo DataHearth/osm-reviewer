@@ -1,4 +1,4 @@
-import { irve } from "./fr/irve";
+import { irve } from "./fr/irve-preset";
 import { education } from "./fr/school-preset";
 import type { Preset } from "./preset";
 

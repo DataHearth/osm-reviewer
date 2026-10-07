@@ -82,6 +82,9 @@ export type SkipFunction = (reads: Inputs, rowsOf: RowsOf) => boolean;
  */
 export type SitesFunction = (rows: Inputs[], main: number, tags: ProposedTag[]) => string[];
 
+/** Lines for the reviewer about a record, from the inputs the mapping declares it reads. */
+export type NotesFunction = (reads: Inputs) => string[];
+
 const readsOf = (reads: string[], row: Inputs): Inputs =>
 	Object.fromEntries(reads.map((input) => [input, row[input] ?? ""]));
 
@@ -117,6 +120,12 @@ export function settledBy(
 		main,
 		tags,
 	);
+}
+
+/** The lines the mapping's `notesBy` function answers for a record's first row. */
+export function notedBy(program: Program, table: Record<string, NotesFunction>, row: Inputs) {
+	const by = program.record.notesBy;
+	return by ? registered(table, by.function, program)(readsOf(by.reads, row)) : [];
 }
 
 const MOST_VALUES_SHOWN = 3;

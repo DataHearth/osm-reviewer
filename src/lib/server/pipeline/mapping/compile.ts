@@ -43,6 +43,7 @@ export interface Program {
 		withheld: string[];
 		skipBy: { function: string; reads: string[] } | null;
 		sitesBy: { function: string; reads: string[] } | null;
+		notesBy: { function: string; reads: string[] } | null;
 		/** The lets the key, position, skip and address need, in order: all a reader evaluates beside them. */
 		lets: { name: string; check: Ok }[];
 	};
@@ -166,6 +167,7 @@ export function compile(
 	for (const [by, named] of [
 		["skipBy", record.skipBy],
 		["sitesBy", record.sitesBy],
+		["notesBy", record.notesBy],
 	] as const)
 		for (const input of named?.reads ?? []) {
 			if (isInput.has(input)) read.add(input);
@@ -249,6 +251,7 @@ export function compile(
 				withheld: record.withheld ?? [],
 				skipBy: record.skipBy ?? null,
 				sitesBy: record.sitesBy ?? null,
+				notesBy: record.notesBy ?? null,
 				lets: lets.filter((l) => recordLets.has(l.name)),
 			},
 			tags,

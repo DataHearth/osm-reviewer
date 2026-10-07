@@ -80,6 +80,8 @@ export const mappingSchema = z.strictObject({
 		skipBy: recordFunction.optional(),
 		/** For a key the source lists at several sites, what the other rows add to the record's tags and a line for the reviewer. */
 		sitesBy: recordFunction.optional(),
+		/** Lines for the reviewer that only code can write, after those the tags' functions give. */
+		notesBy: recordFunction.optional(),
 		/** Inputs holding a phone number or a mailbox that a record leaves out are counted, for the run's message. */
 		withheld: z.array(name).min(1).optional(),
 	}),

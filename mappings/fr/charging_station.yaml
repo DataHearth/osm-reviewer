@@ -55,6 +55,9 @@ record:
   farM: 'coarse ? 100.0 : 0.0'
   # Past this from a housenumber in its own postcode even a precise point is a mistyped one.
   wrongM: 2000
+  notesBy:
+    function: fr.charging_station/precision
+    reads: [lat, lon]
 
 # `free` and `tariff` are each point's newest stated value, which the source's declarations step picks.
 let:
@@ -211,19 +214,23 @@ examples:
       - { station_id: FRABCP001, point_id: FRABCE0011, station_name: Parking Mairie, operator_name: ABC, free: "true", pay_by_card: "true", access_condition: Accès libre, booking: "false", two_wheelers: "false" }
       - { station_id: FRABCP001, point_id: FRABCE0012, station_name: Parking Mairie, operator_name: ABC, free: "true", pay_by_card: "true", access_condition: Accès libre, booking: "false", two_wheelers: "false" }
     expect: { amenity: charging_station, operator: ABC, capacity: "2", ref:EU:EVSE: FR*ABC*P001, fee: no, access: yes, motorcar: yes, payment:credit_cards: yes, reservation: no }
+    notes: ["None of its charge points names a connector, so sockets are left out"]
   - about: one point of two is not free, and the points disagree on booking
     rows:
       - { station_id: FRABCP002, owner_name: Ville de Lyon, free: "true", booking: "true", two_wheelers: "false" }
       - { station_id: FRABCP002, owner_name: Ville de Lyon, free: "false", booking: "false", two_wheelers: "false" }
     expect: { amenity: charging_station, operator: Ville de Lyon, capacity: "2", ref:EU:EVSE: FR*ABC*P002, fee: yes, motorcar: yes }
+    notes: ["None of its charge points names a connector, so sockets are left out"]
   - about: free beside a price proposes no fee; per-session payment but the note asks for a badge
     rows:
       - { station_id: FRABCP003, point_id: FRABCE0031, operator_name: ABC, free: "true", tariff: "0,35 €/kWh", pay_per_session: "true", notes: Badge requis, access_condition: Accès réservé, two_wheelers: "false", max_height: "2,10" }
     expect: { amenity: charging_station, operator: ABC, capacity: "1", ref:EU:EVSE: FR*ABC*P003, motorcar: yes, maxheight: "2.1" }
+    notes: ["None of its charge points names a connector, so sockets are left out"]
   - about: a two-wheeler station; a height of 0 is not a height
     rows:
       - { station_id: FRABCP004, point_id: FRABCE0041, operator_name: ABC, station_name: Abri vélos gare, two_wheelers: "true", pay_per_session: "true", max_height: "0" }
     expect: { amenity: charging_station, operator: ABC, capacity: "1", ref:EU:EVSE: FR*ABC*P004, fee: yes, motorcycle: yes, authentication:none: yes }
+    notes: ["None of its charge points names a connector, so sockets are left out"]
   - about: the publisher flags the coordinates as wrong
     rows:
       - { station_id: FRABCP005, operator_name: ABC, position_ok: "False" }
@@ -232,6 +239,7 @@ examples:
     rows:
       - { station_id: FRABCP006, point_id: FRABCE0061, operator_name: ABC, owner_name: Ville de Lyon, owner_siren: "216901231", free: "true" }
     expect: { amenity: charging_station, operator: ABC, capacity: "1", ref:EU:EVSE: FR*ABC*P006, fee: no, motorcar: yes, owner: Ville de Lyon }
+    notes: ["None of its charge points names a connector, so sockets are left out"]
   - about: type 2 sockets at 22 kW and a CCS at 150 kW, each point carrying one connector
     rows:
       - { station_id: FRABCP007, point_id: FRABCE0071, point_count: "3", operator_name: ABC, socket_type2: "true", type2_cable_attached: "false", power_kw: "22.08" }
@@ -242,7 +250,9 @@ examples:
     rows:
       - { station_id: FRABCP008, point_id: FRABCE0081, operator_name: ABC, brand: Reveo, station_name: Parking Mairie, hours: 24/7, commissioning_date: "2023-05-02", declared_on: "2024-01-10", operator_phone: "04 72 00 11 22", wheelchair_access: Accessible mobilité réduite }
     expect: { amenity: charging_station, operator: ABC, capacity: "1", ref:EU:EVSE: FR*ABC*P008, network: Reveo, motorcar: yes, opening_hours: 24/7, start_date: "2023-05-02", operator:phone: "+33 4 72 00 11 22", wheelchair: yes }
+    notes: ["None of its charge points names a connector, so sockets are left out"]
   - about: a date after the station was first declared is a plan; a mobile is somebody's own line
     rows:
       - { station_id: FRABCP009, point_id: FRABCE0091, operator_name: ABC, commissioning_date: "2026-07-28", declared_on: "2025-06-17", operator_phone: "06 12 34 56 78", hours: "Mo-Fr 09:00-18:00" }
     expect: { amenity: charging_station, operator: ABC, capacity: "1", ref:EU:EVSE: FR*ABC*P009, motorcar: yes, opening_hours: "Mo-Fr 09:00-18:00" }
+    notes: ["None of its charge points names a connector, so sockets are left out"]

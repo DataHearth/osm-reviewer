@@ -102,10 +102,10 @@ columns:
 steps:
   - name: fr.irve/declarations
     why: A station is declared again and again, by its operator and by aggregators. Only its newest declaration counts, the operator's own file winning a same-day tie. What the newest leaves out is read from an older one of the same point (connectors, and the free and tariff columns).
-    reads: [date_maj, last_modified, datagouv_last_modified, datagouv_resource_id, datagouv_organization_or_owner, id_pdc_itinerance, id_station_itinerance, nbre_pdc, gratuit, tarification]
+    reads: [date_maj, last_modified, datagouv_last_modified, datagouv_resource_id, datagouv_organization_or_owner, id_pdc_itinerance, id_station_itinerance, nom_station, nbre_pdc, gratuit, tarification, prise_type_2, prise_type_combo_ccs, prise_type_chademo, prise_type_ef, prise_type_autre, cable_t2_attache, coordonneesXY, consolidated_latitude, consolidated_longitude, consolidated_is_lon_lat_correct]
   - name: fr.irve/sites
     why: Operators re-declare one site under new station ids, or declare each charge point as a station. Records are merged into sites by shared point ids, position and name.
-    reads: [id_pdc_itinerance, nom_station, adresse_station, coordonneesXY, nom_operateur, nom_amenageur]
+    reads: [id_pdc_itinerance, nbre_pdc, nom_station, adresse_station, coordonneesXY, consolidated_latitude, consolidated_longitude, consolidated_is_lon_lat_correct, nom_operateur, nom_amenageur]
 
 rename:
   id_station_itinerance: station_id
@@ -167,10 +167,12 @@ examples:
       - { id_station_itinerance: FRABCP001, nom_station: Parking Mairie, nom_operateur: ABC, gratuit: "true", paiement_cb: "true", condition_acces: Accès libre, reservation: "false", station_deux_roues: "false" }
       - { id_station_itinerance: FRABCP001, nom_station: Parking Mairie, nom_operateur: ABC, gratuit: "true", paiement_cb: "true", condition_acces: Accès libre, reservation: "false", station_deux_roues: "false" }
     expect: { amenity: charging_station, operator: ABC, capacity: "2", ref:EU:EVSE: FR*ABC*P001, fee: no, access: yes, motorcar: yes, payment:credit_cards: yes, reservation: no }
+    notes: ["None of its charge points names a connector, so sockets are left out"]
   - about: a station named for bicycles though flagged as a car station gets no vehicle tag
     rows:
       - { id_station_itinerance: FRABCP007, nom_operateur: ABC, nom_station: Station vélos Bellecour, station_deux_roues: "false", paiement_acte: "true" }
     expect: { amenity: charging_station, operator: ABC, capacity: "1", ref:EU:EVSE: FR*ABC*P007, fee: yes, authentication:none: yes }
+    notes: ["None of its charge points names a connector, so sockets are left out"]
   - about: a CCS point's power is its connector's, and its commissioning date is kept
     rows:
       - { id_station_itinerance: FRABCP008, id_pdc_itinerance: FRABCE0081, nom_operateur: ABC, prise_type_combo_ccs: "true", puissance_nominale: "150", date_mise_en_service: "2023-05-02", date_maj: "2024-01-10", station_deux_roues: "false" }

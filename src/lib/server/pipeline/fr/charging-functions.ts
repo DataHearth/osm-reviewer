@@ -99,7 +99,11 @@ const capacity: TagFunction = (_, rows, site) => {
 	return answer ? { capacity: answer } : {};
 };
 
-const sockets: TagFunction = (_, rows, site) => readSockets(rows, siteOf(rows, site)).sockets;
+/** The whole tag's own key carries what the reading found beside the sockets: a wildcard tag takes any key, and an answer without a value proposes nothing. */
+const sockets: TagFunction = (_, rows, site) => {
+	const { sockets, absent, fit, notes } = readSockets(rows, siteOf(rows, site));
+	return { ...sockets, "socket:*": { value: "", absent, fit, notes } };
+};
 
 const pool: TagFunction = (_, rows, site) => {
 	const { current, declared } = siteOf(rows, site);

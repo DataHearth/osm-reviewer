@@ -88,7 +88,7 @@ function checkFunctionScopes(mapping: Mapping, problems: string[]) {
 		...Object.entries(mapping.tags).flatMap(([key, tag]) =>
 			"function" in tag ? [{ where: `tags.${key}`, name: tag.function }] : [],
 		),
-		...(["skipBy", "sitesBy"] as const).flatMap((by) => {
+		...(["skipBy", "sitesBy", "notesBy"] as const).flatMap((by) => {
 			const own = mapping.record[by];
 			return own ? [{ where: `record.${by}`, name: own.function }] : [];
 		}),

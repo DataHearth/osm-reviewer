@@ -3,10 +3,18 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { functions, sitesFunctions, skipFunctions } from "../fr/functions";
+import { functions, notesFunctions, sitesFunctions, skipFunctions } from "../fr/functions";
 import { compile, inputsOf, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
-import { closedEvidence, pickRow, proposedTags, readRecord, settledBy, skippedBy } from "./record";
+import {
+	closedEvidence,
+	notedBy,
+	pickRow,
+	proposedTags,
+	readRecord,
+	settledBy,
+	skippedBy,
+} from "./record";
 import { type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
 import { validate } from "./validate";
 
@@ -227,6 +235,16 @@ describe("functions on the record and notes that name an input", () => {
 		expect(lines).toEqual(["2 sites, the main one's is a"]);
 		expect(tags[0]).toMatchObject({ also: ["b"] });
 		expect(settledBy(program(mapping()), sites, [row({})], 0, tags)).toEqual([]);
+	});
+
+	it("lets a notes function answer lines for a record's first row", () => {
+		const p = program(
+			mapping({ record: { ...record, notesBy: { function: "xx/notes", reads: ["note"] } } }),
+		);
+		const table = { "xx/notes": (reads: Record<string, string>) => [`says ${reads.note}`] };
+		expect(notedBy(p, table, row({ note: "a" }))).toEqual(["says a"]);
+		expect(notedBy(program(mapping()), table, row({}))).toEqual([]);
+		expect(() => notedBy(p, {}, row({}))).toThrow("function xx/notes is not registered");
 	});
 
 	it("refuses a function nothing registered, and inputs a mapping does not declare", () => {
@@ -763,6 +781,8 @@ ${extra}`;
 			const { skipBy, sitesBy } = shipped.record;
 			if (skipBy) expect(skipFunctions).toHaveProperty([skipBy.function]);
 			if (sitesBy) expect(sitesFunctions).toHaveProperty([sitesBy.function]);
+			const { notesBy } = shipped.record;
+			if (notesBy) expect(notesFunctions).toHaveProperty([notesBy.function]);
 		},
 	);
 
