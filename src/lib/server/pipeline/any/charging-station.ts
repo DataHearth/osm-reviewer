@@ -1,6 +1,9 @@
+import type { Fit, Kit, KitFactory, Subject } from "../match/kit";
+import { NAME_MATCH, nameScore } from "../match/names";
+import type { TagOp } from "../match/ops";
+import { DUPLICATE_RADIUS_M } from "../match/radii";
 import { ids } from "../text";
 import type { Extraction, OsmElement } from "../types";
-import type { RefScheme } from "./refs";
 
 /**
  * An EVSE id the way stations are told apart. The `E`/`P` type letter goes, since mappers write
@@ -28,28 +31,12 @@ const evseKeysOf = (v: string) => [
 	),
 ];
 
-export const evse: RefScheme = {
-	keys: evseKeysOf,
-	// A station mapped without its `amenity` still carries its pool id; charge points carry
-	// theirs too, and would be matched as stations.
-	selectors: [{ k: "ref:EU:EVSE", v: null, not: { k: "man_made", v: ["charge_point"] } }],
-	site: true,
-};
-
 /**
- * Whether `e` carries EVSE ids none of which is this station's. A mapper's pool id is often
- * finer than the registry's (`PLYON13011` under `PLYON130`), so one id under the other still
- * agrees. It only rules out a name or distance match, and a neighbour as part of the site: the
- * duplicate banner must still see such an object.
+ * A mapper's pool id is often finer than the registry's (`PLYON13011` under `PLYON130`), so one
+ * id under the other still agrees, `~` tails excepted.
  */
-export function otherStation(e: OsmElement, refs: Record<string, string>): boolean {
-	const ours = evseKeysOf(refs["ref:EU:EVSE"] ?? "");
-	const theirs = evseKeysOf(evseOn(e));
-	if (!ours.length || !theirs.length) return false;
-	const related = (a: string, b: string) =>
-		a === b || (a[0] !== "~" && b[0] !== "~" && (a.startsWith(b) || b.startsWith(a)));
-	return !theirs.some((t) => ours.some((o) => related(t, o)));
-}
+const relatedEvse = (a: string, b: string) =>
+	a === b || (a[0] !== "~" && b[0] !== "~" && (a.startsWith(b) || b.startsWith(a)));
 
 /** `FR*TLS*E31555*059*3*1`: a point's id, connector and all, as some mappers write a plain `ref`. */
 const EVSE_SHAPED = /^[A-Z]{2}\*[A-Z0-9]{3}\*[EP][A-Z0-9*]+$/i;
@@ -204,8 +191,6 @@ export function forTwoWheels(x: Partial<Pick<Extraction, "tags" | "fit">>, e: Os
 	);
 }
 
-export const fitScore = (f: ReturnType<typeof stationFit>) => (f ? f.agree - f.against : 0);
-
 /**
  * Whether the object repeats the station's counts: its capacity, when it states one, is the
  * record's, some count agrees, and none the record is sure of differs, nor its kind of current.
@@ -225,3 +210,68 @@ export function exactFit(x: Partial<Pick<Extraction, "tags" | "fit">>, e: OsmEle
 	const [ours, theirs] = [current(listed.map((t) => t.k)), current(Object.keys(e.tags))];
 	return agree > 0 && !(ours && theirs && ours !== theirs);
 }
+
+/** What a source counts for a whole site, which no single part of a split site carries. */
+const SITE_COUNTS = /^(capacity|socket:.+)$/;
+
+/** A connector's power is the same whichever record states it; how many there are is not. */
+const isCount = (o: TagOp) => SITE_COUNTS.test(o.k) && (o.op === "del" || !o.k.endsWith(":output"));
+
+const SPLIT_COUNTS_NOTE =
+	"Capacity and sockets are left out: the source counts the whole site, not this one object";
+
+const SHARED_COUNTS_NOTE =
+	"Capacity and sockets are left out: several records were matched to this object, and each counts only its own";
+
+/** Within this an object of the station's network with its connectors is the station, whatever its name or id says. */
+const FIT_RADIUS_M = 25;
+
+const fit = (x: Subject, e: OsmElement): Fit | null => {
+	const f = stationFit(x, e);
+	return f && { ...f, score: f.agree - f.against };
+};
+
+export const kit: KitFactory = (): Kit => ({
+	excludes: (x, e, matched) => forTwoWheels(x, e) || (!!matched && otherBorne(matched, e)),
+	fit,
+	// The network's own station a few metres off, with the record's connectors, is the
+	// station even under a name the site has since lost or an id the network has since
+	// renumbered. Farther off, what runs it or its name has to agree and the object repeat the
+	// station's counts: IKEA Lyon's 24 bays sit 125 m from the registry's point.
+	certain: (x, e, { agree, edge, renumbered, fits }) => {
+		const network = renumbered ? renumberedPool(e, x.refs) : agree >= NAME_MATCH;
+		return {
+			known: edge <= FIT_RADIUS_M && network && !!fits && fits.agree > 0 && fits.against === 0,
+			exact:
+				edge <= DUPLICATE_RADIUS_M &&
+				(!renumbered || renumberedPool(e, x.refs)) &&
+				(agree >= NAME_MATCH || (nameScore(x, e, true) ?? 0) >= NAME_MATCH) &&
+				exactFit(x, e),
+		};
+	},
+	counts: (x, el, { split, others }, ops) => {
+		const borne = pointsOn(el, x.refs);
+		const drop =
+			split || borne ? ops.filter((o) => SITE_COUNTS.test(o.k)) : others ? ops.filter(isCount) : [];
+		if (!drop.length) return null;
+		return {
+			drop,
+			note: borne
+				? `Capacity and sockets are left out: this object's ${evseTag(el)} names ${borne.on} of the station's ${borne.of} points, so the source's counts are not its own`
+				: split
+					? SPLIT_COUNTS_NOTE
+					: SHARED_COUNTS_NOTE,
+		};
+	},
+	refs: {
+		"ref:EU:EVSE": {
+			keys: evseKeysOf,
+			holds: evseOn,
+			related: relatedEvse,
+			rival: (e) => ({
+				inline: `carries ${evseTag(e)}, another station's`,
+				line: `OSM carries the operator's other id ${evseTag(e)}`,
+			}),
+		},
+	},
+});

@@ -13,3 +13,6 @@ export const DUPLICATE_RADIUS_M = 150;
 
 /** Objects of one kind this close to a match are one site mapped as several objects. */
 export const SPLIT_RADIUS_M = 25;
+
+/** Farther than this, a place with the same operator or address is still likely the record's. */
+export const SAME_OPERATOR_RADIUS_M = 300;

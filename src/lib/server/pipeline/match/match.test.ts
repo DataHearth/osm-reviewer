@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { stationFit } from "../any/charging-station";
 import type { Extraction, OsmElement, ProposedTag } from "../types";
-import { stationFit } from "./charging";
+import { contextTags } from "./context";
 import { deprecatedWarnings } from "./deprecated";
 import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./find";
-import { closureOps, contextTags, disputedOps, newOps, unchangedTags, updateOps } from "./ops";
+import { closureOps, disputedOps, newOps, unchangedTags, updateOps } from "./ops";
 import { planUpdate } from "./plan";
 import { indexRefs, sharedRefs } from "./refs";
 import { sameValue } from "./values";

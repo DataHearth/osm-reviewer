@@ -220,6 +220,7 @@ function build(table: Table): Extractor {
 				: [];
 			return {
 				key: keyed,
+				kind: program.id,
 				url,
 				name: tags.find((t) => t.k === "name")?.v ?? made.name,
 				addr: made.addr,

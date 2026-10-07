@@ -24,6 +24,7 @@ const mapping = (over: Record<string, unknown> = {}): Mapping =>
 		title: "Things",
 		inputs: { id: "its id", free: "yes/no", note: "remarks", lat: "latitude", lon: "longitude" },
 		record: { key: "id", lat: "lat", lon: "lon" },
+		matching: { main: ["amenity"] },
 		tags: {
 			amenity: { value: '"thing"', conf: 0.9 },
 			fee: { value: 'truthy(free) ? "no" : ""', conf: 0.8, rule: "Free means no fee." },
@@ -734,6 +735,7 @@ language: cel
 title: Things
 inputs: { id: its id, free: yes/no }
 record: { key: id, lat: '"1"', lon: '"2"' }
+matching: { main: [fee] }
 tags:
   fee: { value: 'truthy(free) ? "no" : ""', conf: 0.8 }
 examples:

@@ -1,9 +1,9 @@
-import { campus, groundsOf, housedInLycee, sharedByOthers } from "../fr/school";
-import { LEVEL, SIRET } from "../fr/tags";
 import type { OsmElement } from "../types";
-import { evseTag, pointsOn } from "./charging";
 import { notThePlace } from "./find";
-import { CONTACT, disputedOps, MAIN, mainOf, type TagOp, updateOps } from "./ops";
+import { groundsOf } from "./grounds";
+import { kit, mainKeys, registry } from "./kinds";
+import { CONTACT, disputedOps, mainOf, type TagOp, updateOps } from "./ops";
+import { heldWithOthers, organisations } from "./refs";
 import {
 	farFromAddress,
 	type Located,
@@ -14,23 +14,12 @@ import {
 	splitParts,
 } from "./warnings";
 
-/** What a source counts for a whole site, which no single part of a split site carries. */
-const SITE_COUNTS = /^(capacity|socket:.+)$/;
-
-/** No object was mapped before OpenStreetMap began. */
-
-/** A connector's power is the same whichever record states it; how many there are is not. */
-const isCount = (o: TagOp) => SITE_COUNTS.test(o.k) && (o.op === "del" || !o.k.endsWith(":output"));
-
-const SPLIT_COUNTS_NOTE =
-	"Capacity and sockets are left out: the source counts the whole site, not this one object";
-
-const SHARED_COUNTS_NOTE =
-	"Capacity and sockets are left out: several records were matched to this object, and each counts only its own";
-
-/** Where the place is reached, and the organisation's SIRET, which a far object's may not be. */
+/** Where the place is reached, and the organisation's own ids, which a far object's may not be. */
 const reachedAt = (o: TagOp) =>
-	o.group === "addr" || /^(addr|contact):/.test(o.k) || CONTACT.includes(o.k) || o.k === SIRET;
+	o.group === "addr" ||
+	/^(addr|contact):/.test(o.k) ||
+	CONTACT.includes(o.k) ||
+	organisations().some((r) => r.key === o.k);
 
 export interface Plan {
 	ops: TagOp[];
@@ -59,22 +48,10 @@ export function planUpdate(
 		ops = ops.filter((o) => !out(o));
 	};
 	const split = splitParts(x, el, els, refIndex, shared, matchedBy).length > 0;
-	const borne = pointsOn(el, x.refs);
-	const counts =
-		split || borne
-			? ops.filter((o) => SITE_COUNTS.test(o.k))
-			: others.length
-				? ops.filter(isCount)
-				: [];
-	if (counts.length) {
-		leave((o) => counts.includes(o));
-		notes.push(
-			borne
-				? `Capacity and sockets are left out: this object's ${evseTag(el)} names ${borne.on} of the station's ${borne.of} points, so the source's counts are not its own`
-				: split
-					? SPLIT_COUNTS_NOTE
-					: SHARED_COUNTS_NOTE,
-		);
+	const counted = kit(x, "counts")?.(x, el, { split, others: others.length > 0 }, ops);
+	if (counted) {
+		leave((o) => counted.drop.includes(o));
+		notes.push(counted.note);
 	}
 	const far = farFromAddress(x, el);
 	const before = ops.length;
@@ -83,19 +60,20 @@ export function planUpdate(
 	// the place is, its name and its level would land there as much as its address would.
 	if (far)
 		leave(
-			MAIN.some((k) => el.tags[k])
+			mainKeys().some((k) => el.tags[k])
 				? (o) => reachedAt(o) || o.k === "start_date"
 				: (o) => reachedAt(o) || !o.k.startsWith("ref:"),
 		);
 	const farOut = far && ops.length < before ? far : undefined;
 	const main = mainOf(x);
-	if (groundsOf(x, el, els)) leave((o) => o.k === "amenity" || o.k === "name");
+	const shellOf = registry().shell?.of;
+	if (groundsOf(x, el, els)) leave((o) => o.k === shellOf || o.k === "name");
 	// A place closed, being built or turned into something else is not reopened on the
 	// source's word, nor dated by it.
 	if (notThePlace(el, main)) leave((o) => o.k === main?.k || o.k === "start_date");
-	// A group's object (a primaire and its collège, a cité scolaire) opened once for each of them.
-	if (others.length || sharedByOthers(el, x.refs) || campus(el.tags))
-		leave((o) => o.k === "start_date");
+	// An object several records are matched to, or that carries ids of other places, opened once
+	// for each of them.
+	if (others.length || heldWithOthers(el, x.refs)) leave((o) => o.k === "start_date");
 	// Where the source's date may be a re-commissioning, an object mapped long before it says
 	// so; not knowing when it was first mapped, the date is not written.
 	const within = x.tags.find((t) => t.k === "start_date")?.mappedWithin;
@@ -107,15 +85,13 @@ export function planUpdate(
 				!(mapped && Date.parse(o.v) - Date.parse(mapped.slice(0, 10)) <= within * 86_400_000),
 		);
 	}
-	// Nor does one of its establishments give it a single level.
-	if (campus(el.tags)) leave((o) => o.k === LEVEL);
-	const housed = housedInLycee(x, el.tags);
-	if (housed) {
-		leave((o) => o.k === "amenity");
-		notes.push(housed);
+	const placed = kit(x, "place")?.(x, el);
+	if (placed) {
+		leave(placed.leave);
+		notes.push(...placed.notes);
 	}
-	// Several establishments on one object (a cité scolaire) each propose their own phone,
-	// SIRET or UAI for it; whichever a reviewer accepted last would win.
+	// Several records on one object each propose their own phone or id for it; whichever a
+	// reviewer accepted last would win.
 	const disputed = disputedOps(ops, others, el.tags);
 	if (disputed.length) {
 		leave((o) => disputed.includes(o));

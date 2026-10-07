@@ -34,7 +34,7 @@ import {
 	shippedMappings,
 	shippedSources,
 } from "$lib/server/pipeline/mapping/files";
-import { contextTags } from "$lib/server/pipeline/match/ops";
+import { contextTags } from "$lib/server/pipeline/match/context";
 import { claimFresh } from "$lib/server/pipeline/runner";
 import {
 	columnMapping,

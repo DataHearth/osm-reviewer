@@ -1,12 +1,13 @@
-import { ACADEMIE_MAIL, ESTABLISHMENT_IDS, LEVEL, SIRET, UAI } from "../fr/tags";
 import { digits } from "../fr/text";
 import type { Extraction, ProposedTag } from "../types";
+import { mainKeys } from "./kinds";
+import { namesOne, neverReplaced } from "./refs";
 import { sameUrl, sameValue } from "./values";
 
 export type Main = { k: string; v: string };
 
 export const mainOf = (x: Partial<Pick<Extraction, "tags">>): Main | undefined =>
-	x.tags?.find((t) => MAIN.includes(t.k));
+	x.tags?.find((t) => mainKeys().includes(t.k));
 
 /** Lifecycle prefixes a mapper puts on a place's main tag once it is no longer that place. */
 export const RETIRED = ["disused", "abandoned", "was"];
@@ -46,7 +47,7 @@ export function keyOn(k: string, current: Record<string, string>): string {
 	return CONTACT.some((c) => current[`contact:${c}`] !== undefined) ? scheme : k;
 }
 
-const ADDRESS_HELD = /^contact:(housenumber|street|postcode|city)$/;
+export const ADDRESS_HELD = /^contact:(housenumber|street|postcode|city)$/;
 
 /**
  * An address proposed whole, or not at all when any part differs from the object's. One the
@@ -106,7 +107,8 @@ export function updateOps(proposed: ProposedTag[], current: Record<string, strin
 		const named = p.unless && current[p.unless.k];
 		if (named && named.replace(/\s/g, "") !== p.unless?.v) continue;
 		// A main tag beside its own `disused:` twin would reopen the place on the source's word.
-		if (MAIN.includes(p.k) && RETIRED.some((r) => current[`${r}:${p.k}`] !== undefined)) continue;
+		if (mainKeys().includes(p.k) && RETIRED.some((r) => current[`${r}:${p.k}`] !== undefined))
+			continue;
 		const k = keyOn(p.k, current);
 		const elsewhere = SAME_AS[p.k]?.filter((o) => o !== k);
 		if (elsewhere?.some((o) => current[o] && digits(current[o]) === digits(p.v))) continue;
@@ -114,7 +116,7 @@ export function updateOps(proposed: ProposedTag[], current: Record<string, strin
 		if (had === undefined) ops.push({ ...p, k, op: "add", was: null });
 		else if (
 			!addOnly(p) &&
-			!ESTABLISHMENT_IDS.includes(k) &&
+			!neverReplaced(k) &&
 			![p.v, ...(p.also ?? [])].some((v) => sameValue(p.k, v, had))
 		)
 			ops.push({ ...p, k, op: "mod", was: had });
@@ -142,15 +144,13 @@ export function newOps(proposed: ProposedTag[]): TagOp[] {
 	return proposed.map((p) => ({ ...p, op: "add" as const, was: null }));
 }
 
-export const MAIN = ["amenity", "shop", "office", "tourism", "leisure", "craft", "healthcare"];
-
 /** A closed place keeps its mapping as `disused:`, and loses the details that no longer apply. */
 export function closureOps(
 	by: NonNullable<Extraction["closedBy"]>,
 	current: Record<string, string>,
 	conf: number,
 ): TagOp[] {
-	const key = MAIN.find((k) => current[k]);
+	const key = mainKeys().find((k) => current[k]);
 	if (!key) return [];
 	const ev = { conf, path: by.path, parts: by.parts, kind: by.kind };
 	const ops: TagOp[] = [
@@ -167,8 +167,7 @@ const agreeBetween = (k: string, a: string, b: string) =>
 /**
  * The operations among `ops` another record matched to the same object contradicts, compared
  * under the key the object would get each value under. A move or an address goes whole, and
- * an académie mailbox, which names one establishment as its UAI does, goes on any object
- * other records share.
+ * a mailbox that names one place, as an id does, goes on any object other records share.
  */
 export function disputedOps(
 	ops: TagOp[],
@@ -178,7 +177,9 @@ export function disputedOps(
 	const direct = ops.filter(
 		(o) =>
 			o.op !== "del" &&
-			((others.length > 0 && /^(contact:)?email$/.test(o.k) && ACADEMIE_MAIL.test(o.v)) ||
+			((others.length > 0 &&
+				/^(contact:)?email$/.test(o.k) &&
+				namesOne({ tags: { [o.k]: o.v } })) ||
 				others.some((other) =>
 					other.tags.some((t) => keyOn(t.k, current) === o.k && !agreeBetween(t.k, t.v, o.v)),
 				)),
@@ -194,34 +195,6 @@ export function disputedOps(
 }
 
 /**
- * What tells a reviewer this is the right object comes first: what kind of object it is, and
- * the identifiers and level it already carries. The address, which rarely settles it, comes last.
- */
-const CONTEXT_KEYS = [
-	...MAIN,
-	"name",
-	UAI,
-	"ref:EU:EVSE",
-	SIRET,
-	LEVEL,
-	"operator",
-	"brand",
-	"opening_hours",
-	"phone",
-	"contact:phone",
-	"email",
-	"contact:email",
-	"website",
-	"contact:website",
-];
-
-const contextRank = (k: string) => {
-	const at = CONTEXT_KEYS.indexOf(k);
-	if (at >= 0) return at;
-	return k.startsWith("addr:") || ADDRESS_HELD.test(k) ? CONTEXT_KEYS.length : -1;
-};
-
-/**
  * The element's tags the candidate leaves alone, all of them. A closure's `disused:amenity`
  * replaces the bare `amenity`, which is therefore not left alone either.
  */
@@ -229,12 +202,4 @@ export function unchangedTags(current: Record<string, string>, touched: Set<stri
 	return Object.entries(current)
 		.filter(([k]) => !touched.has(k) && !touched.has(`disused:${k}`))
 		.map(([k, v]) => ({ k, v }));
-}
-
-/** The few of them a reviewer looks at for context. */
-export function contextTags(unchanged: { k: string; v: string }[]) {
-	return unchanged
-		.filter((x) => contextRank(x.k) >= 0)
-		.sort((a, b) => contextRank(a.k) - contextRank(b.k))
-		.slice(0, 6);
 }

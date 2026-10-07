@@ -29,7 +29,7 @@ function root(): string {
 const read = (path: string) => parse(readFileSync(join(root(), path), "utf8"));
 
 const renamings = new Map<string, Renaming>();
-const mappings = new Map<string, Mapping>();
+const byId = new Map<string, Mapping>();
 
 /** The column renaming the app ships for a source, such as `fr/irve`. */
 export function renamingFor(source: string): Renaming {
@@ -42,11 +42,11 @@ export function renamingFor(source: string): Renaming {
 
 /** A mapping the app ships, by its id such as `FR:school`. */
 export function mappingFor(id: string): Mapping {
-	const known = mappings.get(id);
+	const known = byId.get(id);
 	if (known) return known;
 	const [country, kind] = id.toLowerCase().split(":");
 	const mapping = mappingSchema.parse(read(`mappings/${country}/${kind}.yaml`));
-	mappings.set(id, mapping);
+	byId.set(id, mapping);
 	return mapping;
 }
 
@@ -132,3 +132,9 @@ export function programFor(source: string, { overrides = true } = {}): Program {
 	programs.set(id, program);
 	return program;
 }
+
+/**
+ * Every mapping the app ships, in id order: what matching reads is not the mapping of one
+ * source but of every kind there is.
+ */
+export const mappings = (): Mapping[] => shippedMappings().map((m) => mappingFor(m.id));

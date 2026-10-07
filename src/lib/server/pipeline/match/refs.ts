@@ -1,45 +1,97 @@
-import { otherPlace, schemes } from "../fr/school";
 import { distance } from "../geo";
 import type { Selector } from "../tagfilter";
 import { ids } from "../text";
 import type { Extraction, OsmElement } from "../types";
-import { evse } from "./charging";
+import { registry, type Scheme } from "./kinds";
+import type { Level } from "./kit";
 import { DUPLICATE_RADIUS_M } from "./radii";
 
-/**
- * How one identifier is carried on OSM objects and compared. A key with no scheme is carried
- * under its own name and compared whole.
- */
-export interface RefScheme {
-	/** Keys OSM mappers have used for the same identifier. */
-	aliases?: string[];
-	/** The identifier read off the object some other way than under its keys. */
-	also?(e: OsmElement): string | undefined;
-	/** Every form a value is found under. One starting with `~` is weaker, and believed only nearby. */
-	keys?(v: string): string[];
-	/** What to fetch so that an object carrying it is found whatever else it is mapped as. */
-	selectors?: Selector[];
-	/** Names one site, where a SIRET is the whole organisation's. */
-	site?: boolean;
-}
-
-const SCHEMES: Record<string, RefScheme> = {
-	"ref:EU:EVSE": evse,
-	...schemes,
-};
+const schemes = () => registry().schemes;
 
 const looseKey = (at: string) => at.includes("\u0000~");
 
-const keysOf = (k: string, v: string) => SCHEMES[k]?.keys?.(v) ?? [...new Set(ids(v))];
+const keysOf = (k: string, v: string) => schemes().get(k)?.keys?.(v) ?? [...new Set(ids(v))];
 
 const refKeys = (refs: Record<string, string>) =>
 	Object.entries(refs).flatMap(([k, v]) => keysOf(k, v).map((one) => `${k}\u0000${one}`));
 
-export const refSelectors = (key: string) => SCHEMES[key]?.selectors ?? [];
+export const refSelectors = (key: string): Selector[] => schemes().get(key)?.fetch ?? [];
+
+/** The ids an object carries under a scheme: its alias tags and whatever the scheme reads besides. */
+const held = (s: Scheme, e: OsmElement) =>
+	s.holds?.(e) ?? [...s.aliases.map((a) => e.tags[a]), s.also?.(e)].filter(Boolean).join(";");
+
+/** Every id `e` carries under `key`, in the scheme's own forms. */
+export const idsOn = (key: string, e: OsmElement): string[] => {
+	const s = schemes().get(key);
+	return s ? keysOf(key, held(s, e)) : [];
+};
+
+const withLevel = (level: Level) => [...schemes().values()].filter((s) => s.rules === level);
 
 /**
- * Identifiers several records carry, which therefore pick none of them: a SIRET is the
- * organisation's, and one organisation can run several establishments.
+ * Whether `e` carries ids of a scheme that rules objects out and none of them is the record's:
+ * another place. `hard` objects are never a hit, a candidate, a kin, a site part or a namesake;
+ * `soft` ones only block a name or distance match, a site part and a namesake, so the duplicate
+ * banner still sees them.
+ */
+export function rulesOut(e: OsmElement, refs: Record<string, string>, level: Level): boolean {
+	for (const s of withLevel(level)) {
+		const ours = keysOf(s.key, refs[s.key] ?? "");
+		const theirs = keysOf(s.key, held(s, e));
+		if (!ours.length || !theirs.length) continue;
+		const related = s.related ?? ((a: string, b: string) => a === b);
+		if (!theirs.some((t) => ours.some((o) => related(t, o)))) return true;
+	}
+	return false;
+}
+
+/** Whether `e` carries an id of a scheme that rules out `hard`. */
+export const carriesHard = (e: OsmElement) =>
+	withLevel("hard").some((s) => idsOn(s.key, e).length > 0);
+
+/**
+ * Whether `e` carries, besides the record's own id of a `hard` scheme, another's, under the keys
+ * mappers write it on (never the mailbox that also names one).
+ */
+export function heldWithOthers(e: OsmElement, refs: Record<string, string>): boolean {
+	return withLevel("hard").some((s) => {
+		const ours = keysOf(s.key, refs[s.key] ?? "");
+		return (
+			ours.length > 0 &&
+			s.aliases.some((a) => keysOf(s.key, e.tags[a] ?? "").some((id) => !ours.includes(id)))
+		);
+	});
+}
+
+/** Whether an object names an establishment through some other tag than its id (a mailbox). */
+export const namesOne = (e: Pick<OsmElement, "tags">) =>
+	[...schemes().values()].some((s) => s.also?.(e) !== undefined);
+
+export const hardKeys = () => withLevel("hard").map((s) => s.key);
+
+export const neverReplaced = (key: string) => schemes().get(key)?.neverReplace;
+
+/** The ids that name an establishment-like thing, never replaced, with the noun a banner calls it. */
+export const neverReplaceKeys = () =>
+	[...schemes().values()]
+		.filter((s) => s.neverReplace)
+		.map((s) => ({ key: s.key, noun: s.neverReplace as string }));
+
+/** The organisation-level ids, which name who runs a place and not the place, with their labels. */
+export const organisations = () =>
+	[...schemes().values()]
+		.filter((s) => s.organisation)
+		.map((s) => ({ key: s.key, label: s.organisation as string }));
+
+export const rivalOf = (e: OsmElement) =>
+	withLevel("soft")
+		.map((s) => s.rival?.(e))
+		.find(Boolean);
+
+/**
+ * Identifiers several records carry, which therefore pick none of them: an
+ * organisation's id is carried by every place it runs.
  */
 export function sharedRefs(xs: Pick<Extraction, "refs">[]): Set<string> {
 	const seen = new Set<string>();
@@ -48,19 +100,21 @@ export function sharedRefs(xs: Pick<Extraction, "refs">[]): Set<string> {
 	return shared;
 }
 
-/** Every element per identifier: a SIRET or an EVSE pool can sit on several objects. */
+/** Every element per identifier: an id can sit on several objects. */
 export function indexRefs(els: OsmElement[], keys: string[]): Map<string, OsmElement[]> {
 	const idx = new Map<string, OsmElement[]>();
-	for (const key of keys)
-		for (const alias of SCHEMES[key]?.aliases ?? [key])
+	for (const key of keys) {
+		const s = schemes().get(key);
+		for (const alias of s?.aliases ?? [key])
 			for (const e of els) {
-				const v = [e.tags[alias], SCHEMES[key]?.also?.(e)].filter(Boolean).join(";");
+				const v = [e.tags[alias], s?.also?.(e)].filter(Boolean).join(";");
 				for (const one of keysOf(key, v)) {
 					const at = `${key}\u0000${one}`;
 					const list = idx.get(at) ?? [];
 					if (!list.includes(e)) idx.set(at, [...list, e]);
 				}
 			}
+	}
 	return idx;
 }
 
@@ -78,7 +132,7 @@ export function refHits(
 	for (const at of refKeys(x.refs)) {
 		if (shared.has(at) || (keys && !keys.includes(at.split("\u0000")[0]))) continue;
 		for (const e of refIndex.get(at) ?? []) {
-			if (found.has(e) || otherPlace(e, x.refs)) continue;
+			if (found.has(e) || rulesOut(e, x.refs, "hard")) continue;
 			const d = distance(x.lat, x.lon, e.lat, e.lon);
 			if (!looseKey(at) || d <= DUPLICATE_RADIUS_M) found.set(e, d);
 		}
@@ -86,4 +140,4 @@ export function refHits(
 	return [...found].map(([e, d]) => ({ e, d })).sort((a, b) => a.d - b.d);
 }
 
-export const SITE_REFS = Object.keys(SCHEMES).filter((k) => SCHEMES[k].site);
+export const siteRefs = () => [...schemes().values()].filter((s) => s.site).map((s) => s.key);

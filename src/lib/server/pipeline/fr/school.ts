@@ -1,94 +1,91 @@
 import { distance } from "../geo";
-import type { Findable } from "../match/find";
-import { NAME_MATCH, nameScore } from "../match/names";
-import { keyOn, mainOf } from "../match/ops";
-import { MATCH_RADIUS_M, SPLIT_RADIUS_M } from "../match/radii";
-import type { RefScheme } from "../match/refs";
-import { sameValue } from "../match/values";
-import { sameKind, schoolBuilding } from "../tagfilter";
-import { ids, normaliseName, tokens } from "../text";
-import type { Extraction, OsmElement } from "../types";
-import { ACADEMIE_MAIL, LEVEL, SIRET, sameLevel, UAI } from "./tags";
+import { addressOf, label, type MatchedBy, matchedElsewhere, tagsOf } from "../match/describe";
+import type { Hit, Kit, KitFactory, Lib, Subject } from "../match/kit";
+import { NAME_MATCH, nameScore, WHOLE_NAME } from "../match/names";
+import {
+	DUPLICATE_RADIUS_M,
+	MATCH_RADIUS_M,
+	SAME_OPERATOR_RADIUS_M,
+	SPLIT_RADIUS_M,
+} from "../match/radii";
+import { ids, nameSimilarity, normaliseName, tokens } from "../text";
+import { type OsmElement, osmRef } from "../types";
+import { fold } from "./text";
 import { GENERIC } from "./words";
 
-const UAI_KEYS = [UAI, "ref:FR:UAI"];
+const UAI = "ref:UAI";
+const SIRET = "ref:FR:SIRET";
+/** A school's level, as OSM France writes it (FR:Key:school:FR). */
+const LEVEL = "school:FR";
+const SCHOOLS = ["school", "college", "university"];
 
-const mailUai = (e: OsmElement) =>
-	ACADEMIE_MAIL.exec(e.tags["contact:email"] ?? e.tags.email ?? "")?.[1].toUpperCase();
+/** The `ce.<UAI>@ac-…` mailbox an académie gives every school, which names its establishment too. */
+const ACADEMIE_MAIL = /^ce\.(\d{7}[a-z])@ac-/i;
 
-const uai: RefScheme = {
-	aliases: UAI_KEYS,
-	also: mailUai,
-	// Fetched whatever else they carry: a school ground tagged only `building=school` still has its UAI.
-	selectors: UAI_KEYS.map((k) => ({ k, v: null })),
-	site: true,
+/** An ENT, a school's pupil-and-parent login portal, which never replaces its public site. */
+const LOGIN_PORTAL = /(^|\.)ent\./;
+
+/** The coarser value an `operator:type` refines: a non-profit school is a private one. */
+const OPERATOR_TYPE: Record<string, string> = {
+	private_non_profit: "private",
+	private_for_profit: "private",
+	religious: "private",
+	community: "private",
+	government: "public",
+	municipal: "public",
 };
 
-/** The identifiers French sources carry, and how OSM holds them. */
-export const schemes: Record<string, RefScheme> = {
-	[UAI]: uai,
-	[SIRET]: { aliases: [SIRET, "siret"] },
-};
+/** Whom an institute takes in. A care home, a shelter or a health service is another place. */
+const INSTITUTE_FOR = ["disabled", "child", "juvenile", "blind", "deaf", "intellectual_disability"];
 
-/** Every UAI `e` carries, its académie mailbox's included. */
-export function uaisOn(e: OsmElement): string[] {
-	const theirs = UAI_KEYS.flatMap((k) => (e.tags[k] ? ids(e.tags[k]) : []));
-	const mail = mailUai(e);
-	return mail ? [...theirs, mail] : theirs;
-}
-
-/** Whether `e` is another establishment: it carries a UAI, and none of them is the record's. */
-export function otherPlace(e: OsmElement, refs: Record<string, string>): boolean {
-	if (!refs[UAI]) return false;
-	const ours = new Set(ids(refs[UAI]));
-	const theirs = uaisOn(e);
-	return theirs.length > 0 && !theirs.some((x) => ours.has(x));
-}
-
-/** How many of the record's values the object already holds. */
-export function held(x: Partial<Pick<Extraction, "tags">>, e: OsmElement): number {
-	return (x.tags ?? []).filter((p) => {
-		const had = e.tags[keyOn(p.k, e.tags)];
-		return had !== undefined && sameValue(p.k, p.v, had);
-	}).length;
-}
-
-/**
- * The school among several objects carrying its UAI side by side, as a bare node beside the
- * grounds often does: the one named for it, then the way or relation, or whichever holds more
- * of what the record says.
- */
-export function bestHit(x: Findable, hits: { e: OsmElement; d: number }[]): OsmElement | null {
-	const pool = hits.some((h) => !schoolBuilding(h.e.tags))
-		? hits.filter((h) => !schoolBuilding(h.e.tags))
-		: hits;
-	if (!pool.length) return null;
-	if (!x.refs[UAI]) return pool[0].e;
-	const named = (e: OsmElement) => (e.tags.name && (nameScore(x, e) ?? 0) >= NAME_MATCH ? 1 : 0);
-	const rank = (e: OsmElement) => held(x, e) + (e.type === "node" ? 0 : 1);
-	const near = pool.filter((h) => h.d <= pool[0].d + MATCH_RADIUS_M);
-	return near.sort((a, b) => named(b.e) - named(a.e) || rank(b.e) - rank(a.e) || a.d - b.d)[0].e;
-}
-
-/**
- * The object mapped as the school that a school building stands in or beside: one of its kind
- * next to it, or one named like the record a little farther, since only centres are known and
- * a building inside large grounds stands well off theirs.
- */
-export function groundsOf(x: Findable, building: OsmElement, els: OsmElement[]): OsmElement | null {
-	const main = mainOf(x);
-	if (!main || !schoolBuilding(building.tags)) return null;
+/** Whether a social facility is one an institute of the directory could be mapped as. */
+function institute(tags: Record<string, string>): boolean {
+	const whom = (tags["social_facility:for"] ?? "").split(";").map((w) => w.trim());
 	return (
-		els
-			.filter((e) => e !== building && sameKind(main.k, main.v, e.tags))
-			.map((e) => ({ e, d: distance(building.lat, building.lon, e.lat, e.lon) }))
-			.filter(
-				({ e, d }) =>
-					d <= SPLIT_RADIUS_M || (d <= MATCH_RADIUS_M && (nameScore(x, e) ?? 0) >= NAME_MATCH),
-			)
-			.sort((a, b) => a.d - b.d)[0]?.e ?? null
+		tags.social_facility !== "healthcare" &&
+		(!whom.some(Boolean) || whom.some((w) => INSTITUTE_FOR.includes(w)))
 	);
 }
+
+/**
+ * The level a `school:FR` value sits in: a lycée professionnel is a lycée, a lycée secondary.
+ * Not a maternelle a primaire: whether a school has its maternelle classes, the directory knows.
+ */
+const parentLevel = (v: string): string | null =>
+	/^lycée\s/.test(v) ? "lycée" : v === "lycée" || v === "collège" ? "secondaire" : null;
+
+function levels(v: string): string[] {
+	const out: string[] = [];
+	for (let at: string | null = v; at; at = parentLevel(at)) out.push(at);
+	return out;
+}
+
+const schoolLevels = (v: string) =>
+	v
+		.split(";")
+		.map((x) => x.trim().toLowerCase().replace(/\s+/g, " "))
+		.filter(Boolean);
+
+/**
+ * A mapper's level that is finer than the directory's, or that takes it in, already says it:
+ * "lycée professionnel" is a lycée, "secondaire" covers a collège.
+ */
+const sameLevel = (a: string, b: string) =>
+	schoolLevels(a).every((x) =>
+		schoolLevels(b).some((y) => levels(x).includes(y) || levels(y).includes(x)),
+	);
+
+const siretOf = (tags: Record<string, string>) =>
+	(tags[SIRET] ?? tags.siret ?? "").replace(/\s/g, "") || null;
+
+const mailUai = (e: Pick<OsmElement, "tags">) =>
+	ACADEMIE_MAIL.exec(e.tags["contact:email"] ?? e.tags.email ?? "")?.[1].toUpperCase();
+
+const contactOf = (tags: Record<string, string>) =>
+	[
+		...["phone", "contact:phone"].map((k) => tags[k]?.replace(/\D/g, "").slice(-9)),
+		...["email", "contact:email"].map((k) => tags[k]?.toLowerCase()),
+	].filter((v): v is string => !!v);
 
 /**
  * How far from the centre of a campus's grounds another establishment still stands in or
@@ -98,34 +95,10 @@ export function groundsOf(x: Findable, building: OsmElement, els: OsmElement[]):
 const CAMPUS_REACH_M = 100;
 
 /**
- * Whether the grounds a matched school building stands in are this school's, not a
- * neighbour's. Grounds named for a campus that also hold another establishment's object are
- * the campus's: the building carrying the record's UAI is the record's own.
+ * How near a "new" school an object of its kind carrying a UAI the directory no longer lists
+ * is named: Lyon's Olympe de Gouges maternelle stands 13 m from the record it may have become.
  */
-export function ownGrounds(x: Findable, grounds: OsmElement, els: OsmElement[] = []): boolean {
-	const level = x.tags?.find((t) => t.k === LEVEL)?.v;
-	const theirs = grounds.tags[LEVEL];
-	const shared =
-		campus(grounds.tags) &&
-		els.some(
-			(e) =>
-				e !== grounds &&
-				otherPlace(e, x.refs) &&
-				distance(grounds.lat, grounds.lon, e.lat, e.lon) <= CAMPUS_REACH_M,
-		);
-	return (
-		!shared &&
-		!otherPlace(grounds, x.refs) &&
-		(!grounds.tags.name || (nameScore(x, grounds) ?? 0) >= NAME_MATCH) &&
-		(!level || !theirs || sameLevel(level, theirs))
-	);
-}
-
-/** Whether `e` carries, besides the record's own UAI, another establishment's. */
-export function sharedByOthers(e: OsmElement, refs: Record<string, string>): boolean {
-	const ours = new Set(ids(refs[UAI] ?? ""));
-	return ours.size > 0 && UAI_KEYS.some((k) => ids(e.tags[k] ?? "").some((id) => !ours.has(id)));
-}
+const UNLISTED_REACH_M = 50;
 
 /** A school's level in its name: an école of any kind, a collège, a lycée. */
 const LEVEL_WORDS: Record<string, string> = {
@@ -142,7 +115,7 @@ const LEVEL_WORDS: Record<string, string> = {
  * "Établissement (École, Collège, Lycée)". Whichever of them a record is, its opening is not
  * the object's.
  */
-export function campus(tags: Record<string, string>): boolean {
+function campus(tags: Record<string, string>): boolean {
 	const level = tags[LEVEL] ?? "";
 	if (level === "secondaire" || level.includes(";")) return true;
 	const name = normaliseName(tags.name ?? "");
@@ -165,23 +138,23 @@ const KIND_WORDS = new Set([
 ]);
 
 /** The kind words of a name: "École maternelle X" and "École élémentaire X" are two schools. */
-export const kindWords = (name: string) =>
+const kindWords = (name: string) =>
 	[...tokens(name)]
 		.filter((w) => KIND_WORDS.has(w))
 		.sort()
 		.join(" ");
 
 /** What is left of a school's name without its kind and status: "Geneviève de Gaulle Anthonioz". */
-export const properName = (name: string) =>
+const properName = (name: string) =>
 	[...tokens(name)]
 		.filter((w) => !KIND_WORDS.has(w) && !GENERIC.has(w))
 		.sort()
 		.join(" ");
 
 /** A maternelle is often mapped as the kindergarten it looks like, under its own name. */
-export const maternelleAs = (x: Pick<Extraction, "name" | "tags">, e: OsmElement) =>
+const maternelleAs = (x: Subject, e: OsmElement) =>
 	e.tags.amenity !== "kindergarten" ||
-	(/maternelle/.test(x.tags.findLast((t) => t.k === LEVEL)?.v ?? "") &&
+	(/maternelle/.test(x.tags?.findLast((t) => t.k === LEVEL)?.v ?? "") &&
 		(nameScore(x, e) ?? 0) >= NAME_MATCH);
 
 /**
@@ -189,11 +162,8 @@ export const maternelleAs = (x: Pick<Extraction, "name" | "tags">, e: OsmElement
  * STS or CPGE, housed in it: the object stays a school, since `amenity=college` would unsay
  * the lycée a mapper wrote.
  */
-export function housedInLycee(
-	x: Pick<Extraction, "name" | "tags">,
-	current: Record<string, string>,
-): string | null {
-	if (!x.tags.some((t) => t.k === "amenity" && t.v === "college")) return null;
+function housedInLycee(x: Subject, current: Record<string, string>): string | null {
+	if (!x.tags?.some((t) => t.k === "amenity" && t.v === "college")) return null;
 	const lycee = /lycée/i.test(current[LEVEL] ?? "")
 		? `${LEVEL}=${current[LEVEL]}`
 		: /^lycee\b/.test(normaliseName(current.name ?? ""))
@@ -202,3 +172,200 @@ export function housedInLycee(
 	if (!lycee) return null;
 	return `A post-bac section, “${x.name}”, is housed in this lycée (${lycee}): its amenity is left alone, so the object stays a school`;
 }
+
+export const kit: KitFactory = (lib: Lib): Kit => {
+	const otherPlace = (e: OsmElement, x: Subject) => lib.rulesOut(e, x.refs, "hard");
+
+	/** How many of the record's values the object already holds. */
+	const held = (x: Subject, e: OsmElement): number =>
+		(x.tags ?? []).filter((p) => {
+			const had = e.tags[lib.keyOn(p.k, e.tags)];
+			return had !== undefined && lib.sameValue(p.k, p.v, had);
+		}).length;
+
+	/**
+	 * An object carrying another establishment's id is never the match, but one at the record's
+	 * address, reached by its phone or email, or run under its SIRET may be this place under a
+	 * stale id, or its sister school on one site: the reviewer has to see it. What the run's
+	 * records matched to that object say counts as the object's own.
+	 */
+	const siblingOf = (
+		x: Subject & { lat: number; lon: number },
+		els: OsmElement[],
+		matchedBy: MatchedBy,
+	): string | null => {
+		const ours = tagsOf({ tags: x.tags ?? [] });
+		const at = addressOf(ours);
+		const contact = new Set(contactOf(ours));
+		const siret = siretOf(ours);
+		const reason = (tags: Record<string, string>) =>
+			at && addressOf(tags) === at
+				? "the same address"
+				: contactOf(tags).some((c) => contact.has(c))
+					? "the same phone or email"
+					: siret && siretOf(tags) === siret
+						? "the same SIRET"
+						: null;
+		const hit = els
+			.filter((e) => otherPlace(e, x))
+			.map((e) => {
+				const views = [e.tags, ...matchedElsewhere(e, x, matchedBy).map(tagsOf)];
+				const why = views.map(reason).find(Boolean) ?? null;
+				return { e, d: distance(x.lat, x.lon, e.lat, e.lon), why };
+			})
+			.filter((h) => h.why && h.d <= SAME_OPERATOR_RADIUS_M)
+			.sort((a, b) => a.d - b.d)[0];
+		if (!hit) return null;
+		const id = hit.e.tags[UAI] ? ` (${UAI}=${hit.e.tags[UAI]})` : "";
+		return `Another establishment${id} with ${hit.why} is mapped at ${label(hit.e, hit.d)}: check this is not it`;
+	};
+
+	/**
+	 * Objects of the record's kind beside it whose UAI the source's whole read does not list:
+	 * the place before a new UAI, or one closed since. Never the match, since the id is not the
+	 * record's; the reviewer decides.
+	 */
+	const unlisted = (
+		x: Subject,
+		points: { lat: number; lon: number }[],
+		els: OsmElement[],
+		listed?: Set<string>,
+	): string[] => {
+		const main = lib.mainOf(x);
+		if (!listed || !main || !x.refs[UAI]) return [];
+		return els
+			.filter((e) => lib.sameKind(main.k, main.v, e.tags))
+			.map((e) => ({
+				e,
+				uais: lib.idsOn(UAI, e),
+				d: Math.min(...points.map((p) => distance(p.lat, p.lon, e.lat, e.lon))),
+			}))
+			.filter(
+				({ uais, d }) =>
+					d <= UNLISTED_REACH_M && uais.length > 0 && !uais.some((id) => listed.has(id)),
+			)
+			.sort((a, b) => a.d - b.d)
+			.map(
+				({ e, uais, d }) =>
+					`${osmRef(e)}${e.tags.name ? ` “${e.tags.name}”` : ""} ${Math.round(d)} m away carries UAI ${uais.join(", ")}, which the directory no longer lists`,
+			);
+	};
+
+	const ownGrounds: NonNullable<Kit["ownGrounds"]> = (x, grounds, els) => {
+		const level = x.tags?.find((t) => t.k === LEVEL)?.v;
+		const theirs = grounds.tags[LEVEL];
+		const shared =
+			campus(grounds.tags) &&
+			els.some(
+				(e) =>
+					e !== grounds &&
+					otherPlace(e, x) &&
+					distance(grounds.lat, grounds.lon, e.lat, e.lon) <= CAMPUS_REACH_M,
+			);
+		return (
+			!shared &&
+			!otherPlace(grounds, x) &&
+			(!grounds.tags.name || (nameScore(x, grounds) ?? 0) >= NAME_MATCH) &&
+			(!level || !theirs || sameLevel(level, theirs))
+		);
+	};
+
+	return {
+		/**
+		 * The school among several objects carrying its UAI side by side, as a bare node beside
+		 * the grounds often does: the one named for it, then the way or relation, or whichever
+		 * holds more of what the record says.
+		 */
+		pick: (x, hits: Hit[]) => {
+			if (!x.refs[UAI]) return hits[0].e;
+			const named = (e: OsmElement) =>
+				e.tags.name && (nameScore(x, e) ?? 0) >= NAME_MATCH ? 1 : 0;
+			const rank = (e: OsmElement) => held(x, e) + (e.type === "node" ? 0 : 1);
+			const near = hits.filter((h) => h.d <= hits[0].d + MATCH_RADIUS_M);
+			return near.sort((a, b) => named(b.e) - named(a.e) || rank(b.e) - rank(a.e) || a.d - b.d)[0]
+				.e;
+		},
+		ownGrounds,
+		place: (x, el) => {
+			const shared = campus(el.tags);
+			const housed = housedInLycee(x, el.tags);
+			if (!shared && !housed) return null;
+			return {
+				leave: (o) =>
+					(shared && (o.k === "start_date" || o.k === LEVEL)) || (!!housed && o.k === "amenity"),
+				notes: housed ? [housed] : [],
+			};
+		},
+		/**
+		 * An object of the record's kind under the matched one's own name a little off it, too far
+		 * to be part of its site: the place may be mapped twice. So is one carrying no id under
+		 * that name spelt a little otherwise ("privé" for "privée", "Baptiste" for
+		 * "Jean-Baptiste"), but a name of another kind of school is a sister school ("École
+		 * maternelle Jean Mermoz" beside the élémentaire). A groupe scolaire around the school
+		 * holds it rather than repeats it, unless it stands at the record's own address or holds
+		 * no other establishment.
+		 */
+		namesake: (x, el, e, { els, matchedBy }) => {
+			const ours = el.tags.name ?? x.name;
+			const at = addressOf(tagsOf({ tags: x.tags ?? [] }));
+			const holdsOthers = () =>
+				els.some(
+					(o) =>
+						otherPlace(o, x) &&
+						properName(o.tags.name ?? "") === properName(e.tags.name ?? "") &&
+						distance(o.lat, o.lon, e.lat, e.lon) <= DUPLICATE_RADIUS_M,
+				) ||
+				[...matchedBy.values()]
+					.flat()
+					.some((o) => o.key !== x.key && properName(o.name) === properName(e.tags.name ?? ""));
+			if (campus(e.tags))
+				return (
+					!!properName(e.tags.name ?? "") &&
+					properName(e.tags.name ?? "") === properName(ours) &&
+					((!!at && addressOf(e.tags) === at) || !holdsOthers())
+				);
+			if (!el.tags.name) return (nameScore(x, e) ?? 0) >= WHOLE_NAME;
+			return (
+				fold(e.tags.name ?? "") === fold(el.tags.name) ||
+				(!lib.idsOn(UAI, e).length &&
+					nameSimilarity(e.tags.name ?? "", el.tags.name) >= WHOLE_NAME &&
+					kindWords(e.tags.name ?? "") === kindWords(el.tags.name))
+			);
+		},
+		matchedBanners: (x, el, { grounds, split }) => {
+			const amenity = x.tags?.find((t) => t.k === "amenity" && SCHOOLS.includes(t.v));
+			const before: string[] = [];
+			if (amenity && grounds)
+				before.push(
+					`OSM maps this school as building=${el.tags.building} beside ${label(grounds, distance(el.lat, el.lon, grounds.lat, grounds.lon))}, mapped as amenity=${grounds.tags.amenity}: amenity and name are left out, so the school is not mapped twice`,
+				);
+			else if (amenity && lib.shell(el.tags))
+				before.push(
+					`OSM maps this school only as building=${el.tags.building}: amenity=${amenity.v} is added to the building`,
+				);
+			// A school's UAI on an object well off this one is another site of it, or a stale
+			// copy: not a part of this site.
+			const ours = new Set(ids(x.refs[UAI] ?? ""));
+			const apart = split.filter(
+				(k) => k.d > SPLIT_RADIUS_M && lib.idsOn(UAI, k.e).some((id) => ours.has(id)),
+			);
+			return {
+				before,
+				here: split.filter((k) => !apart.includes(k)),
+				after: apart.map((k) => `Another object carrying this UAI is ${label(k.e, k.d)}`),
+			};
+		},
+		newBanners: (x, { points, els, matchedBy, listed }) => ({
+			sibling: siblingOf(x, els, matchedBy),
+			unlisted: unlisted(x, points, els, listed),
+		}),
+		accepts: { "amenity=social_facility": institute },
+		lookalikes: { "amenity=school": maternelleAs },
+		same: {
+			[LEVEL]: sameLevel,
+			"operator:type": (a, b) => OPERATOR_TYPE[b] === a,
+			"website.host": (a) => LOGIN_PORTAL.test(a),
+		},
+		refs: { [UAI]: { also: mailUai } },
+	};
+};

@@ -51,6 +51,11 @@ export interface ProposedTag {
 
 export interface Extraction {
 	key: string;
+	/**
+	 * The mapping that made the record (`FR:school`), which names the kit whose rules apply. Carried
+	 * rather than read off the tags, since the allow list and the floor may have dropped the main tag.
+	 */
+	kind?: string;
 	url: string;
 	name: string;
 	addr: string;

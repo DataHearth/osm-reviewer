@@ -50,6 +50,37 @@ const example = z.strictObject({
 	notes: z.array(z.string()).optional(),
 });
 
+const selector = z.strictObject({
+	k: z.string(),
+	v: z.array(z.string()).min(1).optional(),
+	not: z.strictObject({ k: z.string(), v: z.array(z.string()).min(1) }).optional(),
+});
+
+const pair = z.string().regex(/^[A-Za-z0-9_:]+=[^\s=]+$/, "key=value, e.g. amenity=school");
+
+const refRule = z.strictObject({
+	aliases: z.array(z.string()).min(1).optional(),
+	fetch: z.array(selector).min(1).optional(),
+	site: z.boolean().optional(),
+	rules_out: z.enum(["hard", "soft"]).optional(),
+	never_replace: z.string().optional(),
+	organisation: z.string().optional(),
+});
+
+const matching = z.strictObject({
+	kit: z
+		.string()
+		.regex(/^[a-z]+\.[a-z_]+$/, "scope.name, e.g. fr.school")
+		.optional(),
+	main: z.array(z.string()),
+	kin: z.record(pair, z.array(z.string()).min(1)).optional(),
+	shell: z
+		.strictObject({ k: z.string(), v: z.array(z.string()).min(1), of: z.string() })
+		.optional(),
+	lookalikes: z.record(pair, z.array(selector).min(1)).optional(),
+	refs: z.record(z.string(), refRule).optional(),
+});
+
 export const mappingSchema = z.strictObject({
 	format: z.literal(1),
 	id: z.string().regex(/^[A-Z]{2}:[a-z_]+$/, "COUNTRY:kind, e.g. FR:school"),
@@ -89,6 +120,7 @@ export const mappingSchema = z.strictObject({
 		/** Inputs holding a phone number or a mailbox that a record leaves out are counted, for the run's message. */
 		withheld: z.array(name).min(1).optional(),
 	}),
+	matching,
 	let: z
 		.record(
 			z.string().regex(/^[a-z][A-Za-z0-9_]*$/, "a CEL identifier starting lower-case"),
@@ -163,6 +195,8 @@ export const renamingSchema = z.strictObject({
 
 export type Tag = z.infer<typeof tagSchema>;
 export type Example = z.infer<typeof example>;
+export type Matching = z.infer<typeof matching>;
+export type RefRule = z.infer<typeof refRule>;
 export type Mapping = z.infer<typeof mappingSchema>;
 export type Official = z.infer<typeof officialSchema>;
 export type Renaming = z.infer<typeof renamingSchema>;

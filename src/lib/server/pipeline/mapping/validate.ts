@@ -9,6 +9,9 @@ import {
 	sitesFunctions,
 	skipFunctions,
 } from "../fr/functions";
+import { KITS } from "../kits";
+import { lib } from "../match/kinds";
+import { type Kit, type KitFactory, METHODS } from "../match/kit";
 import { allowedBy } from "../tagfilter";
 import { compile, type Program, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
@@ -125,7 +128,123 @@ function checkEvidence(program: Program, problems: string[]) {
 	}
 }
 
-function checkMapping(file: string, root: string): { report: Report; mapping: Mapping | null } {
+/** What the block says a kind is: its keys are written and shown by the mapping, and its kit is its own. */
+function checkMatching(mapping: Mapping, kits: Record<string, KitFactory>, problems: string[]) {
+	const m = mapping.matching;
+	const [country, kind] = mapping.id.toLowerCase().split(":");
+	if (m.main.length === 0) problems.push("matching.main: names no key");
+	for (const k of m.main) {
+		if (!(k in mapping.tags)) problems.push(`matching.main: ${k} is not written by any tag`);
+		if (!mapping.examples.some((e) => e.expect && k in e.expect))
+			problems.push(`matching.main: no example expects ${k}`);
+	}
+	if (m.shell && !m.main.includes(m.shell.of))
+		problems.push(`matching.shell.of: ${m.shell.of} is not among main`);
+	for (const key of Object.keys(m.refs ?? {})) {
+		const tag = mapping.tags[key];
+		if (!tag?.ref) problems.push(`matching.refs.${key}: is not a tag with ref: true`);
+	}
+	if (!m.kit) return;
+	const factory = kits[m.kit];
+	if (!factory) {
+		problems.push(`matching.kit: ${m.kit} is not registered in kits.ts`);
+		return;
+	}
+	const [scopeCountry, scopeKind] = m.kit.split(".");
+	if (scopeCountry !== "any" && scopeCountry !== country) {
+		problems.push(`matching.kit: ${m.kit} is scoped to another country`);
+	} else if (scopeKind !== kind) {
+		problems.push(`matching.kit: ${m.kit} is scoped to another kind of place`);
+	}
+	const kit = factory(lib());
+	const named = (what: string, table: object | undefined, declared: object | undefined) => {
+		for (const key of Object.keys(table ?? {}))
+			if (!(key in (declared ?? {})))
+				problems.push(
+					`matching.kit: ${m.kit} has ${what} ${key}, which the block does not declare`,
+				);
+	};
+	named("accepts", kit.accepts, m.kin);
+	named("lookalikes", kit.lookalikes, m.lookalikes);
+	named("refs", kit.refs, m.refs);
+	for (const key of Object.keys(kit.same ?? {}))
+		if (!(key.split(".")[0] in mapping.tags))
+			problems.push(`matching.kit: ${m.kit} has same ${key}, which no tag of the mapping writes`);
+}
+
+/** Tables merge by key across mappings, so a key two files declare must be declared alike. */
+function checkAcrossMappings(mappings: Mapping[], kits: Record<string, KitFactory>): string[] {
+	const problems: string[] = [];
+	const seen = new Map<string, { id: string; text: string }>();
+	for (const m of mappings) {
+		const tables = {
+			kin: m.matching.kin,
+			lookalikes: m.matching.lookalikes,
+			refs: m.matching.refs,
+		};
+		for (const [table, entries] of Object.entries(tables))
+			for (const [key, value] of Object.entries(entries ?? {})) {
+				const at = `${table} ${key}`;
+				const text = JSON.stringify(value);
+				const other = seen.get(at);
+				if (other && other.text !== text)
+					problems.push(`matching.${table}.${key}: ${m.id} and ${other.id} declare it differently`);
+				else if (!other) seen.set(at, { id: m.id, text });
+			}
+	}
+	const used = [...new Set(mappings.flatMap((m) => (m.matching.kit ? [m.matching.kit] : [])))];
+	const hooks = new Map<string, string>();
+	for (const name of used) {
+		const factory = kits[name];
+		if (!factory) continue;
+		const kit = factory(lib());
+		const own = [
+			...Object.keys(kit.accepts ?? {}).map((k) => `accepts ${k}`),
+			...Object.keys(kit.lookalikes ?? {}).map((k) => `lookalikes ${k}`),
+			...Object.keys(kit.same ?? {}).map((k) => `same ${k}`),
+			...Object.entries(kit.refs ?? {}).flatMap(([k, h]) =>
+				Object.keys(h).map((hook) => `refs ${k} ${hook}`),
+			),
+		];
+		for (const hook of own) {
+			const other = hooks.get(hook);
+			if (other && other !== name) problems.push(`kits ${other} and ${name} both define ${hook}`);
+			hooks.set(hook, name);
+		}
+	}
+	return problems;
+}
+
+/**
+ * Which kinds each kit method reaches without their own kit defining it: a record takes its own
+ * kit's method, else the one kit that defines it, so a rule written for one kind keeps running on
+ * the others. A second definer ends that for the method.
+ */
+export function fallbackSummary(mappings: Mapping[], kits: Record<string, KitFactory>): string {
+	const built = new Map<string, Kit>();
+	for (const m of mappings) {
+		const name = m.matching.kit;
+		if (name && kits[name] && !built.has(name)) built.set(name, kits[name](lib()));
+	}
+	const lines: string[] = [];
+	for (const method of METHODS) {
+		const definers = [...built].filter(([, kit]) => kit[method]).map(([name]) => name);
+		if (definers.length === 0) continue;
+		if (definers.length > 1) {
+			lines.push(`${method}: defined by ${definers.join(" and ")}, so no fallback`);
+			continue;
+		}
+		const reached = mappings.filter((m) => m.matching.kit !== definers[0]).map((m) => m.id);
+		lines.push(`${method} (${definers[0]}) -> ${reached.join(", ") || "none"}`);
+	}
+	return lines.join("; ");
+}
+
+function checkMapping(
+	file: string,
+	root: string,
+	kits: Record<string, KitFactory>,
+): { report: Report; mapping: Mapping | null } {
 	const problems: string[] = [];
 	const mapping = load(file, mappingSchema, problems);
 	if (!mapping) return { report: { file, summary: "", problems }, mapping };
@@ -133,6 +252,7 @@ function checkMapping(file: string, root: string): { report: Report; mapping: Ma
 	const expected = join(root, "mappings", country, `${kind}.yaml`);
 	if (file !== expected) problems.push(`id ${mapping.id} belongs in ${relative(root, expected)}`);
 	checkFunctions(mapping, problems);
+	checkMatching(mapping, kits, problems);
 	const { program, problems: compiled } = compile(mapping);
 	problems.push(...compiled);
 	if (program) checkEvidence(program, problems);
@@ -226,12 +346,12 @@ function checkColumns(renaming: Renaming, mapping: Mapping, problems: string[]) 
 }
 
 /** Every mapping under `mappings/` and column renaming under `sources/`, checked and their examples run. */
-export function validate(dir: string): Report[] {
+export function validate(dir: string, kits: Record<string, KitFactory> = KITS): Report[] {
 	const root = resolve(dir);
 	const reports: Report[] = [];
 	const mappings = new Map<string, Mapping>();
 	for (const file of yamlFiles(join(root, "mappings"))) {
-		const { report, mapping } = checkMapping(file, root);
+		const { report, mapping } = checkMapping(file, root, kits);
 		if (mapping && mappings.has(mapping.id)) report.problems.push(`id ${mapping.id} is used twice`);
 		if (mapping) mappings.set(mapping.id, mapping);
 		reports.push(report);
@@ -247,5 +367,13 @@ export function validate(dir: string): Report[] {
 		}
 		reports.push(report);
 	}
-	return reports.map((r) => ({ ...r, file: relative(root, r.file) }));
+	const shown = reports.map((r) => ({ ...r, file: relative(root, r.file) }));
+	const all = [...mappings.values()];
+	if (all.length > 0)
+		shown.push({
+			file: "matching",
+			summary: fallbackSummary(all, kits),
+			problems: checkAcrossMappings(all, kits),
+		});
+	return shown;
 }

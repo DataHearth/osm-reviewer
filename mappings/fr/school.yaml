@@ -51,6 +51,33 @@ record:
     function: fr.school/sites
     reads: [phone, website, street, postcode, lat, lon]
 
+matching:
+  kit: fr.school
+  main: [amenity]
+  kin:
+    amenity=school: [school, college, university]
+    amenity=college: [school, college, university]
+    amenity=university: [school, college, university]
+    amenity=social_facility: [social_facility, school]
+  shell: { k: building, v: [school, college, university], of: amenity }
+  lookalikes:
+    amenity=school:
+      - { k: amenity, v: [kindergarten] }
+    amenity=social_facility:
+      - { k: healthcare, v: [centre] }
+      - { k: amenity, v: [clinic] }
+  refs:
+    ref:UAI:
+      aliases: [ref:UAI, ref:FR:UAI]
+      fetch: [{ k: ref:UAI }, { k: ref:FR:UAI }]
+      site: true
+      rules_out: hard
+      never_replace: establishment
+    ref:FR:SIRET:
+      aliases: [ref:FR:SIRET, siret]
+      never_replace: establishment
+      organisation: SIRET
+
 let:
   postbac: 'nature_code == "400"'
   medico: 'kind.imatches("^m[ée]dico")'

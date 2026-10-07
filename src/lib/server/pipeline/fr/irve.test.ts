@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { stationFit } from "../any/charging-station";
 import { mergeSites, shippedExtractor } from "../extractor";
 import { renamingFor, shippedCovering } from "../mapping/files";
-import { stationFit } from "../match/charging";
 import { updateOps } from "../match/ops";
 import type { Row } from "../types";
 import { poolId, siteName } from "./charging-functions";

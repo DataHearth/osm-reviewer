@@ -1,19 +1,12 @@
-import { bestHit, groundsOf, otherPlace, ownGrounds } from "../fr/school";
 import { distance, distanceTo, metres } from "../geo";
-import { lookalike, schoolBuilding } from "../tagfilter";
+import { lookalike, shell } from "../tagfilter";
 import { type Extraction, type OsmElement, osmRef } from "../types";
-import {
-	exactFit,
-	fitScore,
-	forTwoWheels,
-	otherStation,
-	renumberedPool,
-	stationFit,
-} from "./charging";
+import { groundsOf } from "./grounds";
+import { kit, mainKeys } from "./kinds";
 import { companiesAgree, NAME_MATCH, nameScore, whoOf, whoSimilarity } from "./names";
-import { MAIN, type Main, mainOf, RETIRED } from "./ops";
+import { type Main, mainOf, RETIRED } from "./ops";
 import { DUPLICATE_RADIUS_M, LAT_PREFILTER, MATCH_RADIUS_M } from "./radii";
-import { refHits } from "./refs";
+import { refHits, rulesOut } from "./refs";
 
 /** With a name missing on either side only a near-coincident point is trusted. */
 const BARE_RADIUS_M = 15;
@@ -22,7 +15,7 @@ const BARE_RADIUS_M = 15;
 const STRONG_NAME = 0.6;
 
 export type Findable = Pick<Extraction, "lat" | "lon" | "name" | "refs"> &
-	Partial<Pick<Extraction, "tags" | "addr" | "absent">>;
+	Partial<Pick<Extraction, "tags" | "addr" | "absent" | "fit" | "kind">>;
 
 /**
  * Why an object is no longer the place the record describes, though it may carry its id: it
@@ -32,8 +25,9 @@ export type Findable = Pick<Extraction, "lat" | "lon" | "name" | "refs"> &
  */
 export function notThePlace(e: OsmElement, main?: Main, now = Date.now()): string | null {
 	const t = e.tags;
-	const live = MAIN.filter((k) => t[k]);
-	const retired = MAIN.flatMap((k) => RETIRED.map((p) => `${p}:${k}`)).find((k) => t[k]);
+	const keys = mainKeys();
+	const live = keys.filter((k) => t[k]);
+	const retired = keys.flatMap((k) => RETIRED.map((p) => `${p}:${k}`)).find((k) => t[k]);
 	if (!live.length && retired) return `it is mapped as ${retired}=${t[retired]}`;
 	if (t["was:name"] && !t.name) return `its name was removed (was:name=${t["was:name"]})`;
 	const opening = Date.parse(t.opening_date ?? "");
@@ -51,8 +45,15 @@ export function notThePlace(e: OsmElement, main?: Main, now = Date.now()): strin
 	return null;
 }
 
-/** Within this an object of the station's network with its connectors is the station, whatever its name or id says. */
-const FIT_RADIUS_M = 25;
+/**
+ * The object among several carrying the record's id side by side. A shell beside the grounds
+ * is passed over unless it is all there is; the kit's `pick` ranks the rest, else the nearest.
+ */
+function bestHit(x: Findable, hits: { e: OsmElement; d: number }[]): OsmElement | null {
+	const pool = hits.some((h) => !shell(h.e.tags)) ? hits.filter((h) => !shell(h.e.tags)) : hits;
+	if (!pool.length) return null;
+	return kit(x, "pick")?.(x, pool) ?? pool[0].e;
+}
 
 export function findMatch(
 	x: Findable,
@@ -65,19 +66,23 @@ export function findMatch(
 	const hits = refHits(x, refIndex, shared).filter((h) => !notThePlace(h.e, main, now));
 	const byRef = bestHit(x, hits);
 	if (byRef) {
-		// A school building carrying the UAI within the grounds mapped as that same school: the
-		// grounds are the school, and the building only one of its blocks.
+		// A shell carrying the record's id within the grounds mapped as that same place: the
+		// grounds are the place, and the building only one of its blocks.
 		const grounds = groundsOf(x, byRef, els);
-		return grounds && ownGrounds(x, grounds, els) ? grounds : byRef;
+		const own = kit(x, "ownGrounds");
+		return grounds && (!own || own(x, grounds, els)) ? grounds : byRef;
 	}
+	const excludes = kit(x, "excludes");
+	const fitOf = kit(x, "fit");
+	const certain = kit(x, "certain");
 
 	let best: { el: OsmElement; score: number } | null = null;
 	for (const e of els) {
-		if (otherPlace(e, x.refs) || forTwoWheels(x, e)) continue;
+		if (rulesOut(e, x.refs, "hard") || excludes?.(x, e)) continue;
 		if (Math.abs(e.lat - x.lat) > LAT_PREFILTER) continue;
 		// What its id cannot make the place, its name or position cannot either.
 		if (notThePlace(e, main, now)) continue;
-		const building = schoolBuilding(e.tags);
+		const building = shell(e.tags);
 		if (building && !e.tags.name) continue;
 		const d = distance(x.lat, x.lon, e.lat, e.lon);
 		const named = e.tags.name && x.name ? nameScore(x, e) : null;
@@ -88,22 +93,13 @@ export function findMatch(
 		// A name that is only a brand ("Toulibeo") says who runs the place as well as an operator tag.
 		const brand = named === null && e.tags.name ? companiesAgree(whoOf(x), [e.tags.name]) : null;
 		const agree = Math.max(who ?? 0, brand ?? 0);
-		const fits = stationFit(x, e);
-		// The network's own station a few metres off, with the record's connectors, is the
-		// station even under a name the site has since lost or an id the network has since
-		// renumbered. Another network's id still rules it out, and a record of the run carrying
-		// the object's id takes it back (`yieldToIds`).
-		const renumbered = otherStation(e, x.refs);
-		const network = renumbered ? renumberedPool(e, x.refs) : agree >= NAME_MATCH;
+		const fits = fitOf?.(x, e) ?? null;
+		const renumbered = rulesOut(e, x.refs, "soft");
 		const edge = distanceTo(x.lat, x.lon, e);
-		const known = edge <= FIT_RADIUS_M && network && !!fits && fits.agree > 0 && fits.against === 0;
-		// Farther off, what runs it or its name has to agree and the object repeat the station's
-		// counts: IKEA Lyon's 24 bays sit 125 m from the registry's point.
-		const exact =
-			edge <= DUPLICATE_RADIUS_M &&
-			(!renumbered || renumberedPool(e, x.refs)) &&
-			(agree >= NAME_MATCH || (nameScore(x, e, true) ?? 0) >= NAME_MATCH) &&
-			exactFit(x, e);
+		const { known, exact } = certain?.(x, e, { agree, edge, renumbered, fits }) ?? {
+			known: false,
+			exact: false,
+		};
 		if (renumbered && !known && !exact) continue;
 		const sim = named ?? (agree >= NAME_MATCH ? agree : null);
 		const strong = named !== null && named >= STRONG_NAME;
@@ -112,7 +108,7 @@ export function findMatch(
 		if (!ok) continue;
 		// On the operator's word alone a fast DC unit is not an AC station, nor the other way round.
 		if (named === null && fits?.types) continue;
-		// A named block inside grounds mapped as the school is not the school: the building
+		// A named block inside grounds mapped as the place is not the place: the building
 		// stands for it only when nothing mapped as one matches. Another operator's sign, or a
 		// connector the source says the station lacks, speaks against an object as well.
 		const against =
@@ -120,7 +116,7 @@ export function findMatch(
 			(who !== null && agree < NAME_MATCH ? 0.3 : 0) +
 			(x.absent ?? []).filter((k) => e.tags[k] !== undefined).length * 0.3;
 		const base = known || exact ? Math.max(sim ?? 0, NAME_MATCH) : (sim ?? 0.4);
-		const score = base - d / 1000 - against + fitScore(fits) * 0.05;
+		const score = base - d / 1000 - against + (fits?.score ?? 0) * 0.05;
 		if (!best || score > best.score) best = { el: e, score };
 	}
 	return best?.el ?? null;
@@ -140,7 +136,7 @@ export function findAtAddress(
 ): OsmElement | null {
 	if (!x.atAddress || !x.geocode || Number.isFinite(x.geocode.farM)) return null;
 	const el = findMatch({ ...x, ...x.atAddress }, els, refIndex, shared);
-	return el && fitScore(stationFit(x, el)) >= 0 ? el : null;
+	return el && (kit(x, "fit")?.(x, el)?.score ?? 0) >= 0 ? el : null;
 }
 
 const postcodeOf = (s: string) => /\b\d{5}\b/.exec(s)?.[0];
@@ -226,7 +222,10 @@ export function yieldToFit<
 	const loses = new Map<M, M>();
 	for (const [, ms] of on) {
 		if (ms.length < 2 || ms.some((m) => matchedById(m, refIndex, shared))) continue;
-		const scored = ms.map((m) => ({ m, s: fitScore(stationFit(m.x, m.el as OsmElement)) }));
+		const scored = ms.map((m) => ({
+			m,
+			s: kit(m.x, "fit")?.(m.x, m.el as OsmElement)?.score ?? 0,
+		}));
 		const top = scored.reduce((a, b) => (b.s > a.s ? b : a));
 		for (const { m, s } of scored) if (s < top.s) loses.set(m, top.m);
 	}

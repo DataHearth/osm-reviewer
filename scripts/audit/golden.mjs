@@ -5,6 +5,8 @@
 // <workdir>/http and served from there afterwards, so two runs read the same world: run it
 // before and after a change that must not alter what the pipeline proposes, and diff the two
 // files. GOLDEN_OFFLINE=1 fails a request that was not recorded instead of making it.
+// GOLDEN_NOW=<ISO date> pins Date.now, since a 365-day survey window or an opening date in the
+// future can flip between two runs on different days.
 import { createHash } from "node:crypto";
 import {
 	createReadStream,
@@ -46,6 +48,12 @@ const run = path.join(work, "run.db");
 const seed = new Database(base, { readonly: true });
 await seed.backup(run);
 seed.close();
+
+if (process.env.GOLDEN_NOW) {
+	const now = new Date(process.env.GOLDEN_NOW).getTime();
+	if (Number.isNaN(now)) throw new Error(`GOLDEN_NOW is not a date: ${process.env.GOLDEN_NOW}`);
+	Date.now = () => now;
+}
 
 const real = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {

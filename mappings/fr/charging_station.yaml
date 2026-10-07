@@ -61,6 +61,19 @@ record:
     function: fr.charging_station/precision
     reads: [lat, lon]
 
+matching:
+  kit: any.charging_station
+  main: [amenity]
+  lookalikes:
+    amenity=charging_station:
+      - { k: man_made, v: [charge_point] }
+      - { k: "capacity:charging" }
+  refs:
+    ref:EU:EVSE:
+      fetch: [{ k: ref:EU:EVSE, not: { k: man_made, v: [charge_point] } }]
+      site: true
+      rules_out: soft
+
 # `free` and `tariff` are each point's newest stated value, which the source's declarations step picks.
 let:
   pointOk: 'position_ok == "" || truthy(position_ok)'

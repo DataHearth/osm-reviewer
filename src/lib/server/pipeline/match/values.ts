@@ -1,8 +1,8 @@
 import OpeningHours from "opening_hours";
-import { LOGIN_PORTAL, SAME_VALUE } from "../fr/tags";
 import { digits, fold } from "../fr/text";
 import { streetDigits } from "../fr/words";
 import { houseNumber, ids, values } from "../text";
+import { sameHook } from "./kinds";
 
 function url(s: string): { https: boolean; host: string; path: string } | null {
 	try {
@@ -25,7 +25,7 @@ const withoutTld = (host: string) => host.replace(/\.[^.]+$/, "");
 function sameSite(a: string, b: string): boolean {
 	const [pa, pb] = [url(a), url(b)];
 	if (!pa || !pb) return a.trim().toLowerCase() === b.trim().toLowerCase();
-	if (LOGIN_PORTAL.test(pa.host)) return true;
+	if (sameHook("website.host")?.(pa.host, pb.host)) return true;
 	if (pa.host !== pb.host) return withoutTld(pa.host) === withoutTld(pb.host);
 	if (pb.https && !pa.https) return true;
 	return pa.path.startsWith(pb.path) || pb.path.startsWith(pa.path);
@@ -53,16 +53,6 @@ function sameHours(a: string, b: string): boolean {
 	}
 }
 
-/** The coarser value an `operator:type` refines: a non-profit school is a private one. */
-const OPERATOR_TYPE: Record<string, string> = {
-	private_non_profit: "private",
-	private_for_profit: "private",
-	religious: "private",
-	community: "private",
-	government: "public",
-	municipal: "public",
-};
-
 /**
  * Whether the proposed value `a` says what the object's `b` already does, so a re-spaced
  * phone number is not an edit, nor a coarser word for what a mapper wrote finely.
@@ -77,8 +67,8 @@ export function sameValue(key: string, a: string, b: string): boolean {
 	if (k === "phone" || k === "fax" || k === "mobile") return digits(a) === digits(b);
 	if (k === "website") return sameSite(a, b);
 	if (k === "addr:housenumber" || k === "housenumber") return houseNumber(a) === houseNumber(b);
-	if (k === "operator:type") return OPERATOR_TYPE[b] === a;
-	if (SAME_VALUE[k]) return SAME_VALUE[k](a, b);
+	const same = sameHook(k);
+	if (same) return same(a, b);
 	// One object often carries several establishments' ids (a collège and its SEGPA):
 	// the record's own id among them agrees, and replacing the list would delete the others.
 	if (k.startsWith("ref:")) {
@@ -88,8 +78,8 @@ export function sameValue(key: string, a: string, b: string): boolean {
 	if (a.includes(";") || b.includes(";")) {
 		const sa = new Set(values(a));
 		const sb = new Set(values(b));
-		// One value among the object's several is that value: a cité scolaire is
-		// `school:FR=collège;primaire;lycée` to each of its establishments.
+		// One value among the object's several is that value: an object standing for several
+		// places carries all their values in one tag, and each of them agrees with it.
 		if (sa.size === 1 && sb.has([...sa][0])) return true;
 		return sa.size === sb.size && [...sa].every((x) => sb.has(x));
 	}

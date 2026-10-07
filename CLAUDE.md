@@ -30,8 +30,8 @@ are considered settled: change where data and validation live, not how a screen 
   account can read it; every action on it is admin-only, and users and diagnostics are
   hidden from reviewers altogether.
 - `src/lib/server/pipeline/` — the in-process pipeline that fills the queue (see "The
-  pipeline"). Server-only, started from `src/hooks.server.ts`. `match/` is matching, `fr/`
-  everything read from France.
+  pipeline"). Server-only, started from `src/hooks.server.ts`. `match/` is matching, `any/` and `fr/`
+  hold the kits (code only one kind has) and everything read from France.
 - `src/lib/components/**` — shared markup. `areas/`, `sources/` and `settings/` hold the
   pieces of those screens.
 - `src/lib/server/db/` — schema, client, migration runner, admin bootstrap. Server-only: nothing
@@ -214,21 +214,30 @@ match and all come out as duplicate "new" POIs. Only the "POIs watched" count us
 
 The code is in three layers, and a country only adds to the last. The run (`runner.ts`,
 `process.ts`, the readers, `store.ts`) and matching (`match/`: `find.ts` picks the object,
-`ops.ts` and `plan.ts` what is written to it, `warnings.ts` the banner, `refs.ts` the one table
-of identifier schemes) name no dataset. What matching has to know about a kind of place is that
-kind's module: `match/charging.ts` (EVSE ids, socket fit) and `fr/school.ts` (UAI, grounds,
-campuses). Everything French is in `fr/`: the IRVE file's declarations (the source's steps,
-registered in `functions.ts` beside the functions), the address base (`ban.ts`, reached only through
-`COUNTRIES` in `country.ts`, by the mapping's country code), the
+`ops.ts` and `plan.ts` what is written to it, `warnings.ts` the banner, `refs.ts` the identifier
+schemes, `grounds.ts` the shell's grounds) name no dataset. What matching has to know about a
+kind of place is **declared in the mapping**: its `matching:` block holds the main keys, which
+values stand for one another (`kin`), the building a place may be mapped as only (`shell`), what
+it may be mistaken for (`lookalikes`) and how each identifier behaves (`refs`: aliases, what to
+fetch, whether it names a site, whether another's id rules an object out, whether it is never
+replaced, whether it names the organisation). `match/kinds.ts` reads every mapping once, lazily,
+into the registry the engine asks; nothing evaluates it while modules load. A kind that needs
+code owns one **kit**, named by `matching.kit` and registered in `kits.ts` (`any.charging_station`
+in `any/charging-station.ts`, `fr.school` in `fr/school.ts`): a record's rule is its own kind's kit,
+else the one kit that defines it, else the engine's default, so a rule written for one kind
+keeps running on the others until a second kit defines it. `validate` checks the block and
+prints which kinds each method reaches by fallback. A kind with nothing special writes
+`main: [...]` and no kit. Everything French is in `fr/`: the IRVE file's declarations (the
+source's steps, registered in `functions.ts` beside the functions), the address base (`ban.ts`,
+reached only through `COUNTRIES` in `country.ts`, by the mapping's country code), the
 data.gouv.fr dataset pages (`datagouv.ts`), French spelling (`text.ts`, `school-name.ts`,
-`words.ts`), the tags OSM France uses (`tags.ts`: UAI, SIRET, `school:FR` and its levels), which
-kinds stand for one another (`kinds.ts`) and how French schools are matched (`school.ts`). A new
+`words.ts`) and the school kit (`school.ts`). A new
 dataset is a mapping file and a shipped renaming of its columns (`mappings/`, `sources/`), read by
 the one `Extractor` (`extractor.ts`), with code only for what no rule can say: a **function** the
 mapping names (for a tag, or on `record` for skipping a row, the other sites' values and notes) or
 a **step** the renaming declares to rebuild and join rows before the renaming (the IRVE
 declarations). Both are registered in `fr/functions.ts`, and `validate` refuses a file that names
-one that is not. A new identifier is one entry in a `schemes` table. The generic part still
+one that is not. A new identifier is one entry in a mapping's `matching.refs`. The generic part still
 imports `fr/` directly, since France is the only country: `rg 'fr/' src/lib/server/pipeline -g
 '!**/fr/**'` lists every place a second country would have to be chosen by area instead.
 

@@ -1,6 +1,6 @@
-import { institute, KIN, LOOKALIKE_KINDS, SCHOOLS } from "./fr/kinds";
+import { BARE_BUILDING_BLOCKERS, kinValues, registry, selectorKeys } from "./match/kinds";
 
-/** `socket:*` allows everything under the prefix; a bare key allows exactly that key. An empty list restricts nothing. */
+/** `phone:*` allows everything under the prefix; a bare key allows exactly that key. An empty list restricts nothing. */
 export function allowedBy(patterns: string[], key: string): boolean {
 	if (patterns.length === 0) return true;
 	return patterns.some((p) => (p.endsWith("*") ? key.startsWith(p.slice(0, -1)) : key === p));
@@ -17,7 +17,7 @@ export interface Selector {
 const TERM = /^([A-Za-z0-9_:]+)=(\S+)$/;
 
 /**
- * `amenity=school amenity=kindergarten`, `shop=bakery|butcher`, `website=*`; terms are
+ * `shop=bakery shop=deli`, `shop=bakery|butcher`, `website=*`; terms are
  * alternatives. A term without `=` is not one, so the legacy free text a fixture source
  * carries parses to nothing and counts as no filter.
  */
@@ -31,71 +31,50 @@ export function parseMatching(text: string): Selector[] {
 	return out;
 }
 
-const MAIN_KEYS = [
-	"amenity",
-	"shop",
-	"office",
-	"tourism",
-	"leisure",
-	"craft",
-	"healthcare",
-	"public_transport",
-];
-
-const kinValues = (k: string, v: string) => KIN[k]?.[v] ?? [v];
-
 /** Whether an object tagged `tags` is a `k=v` place as some mapper would have mapped it. */
 export function sameKind(k: string, v: string, tags: Record<string, string>): boolean {
 	if (!tags[k] || !kinValues(k, v).includes(tags[k])) return false;
-	return tags[k] !== "social_facility" || institute(tags);
+	const accepts = registry().accepts.get(`${k}=${tags[k]}`);
+	return accepts ? accepts(tags) : true;
 }
 
-/** A school mapped as nothing but its building. */
-export const schoolBuilding = (tags: Record<string, string>) =>
-	SCHOOLS.includes(tags.building) && !MAIN_KEYS.some((k) => tags[k]);
+/** A place mapped as nothing but its building. */
+export function shell(tags: Record<string, string>): boolean {
+	const s = registry().shell;
+	return !!s && s.v.includes(tags[s.k]) && !BARE_BUILDING_BLOCKERS.some((k) => tags[k]);
+}
 
-/**
- * What a place may be mapped as without being one to match against: a station drawn only as
- * its charge points or as the car park it equips, an institute mapped as the health centre it
- * shares an address with, a maternelle mapped as a kindergarten. They are fetched so a "new"
- * one is checked against them, and for nothing else.
- */
-const LOOKALIKES: Record<string, Selector[]> = {
-	"amenity=charging_station": [
-		{ k: "man_made", v: ["charge_point"] },
-		{ k: "capacity:charging", v: null },
-	],
-	...LOOKALIKE_KINDS,
+/** Whether a record of `k=v` stands for the place a shell is the building of. */
+const hasShell = (k: string, v: string) => {
+	const s = registry().shell;
+	return !!s && k === s.of && kinValues(k, v).some((x) => s.v.includes(x));
 };
 
 export const lookalikeSelectors = (tags: { k: string; v: string }[]) =>
-	mergeSelectors(...tags.map((t) => LOOKALIKES[`${t.k}=${t.v}`] ?? []));
-
-/** Places a bare school building may stand for: a school, or an institute's classrooms. */
-const IN_SCHOOL_BUILDINGS = [...SCHOOLS, "social_facility"];
+	mergeSelectors(...tags.map((t) => registry().lookalikes.get(`${t.k}=${t.v}`) ?? []));
 
 /**
- * Whether an object may be a `k=v` place mapped as something else. A school building with no
- * name is matched by nothing, so it is only ever seen here.
+ * Whether an object may be a `k=v` place mapped as something else. A shell with no name is
+ * matched by nothing, so it is only ever seen here.
  */
 export function lookalike(k: string, v: string, tags: Record<string, string>): boolean {
-	if (k === "amenity" && IN_SCHOOL_BUILDINGS.includes(v) && schoolBuilding(tags) && !tags.name)
-		return true;
-	return (LOOKALIKES[`${k}=${v}`] ?? []).some((s) => selects(s, tags));
+	if (hasShell(k, v) && shell(tags) && !tags.name) return true;
+	return (registry().lookalikes.get(`${k}=${v}`) ?? []).some((s) => selects(s, tags));
 }
 
 /** What a source's extracted tags say its records are, so a filter written for one kind still finds the other. */
 export function selectorsFromTags(tags: { k: string; v: string }[]): Selector[] {
+	const keys = selectorKeys();
 	const byKey = new Map<string, Set<string>>();
 	for (const t of tags) {
-		if (!MAIN_KEYS.includes(t.k)) continue;
+		if (!keys.includes(t.k)) continue;
 		const set = byKey.get(t.k) ?? new Set();
 		for (const v of kinValues(t.k, t.v)) set.add(v);
 		byKey.set(t.k, set);
 	}
 	const out = [...byKey].map(([k, v]) => ({ k, v: [...v] }));
-	// Many schools are mapped as nothing but their building.
-	if (SCHOOLS.some((v) => byKey.get("amenity")?.has(v))) out.push({ k: "building", v: SCHOOLS });
+	const s = registry().shell;
+	if (s?.v.some((v) => byKey.get(s.of)?.has(v))) out.push({ k: s.k, v: s.v });
 	return out;
 }
 
