@@ -109,14 +109,14 @@ describe("Annuaire de l'éducation preset", () => {
 		expect(site?.also).toBeUndefined();
 	});
 
-	it("quotes the level flags a school's level comes from, and skips a webmail address", () => {
+	it("quotes the kind and the level flags a school's level comes from, and skips a webmail address", () => {
 		const tags = edu.extract([row({ mail: "someone@gmail.com" })], "u")?.tags ?? [];
 		expect(
 			tags
 				.find((t) => t.k === "school:FR")
 				?.parts.map((p) => p.text)
 				.join(""),
-		).toBe("ecole_maternelle: 1, ecole_elementaire: 1");
+		).toBe("type_etablissement: Ecole, ecole_maternelle: 1, ecole_elementaire: 1");
 		expect(tags.find((t) => t.k === "email")).toBeUndefined();
 	});
 

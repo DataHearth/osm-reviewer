@@ -1,10 +1,10 @@
 import { inputsOf, type Program } from "../mapping/compile";
 import { evaluate } from "../mapping/evaluate";
 import { programFor } from "../mapping/files";
-import { closedEvidence, pickRow } from "../mapping/record";
+import { closedEvidence, pickRow, proposedTags } from "../mapping/record";
 import { type Preset, readingOf } from "../preset";
 import { findCoords, str } from "../row";
-import type { ProposedTag, Row } from "../types";
+import type { Row } from "../types";
 import { addressBase } from "./ban";
 import { functions } from "./functions";
 import { alsoAtOtherSites } from "./school-sites";
@@ -46,60 +46,6 @@ function housedSection(r: Row, rowsOf?: (key: string) => Row[] | undefined): boo
 const placeOf = (r: Row) =>
 	[fold(str(r, "adresse_1")), str(r, "code_postal"), findCoords(r)?.join(",")].join("|");
 
-interface Quote {
-	field: string;
-	shown?: string;
-	kind?: string;
-}
-
-/**
- * The one column each tag quotes in the evidence panel, which is not always the one its rule
- * reads: a school's main tag quotes the directory's own label for its nature.
- */
-const QUOTED: Record<string, (r: Row) => Quote> = {
-	amenity: (r) => ({ field: "libelle_nature", shown: str(r, "libelle_nature"), kind: "derived" }),
-	"social_facility:for": (r) => ({
-		field: "libelle_nature",
-		shown: str(r, "libelle_nature"),
-		kind: "derived",
-	}),
-	"school:FR": (r) =>
-		/^[ée]cole/i.test(str(r, "type_etablissement"))
-			? {
-					field: "ecole_maternelle",
-					shown: `${str(r, "ecole_maternelle") || "0"}, ecole_elementaire: ${str(r, "ecole_elementaire") || "0"}`,
-					kind: "derived",
-				}
-			: { field: "type_etablissement", kind: "derived" },
-	name: () => ({ field: "nom_etablissement" }),
-	"ref:UAI": () => ({ field: "identifiant_de_l_etablissement" }),
-	"ref:FR:SIRET": (r) => ({
-		field: "siren_siret",
-		shown: str(r, "siren_siret", "numero_siren_siret"),
-	}),
-	phone: () => ({ field: "telephone", kind: "normalised" }),
-	website: () => ({ field: "web" }),
-	email: () => ({ field: "mail" }),
-	start_date: () => ({ field: "date_ouverture" }),
-	"operator:type": () => ({ field: "statut_public_prive" }),
-	"addr:housenumber": () => ({ field: "adresse_1" }),
-	"addr:street": () => ({ field: "adresse_1" }),
-	"addr:postcode": () => ({ field: "code_postal" }),
-	"addr:city": () => ({ field: "nom_commune" }),
-};
-
-function quoted(key: string, r: Row): Pick<ProposedTag, "path" | "kind" | "parts"> {
-	const { field, shown, kind = "dataset row" } = QUOTED[key](r);
-	return {
-		path: field,
-		kind,
-		parts: [
-			{ text: `${field}: `, mark: false },
-			{ text: (shown ?? str(r, field)) || "—", mark: true },
-		],
-	};
-}
-
 const build = (programOf: () => Program): Preset => ({
 	id: "annuaire-education",
 	label: "Annuaire de l'éducation",
@@ -120,14 +66,7 @@ const build = (programOf: () => Program): Preset => ({
 		if (!made?.position || !made.key) return null;
 
 		const name = made.tags.find((t) => t.key === "name")?.value ?? "";
-		const tags: ProposedTag[] = made.tags.map((t) => ({
-			k: t.key,
-			v: t.value,
-			conf: t.conf,
-			...quoted(t.key, r),
-			...(t.addOnly ? { addOnly: true } : {}),
-			...(t.group ? { group: t.group } : {}),
-		}));
+		const tags = proposedTags(program, made.tags, [inputs]);
 		alsoAtOtherSites(tags, rows, r);
 
 		const places = new Set(rows.map(placeOf)).size;

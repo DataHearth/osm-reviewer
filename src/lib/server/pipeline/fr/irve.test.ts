@@ -229,7 +229,11 @@ describe("IRVE preset", () => {
 				?.tags.find((t) => t.k === "fee");
 		expect(fee({ tarification: "Inconnu" })).toBeUndefined();
 		expect(fee({ tarification: "49 cts/kWh" })).toMatchObject({ v: "yes", path: "tarification" });
-		expect(fee({ paiement_cb: "true" })).toMatchObject({ v: "yes", path: "paiement_cb" });
+		const byCard = fee({ paiement_cb: "true" });
+		expect(byCard?.v).toBe("yes");
+		expect(byCard?.parts.map((p) => p.text).join("")).toBe(
+			"paiement_acte: false, paiement_cb: true",
+		);
 		expect(fee({ gratuit: "False" })).toMatchObject({ v: "yes", path: "gratuit" });
 		expect(fee({ gratuit: "true" })).toMatchObject({ v: "no" });
 		expect(fee({ gratuit: "true", tarification: "0,40 € TTC / kWh" })).toBeUndefined();

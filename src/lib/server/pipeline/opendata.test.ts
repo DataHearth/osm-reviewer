@@ -103,6 +103,22 @@ describe("readApiArea", () => {
 		expect(res.fetched).toBe(2);
 	});
 
+	it("keeps the key of a row the mapping skips as listed, though it makes no record", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (u: string) => {
+				if (u === BASE) return Response.json({ fields: [] });
+				return Response.json({
+					total_count: 2,
+					results: [school(1), { ...school(2), type_etablissement: "Service administratif" }],
+				});
+			}),
+		);
+		const res = await readApiArea(source, radius);
+		expect([...res.rows.keys()]).toEqual(["U1"]);
+		expect([...res.notPlaces]).toEqual(["U2"]);
+	});
+
 	it("rejects an endpoint that is not Opendatasoft explore v2.1", async () => {
 		vi.stubGlobal(
 			"fetch",

@@ -3,6 +3,7 @@ import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import { askJson, type ModelConfig, modelLabel } from "./llm";
+import { columnsByInput } from "./mapping/compile";
 import { mappingFor, programFor, renamingFor } from "./mapping/files";
 import {
 	ANSWER_JSON_SCHEMA,
@@ -105,8 +106,10 @@ export class ReaderResolver implements Resolves {
 	}
 
 	#through(base: Preset, renaming: ColumnRenaming): Preset {
+		const program = programFor(base.source, { overrides: false });
+		const columnOf = columnsByInput(Object.entries(renaming.rename));
 		return translated(
-			base.withProgram(programFor(base.source, { overrides: false })),
+			base.withProgram({ ...program, columnOf }),
 			nativeColumns(renamingFor(base.source), renaming),
 		);
 	}

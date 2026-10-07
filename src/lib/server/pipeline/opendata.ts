@@ -62,6 +62,8 @@ export function whereClause(field: string, a: AreaShape): string {
 
 export interface ApiResult {
 	rows: Map<string, Row[]>;
+	/** Keys of rows the mapping says are not places: still listed by the source. */
+	notPlaces: Set<string>;
 	/** Null when the area had no rows to detect a preset from. */
 	reader: Reader | null;
 	fetched: number;
@@ -84,6 +86,7 @@ export async function readApiArea(
 	const orderBy = order ? `&order_by=${encodeURIComponent(order)}` : "";
 
 	const rows = new Map<string, Row[]>();
+	const notPlaces = new Set<string>();
 	let fetched = 0;
 	let skipped = 0;
 	let rd: Reader | null = null;
@@ -95,7 +98,10 @@ export async function readApiArea(
 			skipped += 1;
 			return;
 		}
-		if (read.skip(row)) return;
+		if (read.skip(row)) {
+			notPlaces.add(key);
+			return;
+		}
 		const group = rows.get(key);
 		if (group) group.push(row);
 		else rows.set(key, [row]);
@@ -112,6 +118,7 @@ export async function readApiArea(
 		if (total > OFFSET_CEILING) {
 			// The export is the whole answer; what the pages gave so far would be counted twice.
 			rows.clear();
+			notPlaces.clear();
 			fetched = 0;
 			skipped = 0;
 			const res = await request(`${base}/exports/jsonl?where=${encodeURIComponent(where)}`, {
@@ -132,5 +139,5 @@ export async function readApiArea(
 		}
 		if (page.results.length < PAGE || offset + PAGE >= total) break;
 	}
-	return { rows, reader: rd, fetched, skipped };
+	return { rows, notPlaces, reader: rd, fetched, skipped };
 }

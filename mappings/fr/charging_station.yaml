@@ -77,6 +77,7 @@ tags:
   amenity:
     value: '"charging_station"'
     conf: 0.95
+    quote: [station_id]
   operator:
     value: 'operator_name != "" ? operator_name : owner_name'
     conf: 0.85
@@ -85,6 +86,7 @@ tags:
   network:
     function: fr.charging_station/network
     reads: [brand, operator_name, station_name, owner_name]
+    quote: [brand]
     conf: 0.8
     fill: true
     rule: The brand, unless it is the operator's own name, a description of a network, or the name of the site (which operators often put there).
@@ -119,14 +121,17 @@ tags:
       "Free" means free with no condition of use. Every point free and no price stated: fee=no.
       Any point not free: fee=yes. Otherwise a payment method or a stated tariff means fee=yes.
       Free beside a price contradicts itself and proposes nothing. May replace a mapper's value.
+    kind: derived
   access:
     value: 'access_condition.imatches("libre") ? "yes" : ""'
     conf: 0.8
     fill: true
+    kind: derived
     rule: '"Accès libre" is access=yes where OSM says nothing. "Accès réservé" covers customers, residents and subscribers alike and proposes nothing.'
   opening_hours:
     function: fr.charging_station/openingHours
     reads: [hours, notes]
+    quote: [hours]
     conf: 0.7
     rule: Operators fill the hours with 24/7 by default and write the real hours in their notes, so a stated span in the notes, or stations giving different hours, proposes nothing.
   motorcycle:
@@ -151,10 +156,12 @@ tags:
     value: 'card ? "yes" : ""'
     conf: 0.75
     fill: true
+    kind: derived
   reservation:
     value: 'bookingYes != bookingNo ? (bookingYes ? "yes" : "no") : ""'
     conf: 0.7
     fill: true
+    kind: derived
     rule: Only when every point that says anything says the same.
   start_date:
     function: fr.charging_station/serviceDate
@@ -169,6 +176,7 @@ tags:
   owner:
     function: fr.charging_station/owner
     reads: [owner_name, operator_name]
+    quote: [owner_name]
     conf: 0.7
     fill: true
     unless:

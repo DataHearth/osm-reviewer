@@ -173,6 +173,8 @@ describe("columns the app does not know", () => {
 		const evidence = db.select().from(t.evidence).all();
 		expect(evidence.map((e) => e.path)).toContain("tel");
 		expect(evidence.map((e) => e.path)).not.toContain("telephone");
+		expect(evidence.map((e) => e.path)).toContain("uai");
+		expect(evidence.map((e) => e.path)).not.toContain("identifiant_de_l_etablissement");
 	});
 
 	it("make no second call while the columns are exactly the stored list", async () => {

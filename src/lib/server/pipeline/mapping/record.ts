@@ -1,5 +1,7 @@
 import { coord } from "../row";
+import type { ProposedTag } from "../types";
 import type { Program } from "./compile";
+import type { EvaluatedTag } from "./evaluate";
 
 /** What a reader needs of a row before the record it belongs to is made: its key, point and address. */
 export interface Head {
@@ -65,18 +67,71 @@ export function pickRow<R>(
 	return rows.filter((r) => gap(r) <= nearest + ONE_ADDRESS_M).sort((a, b) => size(a) - size(b))[0];
 }
 
-/** What says a record has closed: the inputs `record.closed` read, each quoted with the column it came from. */
-export function closedEvidence(program: Program, row: Record<string, string>) {
-	const quoted = program.record.closedReads.map((input) => ({
-		column: program.columnOf.get(input) ?? input,
-		value: row[input] ?? "",
-	}));
+const MOST_VALUES_SHOWN = 3;
+
+interface Shown {
+	input: string;
+	value: string;
+}
+
+/** What an evidence row quotes: each input under the column it came from, its value marked. */
+function quoting(program: Program, shown: Shown[]) {
+	const column = (input: string) => program.columnOf.get(input) ?? input;
 	return {
-		path: quoted[0]?.column ?? "",
-		kind: "dataset row",
-		parts: quoted.flatMap(({ column, value }, i) => [
-			{ text: `${i > 0 ? ", " : ""}${column}: `, mark: false },
+		path: shown[0] ? column(shown[0].input) : "",
+		parts: shown.flatMap(({ input, value }, i) => [
+			{ text: `${i > 0 ? ", " : ""}${column(input)}: `, mark: false },
 			{ text: value || "—", mark: true },
 		]),
 	};
+}
+
+/** What says a record has closed: the inputs `record.closed` read, each quoted with the column it came from. */
+export function closedEvidence(program: Program, row: Record<string, string>) {
+	const { path, parts } = quoting(
+		program,
+		program.record.closedReads.map((input) => ({ input, value: row[input] ?? "" })),
+	);
+	return { path, kind: "dataset row", parts };
+}
+
+/**
+ * A record's tags as the queue holds them, each with the evidence row it quotes: the input a
+ * function says it read, else the tag's `quote`, else what its rule read. Of several inputs, the
+ * ones with no value are left out, unless none has one. Of a record's several rows, an input
+ * shows its distinct values in row order, three at most.
+ */
+export function proposedTags(
+	program: Program,
+	tags: EvaluatedTag[],
+	rows: Record<string, string>[],
+): ProposedTag[] {
+	const values = (input: string) => {
+		const distinct = [...new Set(rows.map((row) => row[input] ?? "").filter((v) => v !== ""))];
+		return distinct.length > MOST_VALUES_SHOWN
+			? `${distinct.slice(0, MOST_VALUES_SHOWN).join(", ")}, …`
+			: distinct.join(", ");
+	};
+	const shown = (t: EvaluatedTag): Shown[] => {
+		if (t.evidence)
+			return [{ input: t.evidence.input, value: t.evidence.shown ?? values(t.evidence.input) }];
+		const given = (t.quote ?? t.reads).map((input) => ({ input, value: values(input) }));
+		const present = given.filter((s) => s.value !== "");
+		return present.length > 0 ? present : given.slice(0, 1);
+	};
+	return tags.map((t) => {
+		const { path, parts } = quoting(program, shown(t));
+		return {
+			k: t.key,
+			v: t.value,
+			conf: t.conf,
+			path,
+			kind: t.evidence?.kind ?? t.kind ?? "dataset row",
+			parts,
+			...(t.addOnly ? { addOnly: true } : {}),
+			...(t.unless ? { unless: t.unless } : {}),
+			...(t.mappedWithin ? { mappedWithin: t.mappedWithin } : {}),
+			...(t.group ? { group: t.group } : {}),
+		};
+	});
 }

@@ -1,50 +1,21 @@
 import { inputsOf, type Program } from "../mapping/compile";
-import { type EvaluatedTag, type Evidence, evaluate } from "../mapping/evaluate";
+import { evaluate } from "../mapping/evaluate";
 import { programFor } from "../mapping/files";
+import { proposedTags } from "../mapping/record";
 import { type Preset, readingOf } from "../preset";
-import { str, truthy } from "../row";
-import type { ProposedTag, Row } from "../types";
+import { str } from "../row";
+import type { Row } from "../types";
 import { addressBase } from "./ban";
 import { functions } from "./functions";
 import { stationAddress } from "./irve-address";
 import { rawCoords, stationSite } from "./irve-declarations";
-import { type In, readDeclarations } from "./irve-site";
+import { readDeclarations } from "./irve-site";
 import { link } from "./irve-sites";
 import { readSockets } from "./irve-sockets";
 
 const SOURCE = "fr/irve";
 
 const decimals = (v: string) => /\.(\d+)$/.exec(v)?.[1].length ?? 0;
-
-/** A tariff column says the charge is paid only when it gives a price or where to find one. */
-const TARIFF = /\d|€|kwh|tarif|https?:/i;
-
-/**
- * The input each rule-written tag quotes in the evidence panel. A tag made by a function says
- * so itself, and falls back to the first input it reads.
- */
-const QUOTED: Record<string, (rows: In[], value: string) => Evidence> = {
-	amenity: () => ({ input: "station_id" }),
-	operator: (rows) => ({ input: rows[0].operator_name ? "operator_name" : "owner_name" }),
-	// The branch of the fee rule that gave the value, found again from the same rows.
-	fee: (rows, value) => {
-		if (value === "no") return { input: "free", shown: "true", kind: "derived" };
-		const notFree = rows.find((r) => r.free && !truthy(r.free));
-		if (notFree) return { input: "free", shown: notFree.free, kind: "derived" };
-		const paid = ["pay_per_session", "pay_by_card"].find((f) => rows.some((r) => truthy(r[f])));
-		if (paid) return { input: paid, shown: "true", kind: "derived" };
-		const priced = rows.find((r) => TARIFF.test(r.tariff) && !/inconnu|gratuit/i.test(r.tariff));
-		return { input: "tariff", shown: priced?.tariff, kind: "derived" };
-	},
-	access: (rows) => ({
-		input: "access_condition",
-		shown: rows[0].access_condition,
-		kind: "derived",
-	}),
-	"payment:credit_cards": () => ({ input: "pay_by_card", shown: "true", kind: "derived" }),
-	reservation: (rows) => ({ input: "booking", shown: rows[0].booking, kind: "derived" }),
-	maxheight: () => ({ input: "max_height" }),
-};
 
 const build = (programOf: () => Program): Preset => {
 	const reading = readingOf(programOf);
@@ -74,25 +45,6 @@ const build = (programOf: () => Program): Preset => {
 			if (!made?.position) return null;
 			const first = rows[0];
 
-			const proposed = (t: EvaluatedTag): ProposedTag => {
-				const quote = t.evidence ?? QUOTED[t.key]?.(inputs, t.value) ?? { input: t.reads[0] };
-				const column = program.columnOf.get(quote.input) ?? quote.input;
-				return {
-					k: t.key,
-					v: t.value,
-					conf: t.conf,
-					path: column,
-					kind: quote.kind ?? "dataset row",
-					parts: [
-						{ text: `${column}: `, mark: false },
-						{ text: (quote.shown ?? str(first, column)) || "—", mark: true },
-					],
-					...(t.addOnly ? { addOnly: true } : {}),
-					...(t.unless ? { unless: t.unless } : {}),
-					...(t.mappedWithin ? { mappedWithin: t.mappedWithin } : {}),
-				};
-			};
-
 			const sockets = readSockets(inputs, site);
 			const raw = rawCoords(first);
 			const precision = raw ? Math.min(...raw.map(decimals)) : 0;
@@ -111,7 +63,7 @@ const build = (programOf: () => Program): Preset => {
 				lat: made.position[0],
 				lon: made.position[1],
 				refs: made.refs,
-				tags: made.tags.map(proposed),
+				tags: proposedTags(program, made.tags, inputs),
 				fit: sockets.fit,
 				absent: sockets.absent,
 				notes,

@@ -19,6 +19,8 @@ export interface EvaluatedTag {
 	reads: string[];
 	/** The inputs the evidence shows instead of `reads`, when the tag names some. */
 	quote?: string[];
+	/** What the evidence says of the value, where the tag declares it. */
+	kind?: string;
 }
 
 /** An input the value was read from, what to show of it where it is not the input's own text, and how it was got. */
@@ -133,6 +135,7 @@ export function evaluate(
 				group: tag.group,
 				reads,
 				...(tag.quote ? { quote: tag.quote } : {}),
+				...(tag.kind ? { kind: tag.kind } : {}),
 			});
 		}
 	}

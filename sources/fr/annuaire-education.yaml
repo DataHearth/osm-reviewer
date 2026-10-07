@@ -133,6 +133,7 @@ rename:
   etat: state
   etat_etablissement: state
   code_nature: nature_code
+  libelle_nature: nature_label
 
 ignored:
   code_commune: not read by the school mapping yet
@@ -161,7 +162,7 @@ ignored:
   appartenance_education_prioritaire: not read by the school mapping yet
   greta: not read by the school mapping yet
   fiche_onisep: "todo: ask the tagging researcher"
-  position: the point as an object, which the preset's position falls back to when latitude and longitude are empty
+  position: the point as an object, which the mapping does not read, taking latitude and longitude instead
   type_contrat_prive: not read by the school mapping yet
   libelle_departement: not read by the school mapping yet
   libelle_academie: not read by the school mapping yet
@@ -175,7 +176,6 @@ ignored:
   multi_uai: not read by the school mapping yet
   rpi_concentre: not read by the school mapping yet
   rpi_disperse: not read by the school mapping yet
-  libelle_nature: the label of code_nature; only quoted as the evidence of amenity
   code_type_contrat_prive: not read by the school mapping yet
   pial: not read by the school mapping yet
   code_circonscription: not read by the school mapping yet

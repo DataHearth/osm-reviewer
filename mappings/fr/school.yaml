@@ -8,6 +8,7 @@ inputs:
   name: the establishment's name as its register writes it
   kind: "the kind of establishment in words: Ecole, Collège, Lycée, Médico-social, Service Administratif…"
   nature_code: the ministry's three-digit nature code
+  nature_label: the ministry's label for the nature code, in words
   has_maternelle: yes/no, teaches the maternelle years
   has_elementaire: yes/no, teaches the élémentaire years
   status: public or private, in words
@@ -62,6 +63,8 @@ tags:
     value: 'postbac ? "college" : medico ? "social_facility" : "school"'
     conf: 0.9
     fill: 'medico && !postbac'
+    quote: [nature_label]
+    kind: derived
     rule: >-
       Every level from the maternelle up is a school in France; post-bac only is a college.
       A medico-social institute is a social facility, and never changes the main tag of one
@@ -70,9 +73,13 @@ tags:
     value: 'medico && !postbac ? "disabled" : ""'
     conf: 0.8
     fill: true
+    quote: [nature_label]
+    kind: derived
   school:FR:
     value: level
     conf: 0.9
+    quote: [kind, has_maternelle, has_elementaire]
+    kind: derived
   name: { function: fr.school/name, reads: [name], conf: 0.9, fill: true }
   ref:UAI:
     value: id
@@ -86,24 +93,27 @@ tags:
     value: 'mobile(phoneFr) ? "" : phoneFr'
     conf: 0.85
     rule: Written as FR:Key:phone does. A mobile is left out.
+    kind: normalised
   website:
     value: 'website(website)'
     conf: 0.8
-  email: { function: fr.school/mailbox, reads: [email, name, city, street], conf: 0.8, fill: true }
+  email: { function: fr.school/mailbox, reads: [email, name, city, street], quote: [email], conf: 0.8, fill: true }
   start_date:
     value: 'opening_date.matches(r"^\d{4}-\d{2}-\d{2}$") ? opening_date : ""'
     conf: 0.7
     fill: true
     rule: The opening date, when it is a full date.
+    quote: [opening_date]
   operator:type:
     value: 'said != "" && (bySiren == "" || bySiren == said) ? said : ""'
     conf: 0.9
     rule: From the stated status, unless the SIRET's first digit says otherwise.
+    quote: [status]
   # One function answers all four; each tag takes its own key and states its own confidence.
-  addr:housenumber: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], conf: 0.8, fill: true, group: addr }
-  addr:street: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], conf: 0.8, fill: true, group: addr }
-  addr:postcode: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], conf: 0.85, fill: true, group: addr }
-  addr:city: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], conf: 0.85, fill: true, group: addr }
+  addr:housenumber: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], quote: [street], conf: 0.8, fill: true, group: addr }
+  addr:street: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], quote: [street], conf: 0.8, fill: true, group: addr }
+  addr:postcode: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], quote: [postcode], conf: 0.85, fill: true, group: addr }
+  addr:city: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], quote: [city], conf: 0.85, fill: true, group: addr }
 
 examples:
   - about: a primaire, public, with a landline

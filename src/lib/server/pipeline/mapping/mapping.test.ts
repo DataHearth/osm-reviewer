@@ -6,7 +6,7 @@ import { parse } from "yaml";
 import { functions } from "../fr/functions";
 import { compile, inputsOf, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
-import { closedEvidence, pickRow, readRecord } from "./record";
+import { closedEvidence, pickRow, proposedTags, readRecord } from "./record";
 import { type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
 import { validate } from "./validate";
 
@@ -283,6 +283,97 @@ describe("several columns renamed to one input", () => {
 	});
 });
 
+describe("evidence from the rule", () => {
+	const renaming = renamingSchema.parse({
+		format: 1,
+		source: "xx/own",
+		mapping: "XX:thing",
+		columns: ["ident", "gratuit", "remarque"],
+		rename: { ident: "id", gratuit: "free", remarque: "note" },
+	});
+	const shown = (tags: Record<string, unknown>, input: Record<string, string>, own = renaming) => {
+		const p = program(mapping({ tags }), own);
+		const made = evaluate(p, [row(input)]);
+		return proposedTags(p, made?.tags ?? [], [row(input)]);
+	};
+	const text = (t: { parts: { text: string }[] }) => t.parts.map((p) => p.text).join("");
+
+	it("quotes what the rule read, under the column each input came from", () => {
+		const [fee] = shown(
+			{ fee: { value: 'truthy(free) ? "no" : note', conf: 0.8 } },
+			{ free: "oui", note: "x" },
+		);
+		expect(fee).toMatchObject({ k: "fee", path: "gratuit", kind: "dataset row" });
+		expect(text(fee)).toBe("gratuit: oui, remarque: x");
+		expect(fee.parts.filter((p) => p.mark).map((p) => p.text)).toEqual(["oui", "x"]);
+	});
+
+	it("quotes the inputs a tag names rather than the ones it reads, and says how the value came", () => {
+		const [fee] = shown(
+			{ fee: { value: 'truthy(free) ? "no" : note', conf: 0.8, quote: ["note"], kind: "derived" } },
+			{ free: "oui", note: "x" },
+		);
+		expect(fee).toMatchObject({ path: "remarque", kind: "derived" });
+		expect(text(fee)).toBe("remarque: x");
+	});
+
+	it("leaves out an input with no value, unless none has one", () => {
+		const tag = { fee: { value: 'truthy(free) ? "no" : "yes"', conf: 0.8 } };
+		expect(text(shown(tag, { free: "" })[0])).toBe("gratuit: —");
+		const both = { n: { value: 'note != "" ? note : free', conf: 0.8 } };
+		expect(text(shown(both, { note: "", free: "oui" })[0])).toBe("gratuit: oui");
+	});
+
+	it("shows each input's distinct values across a record's rows, three at most", () => {
+		const p = program(
+			mapping({
+				record: { key: "id", groupBy: "id", lat: "lat", lon: "lon" },
+				tags: { n: { value: '"x"', conf: 0.5, quote: ["note"] } },
+			}),
+			renaming,
+		);
+		const quoted = (notes: string[]) => {
+			const rows = notes.map((note) => row({ note }));
+			return text(proposedTags(p, evaluate(p, rows)?.tags ?? [], rows)[0]);
+		};
+		expect(quoted(["", "b", "a", "b"])).toBe("remarque: b, a");
+		expect(quoted(["a", "b", "c", "d"])).toBe("remarque: a, b, c, …");
+	});
+
+	it("names the input itself where the renaming does not give its column", () => {
+		const [t] = shown(
+			{ n: { value: "note", conf: 0.5 } },
+			{ note: "x" },
+			{ ...renaming, rename: { ident: "id" } },
+		);
+		expect(text(t)).toBe("note: x");
+	});
+
+	it("takes a function's own evidence over the tag's quote", () => {
+		const p = program(
+			mapping({ tags: { n: { function: "any/pick", reads: ["note"], quote: ["id"], conf: 0.5 } } }),
+			renaming,
+		);
+		const fns = {
+			"any/pick": () => ({
+				n: { value: "v", evidence: { input: "free", shown: "yes", kind: "normalised" } },
+			}),
+		};
+		const made = evaluate(p, [row({ note: "x" })], fns);
+		const [t] = proposedTags(p, made?.tags ?? [], [row({ note: "x" })]);
+		expect(t).toMatchObject({ path: "gratuit", kind: "normalised" });
+		expect(text(t)).toBe("gratuit: yes");
+	});
+
+	it("keeps the tag's trust, mode, group and conditions", () => {
+		const [t] = shown(
+			{ n: { value: "note", conf: 0.5, fill: true, group: "g", mappedWithin: 9 } },
+			{ note: "x" },
+		);
+		expect(t).toMatchObject({ conf: 0.5, addOnly: true, group: "g", mappedWithin: 9 });
+	});
+});
+
 describe("compile", () => {
 	it("names a rule that reads something undeclared", () => {
 		const { program, problems } = compile(mapping({ tags: { x: { value: "nope", conf: 0.5 } } }));
@@ -339,6 +430,15 @@ describe("compile", () => {
 			["amenity", "thing", 0.9],
 			["fee", "yes", 0.8],
 		]);
+	});
+
+	it("refuses a quote that is not an input, and counts one as a read", () => {
+		const inputs = { id: "its id", spare: "shown only", lat: "latitude", lon: "longitude" };
+		const tags = (quote: string[]) => ({ x: { value: '"yes"', conf: 0.5, quote } });
+		expect(compile(mapping({ inputs, tags: tags(["spare"]) })).problems).toEqual([]);
+		expect(compile(mapping({ inputs, tags: tags(["nope"]) })).problems).toContain(
+			'tags.x.quote: "nope" is not an input',
+		);
 	});
 
 	it("refuses an override that leaves a tag half written", () => {
@@ -608,6 +708,17 @@ ${extra}`;
 			),
 		});
 		expect(validate(root).flatMap((r) => r.problems)).toEqual([]);
+	});
+
+	it("refuses a tag that reads no input and has no quote", () => {
+		const root = tree({
+			"mappings/xx/thing.yaml": mappingYaml.replace(
+				"examples:",
+				"  label: { value: '\"x\"', conf: 0.5 }\nexamples:",
+			),
+		});
+		const problems = validate(root).flatMap((r) => r.problems);
+		expect(problems[0]).toContain("tags.label: reads no input");
 	});
 
 	it("passes every file the app ships", () => {

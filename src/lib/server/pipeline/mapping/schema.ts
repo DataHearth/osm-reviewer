@@ -28,6 +28,8 @@ const common = {
 	ref: z.boolean().optional(),
 	/** The inputs the evidence shows where they are not the ones the rule reads. */
 	quote: z.array(name).min(1).optional(),
+	/** What the evidence says of the value where it is not a copy of what it shows. */
+	kind: z.enum(["derived", "normalised"]).optional(),
 };
 
 const expressionTag = z.strictObject({ value: z.string(), ...common });
@@ -63,7 +65,7 @@ export const mappingSchema = z.strictObject({
 		closed: z.string().optional(),
 		/** The line the country's address base is asked for; empty where the record has none. */
 		address: z.string().optional(),
-		/** How far the point may sit from its own housenumber before the address is taken over it: metres, or a rule giving them (0 or less never moves it). */
+		/** How far the point may sit from its own housenumber before the address is taken over it: metres, or a rule giving them (a rule giving 0 never moves it). */
 		farM: z.union([z.number().positive(), z.string()]).optional(),
 		/** Farther than this from a housenumber in the record's postcode, the point is an error however precisely it is written. */
 		wrongM: z.number().positive().optional(),

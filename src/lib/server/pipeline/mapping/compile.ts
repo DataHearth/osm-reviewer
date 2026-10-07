@@ -48,6 +48,13 @@ export interface Program {
 	notes: { text: string; when: Ok }[];
 }
 
+/** Which column each input came from: the first listed where several are renamed to it. */
+export function columnsByInput(rename: Iterable<[column: string, input: string]>) {
+	const columnOf = new Map<string, string>();
+	for (const [column, input] of rename) if (!columnOf.has(input)) columnOf.set(input, column);
+	return columnOf;
+}
+
 /** An override replaces the mapping's rule for a tag; one that switches kind drops the other kind's fields. */
 function mergeTags(mapping: Mapping, renaming: Renaming | undefined, problems: string[]) {
 	const merged: Record<string, Tag> = { ...mapping.tags };
@@ -192,8 +199,7 @@ export function compile(
 	if (problems.length > 0 || !key || !lat || !lon) return { program: null, problems };
 
 	const rename = new Map(Object.entries(renaming?.rename ?? {}));
-	const columnOf = new Map<string, string>();
-	for (const [column, input] of rename) if (!columnOf.has(input)) columnOf.set(input, column);
+	const columnOf = columnsByInput(rename);
 	const recordLets = new Set<string>();
 	const need = (name: string) => {
 		const own = letNames.get(name);

@@ -24,6 +24,8 @@ export interface RegistryState {
 export interface RegistryResult {
 	/** Rows per area key, in the file's order; a station's rows end up together. */
 	byArea: Map<string, Map<string, Row[]>>;
+	/** Per area, the keys of rows the mapping says are not places: still listed by the source, so never swept or called unlisted. */
+	notPlaces: Map<string, Set<string>>;
 	reader: Reader | null;
 	scanned: number;
 	skipped: number;
@@ -117,7 +119,14 @@ export async function readRegistry(
 		fileUrl: file.url,
 	};
 	if (res.status === 304) {
-		return { ...empty, byArea: new Map(), reader: null, unchanged: true, state };
+		return {
+			...empty,
+			byArea: new Map(),
+			notPlaces: new Map(),
+			reader: null,
+			unchanged: true,
+			state,
+		};
 	}
 	if (!res.body) throw new PipelineError("the dataset answered with no body");
 
@@ -132,6 +141,7 @@ export async function readRegistry(
 			});
 
 	const byArea = new Map<string, Map<string, Row[]>>(areas.map((a) => [a.id, new Map()]));
+	const notPlaces = new Map<string, Set<string>>(areas.map((a) => [a.id, new Set()]));
 	let reader: Reader | null = null;
 	let scanned = 0;
 	try {
@@ -148,9 +158,13 @@ export async function readRegistry(
 					skipped += 1;
 					continue;
 				}
-				if (read.skip(row)) continue;
+				const place = !read.skip(row);
 				for (const a of areas) {
 					if (!inArea(a, pos[0], pos[1])) continue;
+					if (!place) {
+						notPlaces.get(a.id)?.add(key);
+						continue;
+					}
 					const group = byArea.get(a.id) as Map<string, Row[]>;
 					const rowsOfKey = group.get(key);
 					if (rowsOfKey) rowsOfKey.push(row);
@@ -166,6 +180,7 @@ export async function readRegistry(
 	}
 	return {
 		byArea,
+		notPlaces,
 		reader,
 		scanned,
 		skipped,

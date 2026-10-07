@@ -166,7 +166,12 @@ async function readRegistrySource(
 		renamed,
 	};
 	const complete = !reg.unchanged && !out.empty;
-	const listed = new Map(areas.map((a) => [a.id, new Set(reg.byArea.get(a.id)?.keys())]));
+	const listed = new Map(
+		areas.map((a) => [
+			a.id,
+			new Set([...(reg.byArea.get(a.id)?.keys() ?? []), ...(reg.notPlaces.get(a.id) ?? [])]),
+		]),
+	);
 	for (const area of areas) {
 		const records: RawRecord[] = [...(reg.byArea.get(area.id) ?? [])].map(([key, rows]) => ({
 			key,
@@ -211,7 +216,9 @@ async function readApiSource(db: Db, source: SourceRow, areas: AreaRow[], at: Da
 	}
 	readers.finish();
 	out.empty = reads.length > 0 && out.fetched === 0;
-	const listed = new Map(reads.map(({ area, r }) => [area.id, new Set(r.rows.keys())]));
+	const listed = new Map(
+		reads.map(({ area, r }) => [area.id, new Set([...r.rows.keys(), ...r.notPlaces])]),
+	);
 	for (const { area, r } of reads) {
 		try {
 			const base = source.endpoint.replace(/[?#].*$/, "");

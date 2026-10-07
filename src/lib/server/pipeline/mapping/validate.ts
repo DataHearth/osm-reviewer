@@ -95,6 +95,15 @@ function checkFunctionScopes(mapping: Mapping, problems: string[]) {
 	}
 }
 
+/** A tag with no reads and no quote would show the reviewer an evidence row with nothing in it. */
+function checkEvidence(program: Program, problems: string[]) {
+	for (const { key, tag, reads } of program.tags) {
+		if (reads.length === 0 && !tag.quote) {
+			problems.push(`tags.${key}: reads no input and has no quote, so it has no evidence to show`);
+		}
+	}
+}
+
 function checkMapping(file: string, root: string): { report: Report; mapping: Mapping | null } {
 	const problems: string[] = [];
 	const mapping = load(file, mappingSchema, problems);
@@ -105,6 +114,7 @@ function checkMapping(file: string, root: string): { report: Report; mapping: Ma
 	checkFunctionScopes(mapping, problems);
 	const { program, problems: compiled } = compile(mapping);
 	problems.push(...compiled);
+	if (program) checkEvidence(program, problems);
 	let passed = 0;
 	if (program) passed = runExamples(program, mapping.examples, (row) => row, problems);
 	const byFunction = Object.values(mapping.tags).filter((t) => "function" in t).length;
@@ -138,6 +148,7 @@ function checkRenaming(
 	if (renaming.official) checkOfficial(renaming.official, mapping, problems);
 	const { program, problems: compiled } = compile(mapping, renaming);
 	problems.push(...compiled);
+	if (program) checkEvidence(program, problems);
 	const examples = renaming.examples ?? [];
 	let passed = 0;
 	if (program) passed = runExamples(program, examples, (row) => renameRow(program, row), problems);
