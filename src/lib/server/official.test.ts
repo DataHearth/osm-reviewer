@@ -8,9 +8,8 @@ import { runMigrations } from "./db/migrate";
 import * as t from "./db/schema";
 import { addOfficialSource } from "./mutations";
 import { officialFile, originOf } from "./official";
-import { renamingFor, shippedSources } from "./pipeline/mapping/files";
+import { renamingFor, shippedNamed, shippedSources } from "./pipeline/mapping/files";
 import type { OfficialRenaming } from "./pipeline/mapping/schema";
-import { presetById } from "./pipeline/presets";
 import { loadOffered, loadSources } from "./queries";
 
 vi.mock("./pipeline/mapping/files", async (original) => {
@@ -33,7 +32,7 @@ describe("shipped sources", () => {
 	it.each(shippedSources().map((f) => [f.source, f] as const))(
 		"%s can be named by a row: a preset reads its mapping and was written for it",
 		(_, file) => {
-			expect(presetById(file.mapping)?.source).toBe(file.source);
+			expect(shippedNamed(file.mapping)?.source).toBe(file.source);
 		},
 	);
 });

@@ -1,8 +1,12 @@
 import { sourceDraftSchema } from "$lib/schemas/source";
 import type { OfficialSource, SourceOrigin } from "$lib/types";
-import { mappingFor, renamingFor, shippedSources } from "./pipeline/mapping/files";
+import {
+	mappingFor,
+	mappingOfPreset,
+	shippedNamed,
+	shippedSources,
+} from "./pipeline/mapping/files";
 import type { OfficialRenaming } from "./pipeline/mapping/schema";
-import { presetById } from "./pipeline/presets";
 import { KIND_LABEL } from "./source-display";
 
 interface Pointed {
@@ -20,7 +24,7 @@ const bare = (url: string) => url.replace(/\/+$/, "");
  */
 export function officialFile(s: Pointed): OfficialRenaming | null {
 	if (s.extractor !== "deterministic") return null;
-	const mapping = presetById(s.preset)?.mapping ?? s.preset;
+	const mapping = mappingOfPreset(s.preset) ?? s.preset;
 	return (
 		shippedSources().find(
 			(f) =>
@@ -51,15 +55,15 @@ export function officialView(f: OfficialRenaming): OfficialSource {
 /**
  * The tags a row's reads are overridden for: the shipped renaming's overrides apply to any
  * source read through it, official or not, and to none read through a renaming the model made.
- * Null where the source detects its preset from the columns: a run does not record which one.
+ * Null where the source detects its shipped source from the columns: a run does not record which one.
  */
 export function overridesOf(
 	s: Pointed & { renamingUsed: "shipped" | "stored" | null },
 ): string[] | null {
 	if (s.extractor !== "deterministic" || s.renamingUsed === "stored") return [];
-	const preset = presetById(s.preset);
-	if (!preset) return null;
-	return Object.keys(renamingFor(preset.source).overrides?.tags ?? {});
+	const file = shippedNamed(s.preset);
+	if (!file) return null;
+	return Object.keys(file.overrides?.tags ?? {});
 }
 
 export function originOf(
@@ -68,7 +72,7 @@ export function originOf(
 ): SourceOrigin {
 	return {
 		official: officialFile(s) !== null,
-		mapping: presetById(s.preset)?.mapping ?? stored?.mapping ?? null,
+		mapping: mappingOfPreset(s.preset) ?? stored?.mapping ?? null,
 		overrides: overridesOf(s),
 	};
 }

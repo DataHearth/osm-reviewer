@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "$lib/server/db/client";
 import { runMigrations } from "$lib/server/db/migrate";
 import * as t from "$lib/server/db/schema";
-import { presetById } from "./presets";
+import { shippedExtractor } from "./extractor";
+import { renamingFor } from "./mapping/files";
 import { pickDue, requestRuns, runSource } from "./runner";
 
 const DATASET = "https://www.data.gouv.fr/api/1/datasets/irve-test/";
@@ -255,8 +256,7 @@ describe("runSource (registry)", () => {
 
 	it("refreshes an undecided candidate when the mapping changes but the data does not", async () => {
 		await runSource(db, "irve");
-		const irve = presetById("irve");
-		if (!irve) throw new Error("irve preset missing");
+		const irve = shippedExtractor(renamingFor("fr/irve"));
 		const extract = irve.extract.bind(irve);
 		const spy = vi.spyOn(irve, "extract").mockImplementation((rows, url) => {
 			const x = extract(rows, url);
@@ -538,13 +538,13 @@ describe("runSource (registry)", () => {
 		expect(pickDue(db)).toBeNull();
 	});
 
-	it("fails with a clear message when no preset recognises the columns", async () => {
+	it("fails with a clear message when no shipped source has the columns", async () => {
 		db.update(t.sources).set({ preset: null }).where(eq(t.sources.id, "irve")).run();
 		csv = "x,y\n1,2";
 		await runSource(db, "irve");
 		const run = db.select().from(t.runs).get();
 		expect(run?.result).toBe("failed");
-		expect(run?.message).toMatch(/no preset matches/);
+		expect(run?.message).toMatch(/no shipped source has these fields/);
 	});
 
 	it("fails a model source that has no model configured", async () => {

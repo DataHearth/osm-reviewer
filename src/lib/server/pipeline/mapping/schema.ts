@@ -66,6 +66,10 @@ export const mappingSchema = z.strictObject({
 		lon: z.string(),
 		skip: z.string().optional(),
 		closed: z.string().optional(),
+		/** What the review screen calls the record where no tag is named `name`. */
+		name: z.string().optional(),
+		/** The address the review screen shows for the record, as the source writes it. */
+		addr: z.string().optional(),
 		/** The line the country's address base is asked for; empty where the record has none. */
 		address: z.string().optional(),
 		/** How far the point may sit from its own housenumber before the address is taken over it: metres, or a rule giving them (a rule giving 0 never moves it). */

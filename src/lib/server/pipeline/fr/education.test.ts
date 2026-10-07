@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { presetById } from "../presets";
+import { shippedExtractor } from "../extractor";
+import { renamingFor } from "../mapping/files";
+import { str } from "../row";
 import type { Row } from "../types";
 import { personalMailbox } from "./mailbox";
-import { schoolAddress } from "./school-address";
+import { addressOf } from "./school-address";
 
 describe("Annuaire de l'éducation preset", () => {
-	const edu = presetById("annuaire-education");
-	if (!edu) throw new Error("preset missing");
+	const edu = shippedExtractor(renamingFor("fr/annuaire-education"));
 	const row = (over: Row = {}): Row => ({
 		identifiant_de_l_etablissement: "0690001A",
 		nom_etablissement: "Ecole Jean Jaurès",
@@ -289,14 +290,21 @@ describe("Annuaire de l'éducation preset", () => {
 	});
 });
 
-describe("schoolAddress", () => {
-	const at = (over: Row) =>
-		schoolAddress({
+describe("addressOf", () => {
+	const at = (over: Row) => {
+		const r: Row = {
 			adresse_1: "68 boulevard de Strasbourg",
 			code_postal: "31000",
 			nom_commune: "Toulouse",
 			...over,
+		};
+		return addressOf({
+			street: str(r, "adresse_1"),
+			more: `${str(r, "adresse_2")} ${str(r, "adresse_3")}`,
+			postcode: str(r, "code_postal"),
+			city: str(r, "nom_commune"),
 		});
+	};
 	it("splits the number from the street and keeps the commune, not its arrondissement", () => {
 		expect(at({ nom_commune: "Lyon 6e  Arrondissement", code_postal: "69006" })).toEqual({
 			number: "68",

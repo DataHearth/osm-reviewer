@@ -2,22 +2,20 @@ import { and, eq } from "drizzle-orm";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import { keyColumnOf, shippedTable, type Table } from "./extractor";
 import { askJson, type ModelConfig, modelLabel } from "./llm";
-import { columnsByInput } from "./mapping/compile";
-import { mappingFor, programFor, renamingFor } from "./mapping/files";
+import { mappingFor } from "./mapping/files";
 import {
 	ANSWER_JSON_SCHEMA,
 	answerSchema,
 	type ColumnRenaming,
 	checkAnswer,
 	MAX_COLUMNS,
-	nativeColumns,
 	RENAME_SYSTEM,
 	renameMessage,
 } from "./mapping/rename";
-import type { Preset } from "./preset";
-import { presetFor, presetReader, type Reader, readerFor } from "./reader";
-import { translated } from "./translate";
+import type { Renaming } from "./mapping/schema";
+import { type Reader, readerFor, readerOf, shippedFor } from "./reader";
 import { PipelineError, type Row } from "./types";
 
 /** Rows the model is shown and the value checks run over. */
@@ -41,7 +39,7 @@ export interface Resolves {
 	keyColumn(columns: string[]): string | null;
 }
 
-/** For a read with no database behind it: the preset the source names or its columns give, no renaming. */
+/** For a read with no database behind it: the shipped source the source names or its columns give, no renaming. */
 export const unaided = (source: {
 	extractor: "deterministic" | "model";
 	preset: string | null;
@@ -49,6 +47,13 @@ export const unaided = (source: {
 	resolve: async (sample: Row[]) => readerFor(source, columnsOf(sample)),
 	late: () => {},
 	keyColumn: (columns: string[]) => readerFor(source, columns).keyField,
+});
+
+const storedTable = (shipped: Renaming, { rename, steps }: ColumnRenaming): Table => ({
+	shipped,
+	rename,
+	steps,
+	own: false,
 });
 
 type Source = {
@@ -105,28 +110,19 @@ export class ReaderResolver implements Resolves {
 		return [...new Set([...columnsOf(sample), ...this.#extra])];
 	}
 
-	#through(base: Preset, renaming: ColumnRenaming): Preset {
-		const program = programFor(base.source, { overrides: false });
-		const columnOf = columnsByInput(Object.entries(renaming.rename));
-		return translated(
-			base.withProgram({ ...program, columnOf }),
-			nativeColumns(renamingFor(base.source), renaming),
-		);
-	}
-
 	/** The reader these columns already have, without asking anyone; null where only the model can say. */
 	#known(
 		read: string[],
 		columns: string[],
 	): { reader: Reader; basis: Basis; covers: ReadonlySet<string> } | null {
-		const base = presetFor(this.source, columns);
-		const shipped = new Set(renamingFor(base.source).columns);
+		const file = shippedFor(this.source, read);
+		const shipped = new Set(file.columns);
 		if (within(read, shipped))
-			return { reader: presetReader(base), basis: "shipped", covers: shipped };
+			return { reader: readerOf(shippedTable(file)), basis: "shipped", covers: shipped };
 		const stored = this.#stored();
-		if (!this.#asked && stored?.mapping === base.mapping && sameColumns(columns, stored.columns))
+		if (!this.#asked && stored?.mapping === file.mapping && sameColumns(columns, stored.columns))
 			return {
-				reader: presetReader(this.#through(base, stored.renaming)),
+				reader: readerOf(storedTable(file, stored.renaming)),
 				basis: "stored",
 				covers: new Set(stored.columns),
 			};
@@ -135,13 +131,13 @@ export class ReaderResolver implements Resolves {
 
 	keyColumn(columns: string[]): string | null {
 		if (this.source.extractor === "model") return null;
-		const base = presetFor(this.source, columns);
-		if (within(columns, new Set(renamingFor(base.source).columns))) return base.keyField;
+		const file = shippedFor(this.source, columns);
+		const own = keyColumnOf(shippedTable(file));
+		if (within(columns, new Set(file.columns))) return own;
 		const stored = this.#stored();
-		if (this.#asked || stored?.mapping !== base.mapping || !sameColumns(columns, stored.columns))
-			return base.keyField;
-		const natives = nativeColumns(renamingFor(base.source), stored.renaming);
-		return columns.find((c) => natives.get(c) === base.keyField) ?? base.keyField;
+		if (this.#asked || stored?.mapping !== file.mapping || !sameColumns(columns, stored.columns))
+			return own;
+		return keyColumnOf(storedTable(file, stored.renaming)) ?? own;
 	}
 
 	late(row: Row) {
@@ -218,19 +214,19 @@ export class ReaderResolver implements Resolves {
 	}
 
 	async #rename(columns: string[], sample: Row[]) {
-		const base = presetFor(this.source, columns);
+		const file = shippedFor(this.source, columns);
 		const label = modelLabel(this.model);
 		if (!label)
 			throw new PipelineError(
-				`${base.mapping}: ${this.#asked ? "columns were asked to be renamed again" : `columns the app does not know (${columns.slice(0, 4).join(", ")}${columns.length > 4 ? ", …" : ""})`}, and no model is configured to rename them: set LLM_PROVIDER and LLM_MODEL`,
+				`${file.mapping}: ${this.#asked ? "columns were asked to be renamed again" : `columns the app does not know (${columns.slice(0, 4).join(", ")}${columns.length > 4 ? ", …" : ""})`}, and no model is configured to rename them: set LLM_PROVIDER and LLM_MODEL`,
 			);
 		if (columns.length > MAX_COLUMNS)
 			throw new PipelineError(
-				`${base.mapping}: the file has ${columns.length} columns, more than the ${MAX_COLUMNS} the model can rename`,
+				`${file.mapping}: the file has ${columns.length} columns, more than the ${MAX_COLUMNS} the model can rename`,
 			);
 		const ctx = {
-			mapping: mappingFor(base.mapping),
-			shipped: renamingFor(base.source),
+			mapping: mappingFor(file.mapping),
+			shipped: file,
 			columns,
 			sample: sample.slice(0, SAMPLE_ROWS),
 		};
@@ -247,23 +243,23 @@ export class ReaderResolver implements Resolves {
 			);
 		} catch (err) {
 			throw new PipelineError(
-				`renaming columns for ${base.mapping}: ${err instanceof Error ? err.message : String(err)}`,
+				`renaming columns for ${file.mapping}: ${err instanceof Error ? err.message : String(err)}`,
 			);
 		}
 		if (!answer.success)
 			throw new PipelineError(
-				`renaming columns for ${base.mapping}: the model's answer does not fit the schema`,
+				`renaming columns for ${file.mapping}: the model's answer does not fit the schema`,
 			);
 		const checked = checkAnswer(answer.data, ctx);
 		if ("problems" in checked)
 			throw new PipelineError(
-				`the model's column renaming for ${base.mapping} was refused and nothing stored: ${checked.problems.slice(0, MORE_PROBLEMS).join("; ")}${checked.problems.length > MORE_PROBLEMS ? ` (+${checked.problems.length - MORE_PROBLEMS} more)` : ""}`,
+				`the model's column renaming for ${file.mapping} was refused and nothing stored: ${checked.problems.slice(0, MORE_PROBLEMS).join("; ")}${checked.problems.length > MORE_PROBLEMS ? ` (+${checked.problems.length - MORE_PROBLEMS} more)` : ""}`,
 			);
 
 		const { renaming } = checked;
 		const before = this.#stored();
 		const values = {
-			mapping: base.mapping,
+			mapping: file.mapping,
 			columns,
 			renaming,
 			model: label,
@@ -283,10 +279,10 @@ export class ReaderResolver implements Resolves {
 		this.#asked = false;
 		this.#used = "stored";
 		this.onRenamed(
-			`columns renamed${before ? " again" : ""} by ${label} for ${base.mapping}: ${Object.keys(renaming.rename).length} renamed, ${Object.keys(renaming.steps).length} read by a step, ${Object.keys(renaming.ignored).length} ignored`,
+			`columns renamed${before ? " again" : ""} by ${label} for ${file.mapping}: ${Object.keys(renaming.rename).length} renamed, ${Object.keys(renaming.steps).length} read by a step, ${Object.keys(renaming.ignored).length} ignored`,
 		);
 		return {
-			reader: presetReader(this.#through(base, renaming)),
+			reader: readerOf(storedTable(file, renaming)),
 			covers: new Set(columns) as ReadonlySet<string>,
 		};
 	}

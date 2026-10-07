@@ -1,6 +1,6 @@
 import { ban } from "$lib/server/config";
+import type { AddressBase } from "../extractor";
 import { getJson } from "../http";
-import type { AddressBase } from "../preset";
 import { houseNumber, tokens } from "../text";
 import type { Extraction, ProposedTag } from "../types";
 import { spacedNumber } from "./text";

@@ -64,7 +64,7 @@ export interface ApiResult {
 	rows: Map<string, Row[]>;
 	/** Keys of rows the mapping says are not places: still listed by the source. */
 	notPlaces: Set<string>;
-	/** Null when the area had no rows to detect a preset from. */
+	/** Null when the area had no rows to read through a table. */
 	reader: Reader | null;
 	fetched: number;
 	skipped: number;

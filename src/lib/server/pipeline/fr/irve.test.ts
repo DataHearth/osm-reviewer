@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { mergeSites, shippedExtractor } from "../extractor";
+import { renamingFor, shippedCovering } from "../mapping/files";
 import { stationFit } from "../match/charging";
 import { updateOps } from "../match/ops";
-import { mergeSites } from "../preset";
-import { detectPreset, presetById } from "../presets";
 import type { Row } from "../types";
 import { poolId, siteName } from "./charging-functions";
 
@@ -30,14 +30,13 @@ const irveRow = (over: Row = {}): Row => ({
 });
 
 describe("IRVE preset", () => {
-	const irve = presetById("irve");
-	if (!irve) throw new Error("irve preset missing");
+	const irve = shippedExtractor(renamingFor("fr/irve"));
 	const capacityOf = (rows: Row[]) =>
 		irve.extract(rows, "u")?.tags.find((t) => t.k === "capacity")?.v;
 
 	it("is detected from its columns", () => {
-		expect(detectPreset(Object.keys(irveRow()))?.id).toBe("irve");
-		expect(detectPreset(["a", "b"])).toBeUndefined();
+		expect(shippedCovering(Object.keys(irveRow()))?.source).toBe("fr/irve");
+		expect(shippedCovering(["a", "b"])).toBeNull();
 	});
 
 	it("groups the rows of one station into one record with socket counts and power", () => {
@@ -1256,11 +1255,10 @@ describe("poolId", () => {
 
 describe("a station's address query", () => {
 	it("asks the address base with its address, and only a coarse point moves, 100 m off", () => {
+		const irve = shippedExtractor(renamingFor("fr/irve"));
 		const geocode = (lat: string, lon: string) =>
-			presetById("irve")?.extract(
-				[irveRow({ consolidated_latitude: lat, consolidated_longitude: lon })],
-				"u",
-			)?.geocode;
+			irve.extract([irveRow({ consolidated_latitude: lat, consolidated_longitude: lon })], "u")
+				?.geocode;
 		expect(geocode("45.7641", "4.835123")).toEqual({
 			q: "1 place de la Mairie, 69001 Lyon",
 			farM: 100,

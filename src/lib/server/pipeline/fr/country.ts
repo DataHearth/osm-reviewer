@@ -1,3 +1,5 @@
+import type { AddressBase } from "../extractor";
+import { addressBase } from "./ban";
 import { type CelFunction, celFunctions } from "./cel-functions";
 import { MAILBOX } from "./mailbox";
 import { phoneFR } from "./text";
@@ -12,6 +14,8 @@ export interface Country {
 	/** The number in OSM's spelling, or null when it is not a phone number there. */
 	phone(raw: string): string | null;
 	mailbox: RegExp;
+	/** The national address base records are placed against. */
+	address: AddressBase;
 	/** The code a mapping's rules may call, by the kind it maps. */
 	celFunctions: Record<string, CelFunction[]>;
 }
@@ -31,6 +35,7 @@ export const COUNTRIES: Record<string, Country> = {
 		],
 		phone: phoneFR,
 		mailbox: MAILBOX,
+		address: addressBase,
 		celFunctions,
 	},
 };

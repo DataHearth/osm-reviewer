@@ -217,13 +217,15 @@ The code is in three layers, and a country only adds to the last. The run (`runn
 `ops.ts` and `plan.ts` what is written to it, `warnings.ts` the banner, `refs.ts` the one table
 of identifier schemes) name no dataset. What matching has to know about a kind of place is that
 kind's module: `match/charging.ts` (EVSE ids, socket fit) and `fr/school.ts` (UAI, grounds,
-campuses). Everything French is in `fr/`: the two presets, the IRVE file's
-declarations, the address base (`ban.ts`, reached only through a preset's `address`), the
+campuses). Everything French is in `fr/`: the IRVE file's declarations (the source's steps,
+registered in `functions.ts` beside the functions), the address base (`ban.ts`, reached only through
+`COUNTRIES` in `country.ts`, by the mapping's country code), the
 data.gouv.fr dataset pages (`datagouv.ts`), French spelling (`text.ts`, `school-name.ts`,
 `words.ts`), the tags OSM France uses (`tags.ts`: UAI, SIRET, `school:FR` and its levels), which
 kinds stand for one another (`kinds.ts`) and how French schools are matched (`school.ts`). A new
-dataset is a `Preset` (`preset.ts`) added to the list in `presets.ts`, built with `Tags` and the
-readers in `row.ts`; a new identifier is one entry in a `schemes` table. The generic part still
+dataset is a mapping file and a shipped renaming (`mappings/`, `sources/`), read by the one
+`Extractor` (`extractor.ts`), which is built from a table of columns and the mapping's functions and
+steps, with code only for what no rule can say; a new identifier is one entry in a `schemes` table. The generic part still
 imports `fr/` directly, since France is the only country: `rg 'fr/' src/lib/server/pipeline -g
 '!fr/**'` lists every place a second country would have to be chosen by area instead.
 
@@ -269,9 +271,10 @@ mapping. Nothing is stored, so editing either takes the mark off. The review scr
 beside the source with the tags the shipped renaming overrides, which apply to any source read
 through it and to none read through a renaming the model made.
 
-The **deterministic** extractor is a preset (`fr/irve-preset.ts`, `fr/school-preset.ts`): `irve` and `annuaire-education`,
-named on the source or detected from the columns, and a source that fits none fails its run
-rather than guessing. Where the source is not sure, the preset proposes nothing rather than a
+The **deterministic** extractor is the mapping's (`extractor.ts`): the mapping is named on the source
+(an older row may hold the name of its shipped source, `irve` or `annuaire-education`), or the
+shipped source whose columns hold the read's is used, and a source that fits none fails its run
+rather than guessing. Where the source is not sure, the mapping proposes nothing rather than a
 guess: no socket output above what the connector can deliver (43.5 kW on type 2, 400 kW on
 CCS and CHAdeMO, where the registry holds cabinet totals, and no type 2 output from a DC unit's
 own type 2 outlet), a type 2 point whose `cable_t2_attache` is blank (in its newest declaration

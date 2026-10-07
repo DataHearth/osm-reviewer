@@ -4,7 +4,7 @@ export type Row = Record<string, unknown>;
 export interface RawRecord {
 	key: string;
 	url: string;
-	/** A station is several rows in the IRVE file, a school one; the preset decides what a record is made of. */
+	/** A station is several rows in the IRVE file, a school one; the mapping decides what a record is made of. */
 	rows: Row[];
 	/** Crawl only: the page text, and the OSM element the page was found through. */
 	text?: string;

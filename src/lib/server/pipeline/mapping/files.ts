@@ -50,10 +50,13 @@ export function mappingFor(id: string): Mapping {
 	return mapping;
 }
 
+let mappingList: { id: string; title: string }[] | null = null;
+
 /** Every mapping the app ships, read from `mappings/` so a new file is offered without a code change. */
 export function shippedMappings(): { id: string; title: string }[] {
+	if (mappingList) return mappingList;
 	const base = join(root(), "mappings");
-	return readdirSync(base, { withFileTypes: true })
+	mappingList = readdirSync(base, { withFileTypes: true })
 		.filter((d) => d.isDirectory())
 		.flatMap((d) =>
 			readdirSync(join(base, d.name))
@@ -65,25 +68,49 @@ export function shippedMappings(): { id: string; title: string }[] {
 			return { id, title };
 		})
 		.sort((a, b) => a.id.localeCompare(b.id));
+	return mappingList;
 }
 
-let shipped: OfficialRenaming[] | null = null;
+let shippedList: Renaming[] | null = null;
 
-/** Every shipped source that carries an `official:` block, read from `sources/` so a new file is offered without a code change. */
-export function shippedSources(): OfficialRenaming[] {
-	if (shipped) return shipped;
+/** Every column renaming the app ships, read from `sources/` so a new file is offered without a code change. */
+export function shippedRenamings(): Renaming[] {
+	if (shippedList) return shippedList;
 	const base = join(root(), "sources");
-	shipped = readdirSync(base, { withFileTypes: true })
+	shippedList = readdirSync(base, { withFileTypes: true })
 		.filter((d) => d.isDirectory())
 		.flatMap((d) =>
 			readdirSync(join(base, d.name))
 				.filter((f) => f.endsWith(".yaml"))
 				.map((f) => renamingFor(`${d.name}/${f.slice(0, -".yaml".length)}`)),
 		)
-		.filter((r): r is OfficialRenaming => r.official !== undefined)
 		.sort((a, b) => a.source.localeCompare(b.source));
-	return shipped;
+	return shippedList;
 }
+
+/** Every shipped source that carries an `official:` block. */
+export const shippedSources = (): OfficialRenaming[] =>
+	shippedRenamings().filter((r): r is OfficialRenaming => r.official !== undefined);
+
+/**
+ * The mapping a source's `preset` names: a mapping's id, or the name an older row holds, which
+ * is the one its shipped source goes by (`irve` for `fr/irve`). Null where it names neither.
+ */
+export function mappingOfPreset(preset: string | null): string | null {
+	if (preset === null) return null;
+	if (shippedMappings().some((m) => m.id === preset)) return preset;
+	return shippedRenamings().find((r) => r.source.split("/")[1] === preset)?.mapping ?? null;
+}
+
+/** The shipped source whose renaming and steps a source reads through, when its `preset` names a mapping the app ships one for. */
+export function shippedNamed(preset: string | null): Renaming | null {
+	const mapping = mappingOfPreset(preset);
+	return (mapping && shippedRenamings().find((r) => r.mapping === mapping)) || null;
+}
+
+/** The first shipped source whose columns hold every one of these, for a source that names no mapping. */
+export const shippedCovering = (columns: string[]): Renaming | null =>
+	shippedRenamings().find((r) => columns.every((c) => r.columns.includes(c))) ?? null;
 
 const programs = new Map<string, Program>();
 

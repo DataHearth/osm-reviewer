@@ -70,7 +70,7 @@ describe("readApiArea", () => {
 		const res = await readApiArea(source, radius);
 		expect(res.fetched).toBe(120);
 		expect(res.rows.size).toBe(120);
-		expect(res.reader?.preset?.id).toBe("annuaire-education");
+		expect(res.reader?.extractor?.mapping).toBe("FR:school");
 		const pages = seen.filter((s) => s.url.includes("/records?"));
 		expect(pages).toHaveLength(2);
 		expect(decodeURIComponent(pages[0].url)).toContain("within_distance(position,");

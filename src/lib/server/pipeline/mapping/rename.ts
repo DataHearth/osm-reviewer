@@ -18,7 +18,7 @@ export interface ColumnRenaming {
 
 export interface RenameContext {
 	mapping: Mapping;
-	/** The shipped column renaming of the source the mapping's preset was written for: it names the steps and the columns they read. */
+	/** The shipped column renaming of the source the mapping is read through: it names the steps and the columns they read. */
 	shipped: Renaming;
 	columns: string[];
 	sample: Row[];
@@ -106,7 +106,7 @@ export function renameMessage({ mapping, shipped, columns, sample }: RenameConte
 	});
 }
 
-/** The column of the shipped file each input comes from (the first listed where several are), which is the name the preset's code reads. */
+/** The column of the shipped file each input comes from (the first listed where several are), which is the name a step reads. */
 export const shippedColumns = (shipped: Renaming) => {
 	const byInput = new Map<string, string>();
 	for (const [column, input] of Object.entries(shipped.rename))
@@ -114,8 +114,14 @@ export const shippedColumns = (shipped: Renaming) => {
 	return byInput;
 };
 
-/** Each of the source's columns that the preset reads, under the name the shipped file gives it. */
-export function nativeColumns(shipped: Renaming, renaming: ColumnRenaming): Map<string, string> {
+/**
+ * Each of the source's columns that a step reads, under the name the shipped file gives it: a
+ * step is written against the register's own columns, so a table's columns are shown to it as those.
+ */
+export function stepColumns(
+	shipped: Renaming,
+	renaming: Pick<ColumnRenaming, "rename" | "steps">,
+): Map<string, string> {
 	const byInput = shippedColumns(shipped);
 	return new Map([
 		...Object.entries(renaming.rename).map(
@@ -250,7 +256,7 @@ export function checkAnswer(
 		);
 	for (const [input, from] of sentTo)
 		if (from.length > 1) problems.push(`columns ${list(from)} are all renamed to "${input}"`);
-	const natives = nativeColumns(shipped, renaming);
+	const natives = stepColumns(shipped, renaming);
 	const byNative = new Map<string, string[]>();
 	for (const [column, native] of natives) push(byNative, native, column);
 	for (const [native, from] of byNative)

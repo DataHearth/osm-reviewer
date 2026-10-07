@@ -1,4 +1,4 @@
-import type { SiteLink } from "../preset";
+import type { SiteLink } from "../extractor";
 import { str } from "../row";
 import { normaliseName } from "../text";
 import type { Row } from "../types";

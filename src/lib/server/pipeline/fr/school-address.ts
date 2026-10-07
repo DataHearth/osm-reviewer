@@ -1,6 +1,4 @@
-import { str } from "../row";
 import { houseNumber } from "../text";
-import type { Row } from "../types";
 import { addressQuery, expandStreet, spacedNumber } from "./text";
 
 /** No lieu-dit or hameau: an address there is `addr:place` in OSM, which this does not write. */
@@ -50,11 +48,3 @@ export function addressOf(lines: Lines) {
 		),
 	};
 }
-
-export const schoolAddress = (r: Row) =>
-	addressOf({
-		street: str(r, "adresse_1"),
-		more: `${str(r, "adresse_2")} ${str(r, "adresse_3")}`,
-		postcode: str(r, "code_postal"),
-		city: str(r, "nom_commune"),
-	});

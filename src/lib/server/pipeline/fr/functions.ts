@@ -1,7 +1,11 @@
+import type { Step } from "../extractor";
 import type { TagFunction } from "../mapping/evaluate";
 import type { NotesFunction, SitesFunction, SkipFunction } from "../mapping/record";
 import { chargingFunctions } from "./charging-functions";
+import { stationSite } from "./irve-declarations";
 import { positionPrecision } from "./irve-position";
+import { readDeclarations } from "./irve-site";
+import { link } from "./irve-sites";
 import { MAILBOX, withheldMailbox } from "./mailbox";
 import { addressOf } from "./school-address";
 import { housedSection } from "./school-housed";
@@ -61,4 +65,10 @@ export const sitesFunctions: Record<string, SitesFunction> = {
 /** The code a mapping's `record.notesBy` names. */
 export const notesFunctions: Record<string, NotesFunction> = {
 	"fr.charging_station/precision": positionPrecision,
+};
+
+/** The code a shipped renaming's `steps` names. */
+export const steps: Record<string, Step> = {
+	"fr.irve/declarations": { rebuild: readDeclarations },
+	"fr.irve/sites": { site: stationSite, link },
 };

@@ -7,9 +7,8 @@ import type {
 	Run,
 	SourceKind,
 } from "$lib/types";
-import { mappingFor, renamingFor } from "./pipeline/mapping/files";
+import { mappingFor, mappingOfPreset, shippedNamed } from "./pipeline/mapping/files";
 import type { ColumnRenaming } from "./pipeline/mapping/rename";
-import { presetById } from "./pipeline/presets";
 
 const MAPPING_ID = /^[A-Z]{2}:/;
 
@@ -88,7 +87,7 @@ const titleOf = (id: string) => {
 };
 
 /**
- * The mapping a source reads through: the one its preset names, else the one the model last
+ * The mapping a source reads through: the one it names, else the one the model last
  * renamed its columns for. A source detected by its columns has neither until a run settles it.
  */
 export function columnMapping(
@@ -97,15 +96,15 @@ export function columnMapping(
 	modelConfigured: boolean,
 ): ColumnMapping | null {
 	if (s.extractor === "model") return null;
-	const preset = presetById(s.preset);
-	const id = preset?.mapping ?? stored?.mapping;
+	const file = shippedNamed(s.preset);
+	const id = file?.mapping ?? stored?.mapping;
 	if (!id) return null;
 	const own = s.renamingUsed === "stored" && stored?.mapping === id ? stored : null;
 	return {
 		mapping: id,
 		title: titleOf(id),
 		origin: s.renamingUsed === "shipped" ? "shipped" : own ? "stored" : null,
-		shippedColumns: preset ? renamingFor(preset.source).columns.length : 0,
+		shippedColumns: file?.columns.length ?? 0,
 		stored: own && {
 			madeAt: stamp(own.madeAt),
 			model: own.model,
@@ -144,7 +143,7 @@ function nextRun(s: SourceFacts): ConfigRow {
 
 /** `model` is the configured LLM's label, or null when none is configured. */
 export function configRows(s: SourceFacts, last: RunFacts | undefined, model: string | null) {
-	const mapping = presetById(s.preset)?.mapping ?? s.preset;
+	const mapping = mappingOfPreset(s.preset) ?? s.preset;
 	const extractor: ConfigRow =
 		s.extractor === "model"
 			? model

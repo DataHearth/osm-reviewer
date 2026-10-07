@@ -29,9 +29,12 @@ import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import { officialFile, officialView, originOf } from "$lib/server/official";
 import { modelLabel } from "$lib/server/pipeline/llm";
-import { shippedMappings, shippedSources } from "$lib/server/pipeline/mapping/files";
+import {
+	mappingOfPreset,
+	shippedMappings,
+	shippedSources,
+} from "$lib/server/pipeline/mapping/files";
 import { contextTags } from "$lib/server/pipeline/match/ops";
-import { presetById } from "$lib/server/pipeline/presets";
 import { claimFresh } from "$lib/server/pipeline/runner";
 import {
 	columnMapping,
@@ -169,7 +172,7 @@ export async function loadSources(db: Db): Promise<Source[]> {
 			matching: s.matching,
 			budget: s.budget,
 			extractor: s.extractor,
-			preset: presetById(s.preset)?.mapping ?? s.preset,
+			preset: mappingOfPreset(s.preset) ?? s.preset,
 			licence: s.licence,
 			allow: s.allowedTags.map((a) => a.pattern),
 			columnMapping: columnMapping(s, s.renaming, modelLabel() !== null),

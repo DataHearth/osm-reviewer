@@ -30,8 +30,7 @@ import {
 } from "$lib/server/mutations";
 import { sendTest } from "$lib/server/notify";
 import { modelLabel } from "$lib/server/pipeline/llm";
-import { shippedSources } from "$lib/server/pipeline/mapping/files";
-import { presetById } from "$lib/server/pipeline/presets";
+import { mappingOfPreset, shippedSources } from "$lib/server/pipeline/mapping/files";
 import { kick, requestRuns, sourcesOfArea } from "$lib/server/pipeline/runner";
 import { loadAreas, loadMappings, loadOffered, loadSources } from "$lib/server/queries";
 import { loadNotif, saveNotif } from "$lib/server/settings";
@@ -89,7 +88,7 @@ export const actions: Actions = {
 		const form = await superValidate(request, zod4(sourceDraftSchema));
 		if (!form.valid) return fail(400, { form });
 		const { preset } = form.data;
-		if (preset !== null && !presetById(preset))
+		if (preset !== null && !mappingOfPreset(preset))
 			return setError(form, "preset", "No shipped mapping reads that kind of place.");
 		const id = applySourceDraft(db, form.data);
 		if (!form.data.editId && pipeline.enabled) kick(db);

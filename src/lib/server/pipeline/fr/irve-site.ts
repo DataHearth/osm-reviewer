@@ -140,5 +140,5 @@ export function readDeclarations(declared: Row[], toInputs: (r: Row) => In) {
 		free: said(r, "gratuit"),
 		tariff: said(r, "tarification"),
 	}));
-	return { rows, inputs, site, pos };
+	return { inputs, site };
 }

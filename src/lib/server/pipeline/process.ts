@@ -5,6 +5,7 @@ import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import type { SourceRecord } from "$lib/types";
 import { refreshConflicts } from "./conflicts";
+import { addressGaps, mergeSites } from "./extractor";
 import { NAME_FIELDS } from "./fr/words";
 import { inArea } from "./geo";
 import { getJson } from "./http";
@@ -16,7 +17,6 @@ import { planUpdate } from "./match/plan";
 import { indexRefs, refSelectors, sharedRefs } from "./match/refs";
 import { type MatchedBy, matchWarnings, nearbyLabels, twinWarnings } from "./match/warnings";
 import { countPois, fetchElements } from "./overpass";
-import { addressGaps, mergeSites } from "./preset";
 import { hash, type Reader } from "./reader";
 import { str } from "./row";
 import {
@@ -93,11 +93,13 @@ async function extract(
 	rowsOf: (key: string) => Row[] | undefined,
 ): Promise<Extraction | null> {
 	if (source.extractor === "deterministic") {
-		const preset = reader?.preset;
-		if (!preset) return null;
+		const extractor = reader?.extractor;
+		if (!extractor) return null;
 		const gaps =
-			preset.siteQuery && rec.rows.length > 1 ? await addressGaps(rec.rows, preset) : undefined;
-		return preset.extract(rec.rows, rec.url, gaps, rowsOf);
+			extractor.siteQuery && rec.rows.length > 1
+				? await addressGaps(rec.rows, extractor)
+				: undefined;
+		return extractor.extract(rec.rows, rec.url, gaps, rowsOf);
 	}
 
 	const row = rec.rows[0] ?? {};
@@ -142,7 +144,7 @@ async function readRecords(source: SourceRow, input: AreaInput, allow: string[])
 
 	let failedInARow = 0;
 	const byKey = new Map(input.records.map((rec) => [rec.key, rec.rows]));
-	for (const rec of mergeSites(input.records, input.reader?.preset)) {
+	for (const rec of mergeSites(input.records, input.reader?.extractor)) {
 		if (rec.unchanged) {
 			unchanged.push(rec.key);
 			continue;
@@ -151,7 +153,7 @@ async function readRecords(source: SourceRow, input: AreaInput, allow: string[])
 			const raw = await extract(source, rec, input.reader, allow, (key) => byKey.get(key));
 			failedInARow = 0;
 			if (!raw) continue;
-			const x = (await input.reader?.preset?.address?.place(raw)) ?? raw;
+			const x = (await input.reader?.extractor?.address?.place(raw)) ?? raw;
 			withheld += x.withheld ?? 0;
 			const tags = x.tags.filter((tag) => allowedBy(allow, tag.k) && tag.conf >= source.floor);
 			if (tags.length) read.push({ x: { ...x, tags }, rec });
@@ -316,7 +318,7 @@ export async function processArea(
 		for (const o of ops)
 			if (o.v.length > OSM_MAX) o.invalid = `${o.v.length} characters, over OSM's ${OSM_MAX}`;
 
-		// What the source proposes, not the rows it was read from: a fixed preset or a new
+		// What the source proposes, not the rows it was read from: a fixed mapping or a new
 		// model answer has to reach an undecided candidate as surely as a change in the data.
 		// The operations it makes against OSM are hashed apart: a fix to matching must reach
 		// the candidate too, but only while the element is where it was, since an element

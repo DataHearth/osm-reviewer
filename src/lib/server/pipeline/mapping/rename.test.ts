@@ -6,8 +6,8 @@ import {
 	answerSchema,
 	checkAnswer,
 	MAX_COLUMNS,
-	nativeColumns,
 	type RenameContext,
+	stepColumns,
 } from "./rename";
 
 const columns = ["uai", "nom", "type", "latitude", "longitude", "tel", "parent"];
@@ -138,10 +138,10 @@ describe("checkAnswer", () => {
 		});
 	});
 
-	it("names the shipped column each of the source's stands for, so the preset's code can read it", () => {
+	it("names the shipped column each of the source's stands for, so a step can read it", () => {
 		const checked = checkAnswer(good, ctx);
 		if (!("renaming" in checked)) throw new Error("refused");
-		expect(Object.fromEntries(nativeColumns(ctx.shipped, checked.renaming))).toEqual({
+		expect(Object.fromEntries(stepColumns(ctx.shipped, checked.renaming))).toEqual({
 			uai: "identifiant_de_l_etablissement",
 			nom: "nom_etablissement",
 			type: "type_etablissement",

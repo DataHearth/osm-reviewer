@@ -49,6 +49,8 @@ record:
   lat: 'pointOk ? lat : ""'
   lon: 'pointOk ? lon : ""'
   skip: '!pointOk'
+  name: 'station_name != "" ? station_name : brand != "" ? brand : "Charging station"'
+  addr: 'fr_charging_station_stationAddress(station_address, postcode, city, insee)'
   address: 'station_address != "" ? fr_charging_station_addressQuery(fr_charging_station_stationAddress(station_address, postcode, city, insee), "", "") : ""'
   # Operators place a station in its car park, often well away from its door, so only a coarse point
   # (four decimals is 11 m) moves to its address; a precise one stays.

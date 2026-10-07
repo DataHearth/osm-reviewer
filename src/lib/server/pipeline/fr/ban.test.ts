@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { addressGaps } from "../extractor";
 import { updateOps } from "../match/ops";
-import { addressGaps } from "../preset";
 import type { Extraction, ProposedTag } from "../types";
 import { addressBase } from "./ban";
 

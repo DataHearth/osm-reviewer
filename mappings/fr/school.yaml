@@ -37,6 +37,7 @@ record:
     !(postbac || medico) && (kind == "" ||
     kind.imatches("^(service administratif|information et orientation)$") || nature_code == "809")
   closed: 'state.imatches("^ferm")'
+  addr: 'street != "" && place != "" ? street + ", " + place : street + place'
   address: 'fr_school_streetQuery(street, address_line_2 + " " + address_line_3, postcode, city)'
   # A school's grounds can stretch a few hundred metres from its gate.
   farM: 1000
@@ -61,6 +62,7 @@ let:
     : ecole ? (mat && elem ? "primaire" : mat ? "maternelle" : elem ? "élémentaire" : "")
     : kind.imatches("^coll[èe]ge") ? "collège"
     : kind.imatches("^lyc[ée]e") ? "lycée" : ""
+  place: 'postcode != "" && city != "" ? postcode + " " + city : postcode + city'
   siret14: 'siret.remove(r"\s")'
   said: 'status.imatches("^public") ? "public" : status.imatches("priv") ? "private" : ""'
   bySiren: >-
