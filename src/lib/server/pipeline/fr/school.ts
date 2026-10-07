@@ -335,9 +335,14 @@ export const kit: KitFactory = (lib: Lib): Kit => {
 		matchedBanners: (x, el, { grounds, split }) => {
 			const amenity = x.tags?.find((t) => t.k === "amenity" && SCHOOLS.includes(t.v));
 			const before: string[] = [];
-			if (amenity && grounds)
+			const noun = amenity
+				? "school"
+				: x.tags?.some((t) => t.k === "amenity" && t.v === "social_facility")
+					? "institute"
+					: null;
+			if (noun && grounds)
 				before.push(
-					`OSM maps this school as building=${el.tags.building} beside ${label(grounds, distance(el.lat, el.lon, grounds.lat, grounds.lon))}, mapped as amenity=${grounds.tags.amenity}: amenity and name are left out, so the school is not mapped twice`,
+					`OSM maps this ${noun} as building=${el.tags.building} beside ${label(grounds, distance(el.lat, el.lon, grounds.lat, grounds.lon))}, mapped as amenity=${grounds.tags.amenity}: amenity and name are left out, so the ${noun} is not mapped twice`,
 				);
 			else if (amenity && lib.shell(el.tags))
 				before.push(

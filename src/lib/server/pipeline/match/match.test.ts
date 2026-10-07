@@ -1111,6 +1111,22 @@ describe("which object", () => {
 		);
 	});
 
+	it("tells an institute's building beside its grounds what an institute gets left out", () => {
+		const x = {
+			kind: "FR:school",
+			lat: 45.7,
+			lon: 4.8,
+			name: "IME Les Tilleuls",
+			tags: [tag("amenity", "social_facility"), tag("name", "IME Les Tilleuls")],
+			refs: { "ref:UAI": "0690541N" },
+		};
+		const building = el(1, 45.7, 4.8, { building: "school", "ref:UAI": "0690541N" });
+		const grounds = el(2, 45.70004, 4.8, { amenity: "social_facility", name: "IME Les Tilleuls" });
+		expect(matchWarnings(x, building, [building, grounds])[0]).toMatch(
+			/^OSM maps this institute as building=school beside node\/2 .*, mapped as amenity=social_facility: amenity and name are left out, so the institute is not mapped twice$/,
+		);
+	});
+
 	describe("a station whose counts the object repeats exactly", () => {
 		const station = (
 			name: string,
