@@ -306,20 +306,23 @@ describe("what the sources page loads", () => {
 		expect(columnMapping?.renameRequested).toBe(true);
 	});
 
-	it("says the shipped step a column stands for, short", async () => {
-		reply = {
-			columns: [
-				...answer().columns.filter((c) => c.column !== "nom"),
-				{
-					...ITEM,
-					column: "nom",
-					action: "step",
-					step: "fr.annuaire-education/sites",
-					as: "nom_etablissement",
+	it("says the step a stored column stands for, short", async () => {
+		db.update(t.sources).set({ renamingUsed: "stored" }).run();
+		db.insert(t.sourceRenamings)
+			.values({
+				sourceId: "schools",
+				mapping: "FR:school",
+				columns: ["nom"],
+				renaming: {
+					mapping: "FR:school",
+					rename: {},
+					ignored: {},
+					steps: { nom: { name: "fr.annuaire-education/sites", as: "nom_etablissement" } },
 				},
-			],
-		};
-		await runSource(db, "schools");
+				model: "m",
+				madeAt: new Date(),
+			})
+			.run();
 
 		expect((await loadSources(db))[0].columnMapping?.stored?.steps).toEqual([
 			["nom", "sites", "nom_etablissement"],

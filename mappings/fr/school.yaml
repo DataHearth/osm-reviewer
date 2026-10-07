@@ -18,6 +18,9 @@ inputs:
   email: the mailbox
   opening_date: the date the establishment opened, YYYY-MM-DD
   state: open or closed, in words
+  attachment_type: "how the establishment is attached to its parent establishment, in words: a section, a geographic annex…"
+  parent_id: the UAI of its parent establishment
+  location_precision: how precisely the register places the point, in words
   street: the address line holding the housenumber and street
   address_line_2: the next address line, where a CEDEX or a postal box may be written
   address_line_3: the line after it
@@ -34,12 +37,18 @@ record:
     !(postbac || medico) && (kind == "" ||
     kind.imatches("^(service administratif|information et orientation)$") || nature_code == "809")
   closed: 'state.imatches("^ferm")'
-  address: 'streetQuery(street, address_line_2 + " " + address_line_3, postcode, city)'
+  address: 'fr_school_streetQuery(street, address_line_2 + " " + address_line_3, postcode, city)'
   # A school's grounds can stretch a few hundred metres from its gate.
   farM: 1000
   pick: nearest
   tieBreak: name
   withheld: [phone, email]
+  skipBy:
+    function: fr.school/housed
+    reads: [attachment_type, nature_code, parent_id, street, postcode]
+  sitesBy:
+    function: fr.school/sites
+    reads: [phone, website, street, postcode, lat, lon]
 
 let:
   postbac: 'nature_code == "400"'
@@ -115,6 +124,10 @@ tags:
   addr:postcode: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], quote: [postcode], conf: 0.85, fill: true, group: addr }
   addr:city: { function: fr.school/address, reads: [street, address_line_2, address_line_3, postcode, city], quote: [city], conf: 0.85, fill: true, group: addr }
 
+notes:
+  - when: 'location_precision != "" && !location_precision.imatches("^(parfaite|num[ée]ro de rue)$")'
+    text: "The directory places it only to the precision of: {location_precision}"
+
 examples:
   - about: a primaire, public, with a landline
     rows:
@@ -148,3 +161,12 @@ examples:
     rows:
       - { id: 9740001A, kind: Collège, nature_code: "340", phone: "0692 12 34 56" }
     expect: { amenity: school, school:FR: collège, ref:UAI: 9740001A }
+  - about: a point the directory places only to the street
+    rows:
+      - { id: 0690008H, kind: Collège, nature_code: "340", location_precision: Rue }
+    expect: { amenity: school, school:FR: collège, ref:UAI: 0690008H }
+    notes: ["The directory places it only to the precision of: Rue"]
+  - about: a point placed at the housenumber needs no line
+    rows:
+      - { id: 0690009J, kind: Collège, nature_code: "340", location_precision: Parfaite }
+    expect: { amenity: school, school:FR: collège, ref:UAI: 0690009J }

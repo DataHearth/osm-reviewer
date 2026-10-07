@@ -1,5 +1,5 @@
-import { education } from "./fr/education";
 import { irve } from "./fr/irve";
+import { education } from "./fr/school-preset";
 import type { Preset } from "./preset";
 
 const PRESETS: Preset[] = [irve, education];

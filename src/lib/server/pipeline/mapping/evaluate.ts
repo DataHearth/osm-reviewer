@@ -1,7 +1,6 @@
 import { COUNTRIES } from "../fr/country";
-import { MAILBOX } from "../fr/mailbox";
 import { coord } from "../row";
-import type { Program } from "./compile";
+import { NOTE_INPUT, type Program } from "./compile";
 import { scopeOf } from "./record";
 
 export interface EvaluatedTag {
@@ -149,7 +148,9 @@ export function evaluate(
 	const country = COUNTRIES[program.id.split(":")[0]];
 	const withheld = record.withheld.filter((input) => {
 		const v = rows[0][input];
-		return v !== "" && !reached.has(input) && (country?.phone(v) != null || MAILBOX.test(v));
+		return (
+			v !== "" && !reached.has(input) && (country?.phone(v) != null || country?.mailbox.test(v))
+		);
 	}).length;
 
 	return {
@@ -158,7 +159,9 @@ export function evaluate(
 		closed: record.closed ? !!run(record.closed, "record.closed") : false,
 		tags,
 		notes: [
-			...program.notes.filter((n) => run(n.when, `notes.${n.text}`)).map((n) => n.text),
+			...program.notes
+				.filter((n) => run(n.when, `notes.${n.text}`))
+				.map((n) => n.text.replace(NOTE_INPUT, (_, name) => rows[0][name] ?? "")),
 			...found,
 		],
 		refs,

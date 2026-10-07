@@ -67,6 +67,58 @@ export function pickRow<R>(
 	return rows.filter((r) => gap(r) <= nearest + ONE_ADDRESS_M).sort((a, b) => size(a) - size(b))[0];
 }
 
+type Inputs = Record<string, string>;
+
+/** Another record's rows under input names, where the read has any. */
+export type RowsOf = (key: string) => Inputs[] | undefined;
+
+/** Says a record is not a place of its own, given the inputs the mapping declares it reads and the rest of the read. */
+export type SkipFunction = (reads: Inputs, rowsOf: RowsOf) => boolean;
+
+/**
+ * Given every row of a key at its several sites (the inputs it reads) and which of them is the
+ * record's, completes the record's proposed tags in place (`also`, a value) and answers lines for
+ * the reviewer.
+ */
+export type SitesFunction = (rows: Inputs[], main: number, tags: ProposedTag[]) => string[];
+
+const readsOf = (reads: string[], row: Inputs): Inputs =>
+	Object.fromEntries(reads.map((input) => [input, row[input] ?? ""]));
+
+const registered = <F>(table: Record<string, F>, name: string, program: Program): F => {
+	const found = table[name];
+	if (!found) throw new Error(`${program.id}: function ${name} is not registered`);
+	return found;
+};
+
+/** Whether the mapping's `skipBy` function says this record is no place of its own. */
+export function skippedBy(
+	program: Program,
+	table: Record<string, SkipFunction>,
+	row: Inputs,
+	rowsOf: RowsOf = () => undefined,
+): boolean {
+	const by = program.record.skipBy;
+	return !!by && registered(table, by.function, program)(readsOf(by.reads, row), rowsOf);
+}
+
+/** Runs the mapping's `sitesBy` function over the key's rows; the lines it answers. */
+export function settledBy(
+	program: Program,
+	table: Record<string, SitesFunction>,
+	rows: Inputs[],
+	main: number,
+	tags: ProposedTag[],
+): string[] {
+	const by = program.record.sitesBy;
+	if (!by) return [];
+	return registered(table, by.function, program)(
+		rows.map((row) => readsOf(by.reads, row)),
+		main,
+		tags,
+	);
+}
+
 const MOST_VALUES_SHOWN = 3;
 
 interface Shown {

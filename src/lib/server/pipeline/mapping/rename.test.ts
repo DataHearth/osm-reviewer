@@ -34,7 +34,16 @@ const sample = [
 
 const ctx: RenameContext = {
 	mapping: mappingFor("FR:school"),
-	shipped: renamingFor("fr/annuaire-education"),
+	shipped: {
+		...renamingFor("fr/annuaire-education"),
+		steps: [
+			{
+				name: "fr.annuaire-education/sections",
+				why: "A section housed in its parent establishment is not a place of its own.",
+				reads: ["etablissement_mere", "code_nature"],
+			},
+		],
+	},
 	columns,
 	sample,
 };

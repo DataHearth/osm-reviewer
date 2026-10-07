@@ -1,5 +1,5 @@
 import { Environment } from "@marcbachmann/cel-js";
-import { celFunctions } from "../fr/cel-functions";
+import { COUNTRIES } from "../fr/country";
 import { mobileFR, phoneFR } from "../fr/text";
 import { truthy, website } from "../row";
 
@@ -46,7 +46,7 @@ const receiver = (
 });
 
 /** Patterns are JavaScript's, which rejects RE2 inline flags such as (?i); the library has no case-insensitive match or regex replace. */
-function baseEnvironment(): Environment {
+function baseEnvironment(id: string): Environment {
 	const env = new Environment()
 		.registerFunction("truthy(string): bool", (v: string) => truthy(v.trim()))
 		.registerFunction("website(string): string", (v: string) => website(v) ?? "")
@@ -63,15 +63,18 @@ function baseEnvironment(): Environment {
 		.registerFunction(
 			receiver("replace", "string", ["from", "to"], (s, from, to) => s.replaceAll(from, to)),
 		);
-	for (const [signature, handler] of celFunctions) env.registerFunction(signature, handler);
+	const [country, kind] = id.split(":");
+	for (const [signature, handler] of COUNTRIES[country]?.celFunctions[kind] ?? [])
+		env.registerFunction(`${country.toLowerCase()}_${kind}_${signature}`, handler);
 	return env;
 }
 
 /** The names a rule may read: the declared inputs, `rows` for a grouped record, and each `let` once checked. */
 export class Scope {
-	readonly #env = baseEnvironment();
+	readonly #env: Environment;
 
-	constructor(inputs: Iterable<string>, grouped: boolean) {
+	constructor(id: string, inputs: Iterable<string>, grouped: boolean) {
+		this.#env = baseEnvironment(id);
 		for (const name of inputs) this.#env.registerVariable(name, "string");
 		if (grouped) this.#env.registerVariable("rows", "list<map<string, string>>");
 	}

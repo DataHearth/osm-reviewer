@@ -49,7 +49,7 @@ record:
   lat: 'pointOk ? lat : ""'
   lon: 'pointOk ? lon : ""'
   skip: '!pointOk'
-  address: 'station_address != "" ? addressQuery(stationAddress(station_address, postcode, city, insee), "", "") : ""'
+  address: 'station_address != "" ? fr_charging_station_addressQuery(fr_charging_station_stationAddress(station_address, postcode, city, insee), "", "") : ""'
   # Operators place a station in its car park, often well away from its door, so only a coarse point
   # (four decimals is 11 m) moves to its address; a precise one stays.
   farM: 'coarse ? 100.0 : 0.0'
@@ -60,7 +60,7 @@ record:
 let:
   pointOk: 'position_ok == "" || truthy(position_ok)'
   unnamed: 'station_id.imatches("^non concern")'
-  where: 'stationSite(lat, lon, operator_name != "" ? operator_name : owner_name)'
+  where: 'fr_charging_station_stationSite(lat, lon, operator_name != "" ? operator_name : owner_name)'
   coarse: '!(lat.matches(r"\.\d{5,}$") && lon.matches(r"\.\d{5,}$"))'
   allFree: 'rows.all(r, truthy(r.free))'
   someNotFree: 'rows.exists(r, r.free != "" && !truthy(r.free))'

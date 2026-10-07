@@ -84,13 +84,21 @@ function runExamples(
 /** `any` or the mapping's country, then optionally the mapping's kind: `fr.school/name`. */
 function checkFunctionScopes(mapping: Mapping, problems: string[]) {
 	const [country, kind] = mapping.id.toLowerCase().split(":");
-	for (const [key, tag] of Object.entries(mapping.tags)) {
-		if (!("function" in tag)) continue;
-		const [scopeCountry, scopeKind] = tag.function.split("/")[0].split(".");
+	const named = [
+		...Object.entries(mapping.tags).flatMap(([key, tag]) =>
+			"function" in tag ? [{ where: `tags.${key}`, name: tag.function }] : [],
+		),
+		...(["skipBy", "sitesBy"] as const).flatMap((by) => {
+			const own = mapping.record[by];
+			return own ? [{ where: `record.${by}`, name: own.function }] : [];
+		}),
+	];
+	for (const { where, name } of named) {
+		const [scopeCountry, scopeKind] = name.split("/")[0].split(".");
 		if (scopeCountry !== "any" && scopeCountry !== country) {
-			problems.push(`tags.${key}: function ${tag.function} is scoped to another country`);
+			problems.push(`${where}: function ${name} is scoped to another country`);
 		} else if (scopeKind !== undefined && scopeKind !== kind) {
-			problems.push(`tags.${key}: function ${tag.function} is scoped to another kind of place`);
+			problems.push(`${where}: function ${name} is scoped to another kind of place`);
 		}
 	}
 }

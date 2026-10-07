@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { functions } from "../fr/functions";
+import { functions, sitesFunctions, skipFunctions } from "../fr/functions";
 import { compile, inputsOf, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
-import { closedEvidence, pickRow, proposedTags, readRecord } from "./record";
+import { closedEvidence, pickRow, proposedTags, readRecord, settledBy, skippedBy } from "./record";
 import { type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
 import { validate } from "./validate";
 
@@ -181,6 +181,70 @@ describe("the record block", () => {
 				{ text: "FERMÉ", mark: true },
 			],
 		});
+	});
+});
+
+describe("functions on the record and notes that name an input", () => {
+	const record = {
+		key: "id",
+		lat: "lat",
+		lon: "lon",
+		skipBy: { function: "xx/housed", reads: ["note"] },
+		sitesBy: { function: "xx/sites", reads: ["note"] },
+	};
+
+	it("hands a function only the inputs it reads, and the other rows of the read", () => {
+		const p = program(mapping({ record }));
+		const seen: unknown[] = [];
+		const skip = {
+			"xx/housed": (reads: Record<string, string>, rowsOf: (k: string) => unknown) => {
+				seen.push(reads, rowsOf("B"));
+				return reads.note === "section";
+			},
+		};
+		const rowsOf = (key: string) => (key === "B" ? [{ id: "B" }] : undefined);
+		expect(skippedBy(p, skip, row({ note: "section" }), rowsOf)).toBe(true);
+		expect(skippedBy(p, skip, row({ note: "school" }), rowsOf)).toBe(false);
+		expect(seen[0]).toEqual({ note: "section" });
+		expect(seen[1]).toEqual([{ id: "B" }]);
+		expect(skippedBy(program(mapping()), skip, row({}))).toBe(false);
+	});
+
+	it("lets a sites function complete the tags in place and add lines", () => {
+		const p = program(mapping({ record }));
+		const tags = [{ k: "note", v: "a", conf: 0.5, path: "note", kind: "dataset row", parts: [] }];
+		const sites = {
+			"xx/sites": (
+				rows: Record<string, string>[],
+				main: number,
+				made: { v: string; also?: string[] }[],
+			) => {
+				made[0].also = rows.map((r) => r.note).filter((v) => v !== made[0].v);
+				return [`${rows.length} sites, the main one's is ${rows[main].note}`];
+			},
+		};
+		const lines = settledBy(p, sites, [row({ note: "a" }), row({ note: "b" })], 0, tags);
+		expect(lines).toEqual(["2 sites, the main one's is a"]);
+		expect(tags[0]).toMatchObject({ also: ["b"] });
+		expect(settledBy(program(mapping()), sites, [row({})], 0, tags)).toEqual([]);
+	});
+
+	it("refuses a function nothing registered, and inputs a mapping does not declare", () => {
+		expect(() => skippedBy(program(mapping({ record })), {}, row({}))).toThrow(
+			"XX:thing: function xx/housed is not registered",
+		);
+		const { problems } = compile(
+			mapping({ record: { ...record, sitesBy: { function: "xx/sites", reads: ["ghost"] } } }),
+		);
+		expect(problems).toContain('record.sitesBy: reads "ghost", which is not an input');
+	});
+
+	it("writes an input's value into a note's text, and refuses a name that is not an input", () => {
+		const m = mapping({ notes: [{ when: 'note != ""', text: "Remarks: {note}" }] });
+		expect(evaluate(program(m), [row({ note: "bridge" })])?.notes).toEqual(["Remarks: bridge"]);
+		expect(evaluate(program(m), [row({})])?.notes).toEqual([]);
+		const { problems } = compile(mapping({ notes: [{ when: "true", text: "{ghost}" }] }));
+		expect(problems).toContain("notes[0].text: {ghost} is not an input");
 	});
 });
 
@@ -696,6 +760,9 @@ ${extra}`;
 			);
 			expect(named.length).toBeGreaterThan(0);
 			for (const name of named) expect(functions).toHaveProperty([name]);
+			const { skipBy, sitesBy } = shipped.record;
+			if (skipBy) expect(skipFunctions).toHaveProperty([skipBy.function]);
+			if (sitesBy) expect(sitesFunctions).toHaveProperty([sitesBy.function]);
 		},
 	);
 

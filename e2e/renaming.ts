@@ -24,6 +24,7 @@ export const STORED_RENAMING: ColumnRenaming = {
 		tel: "phone",
 		latitude: "lat",
 		longitude: "lon",
+		ligne_adresse: "street",
 	},
 	ignored: {
 		notes_internes: "free text no rule reads",
@@ -33,5 +34,5 @@ export const STORED_RENAMING: ColumnRenaming = {
 		ref_dossier: "the operator's own code",
 		observations: "free text no rule reads",
 	},
-	steps: { ligne_adresse: { name: "fr.annuaire-education/sites", as: "adresse_1" } },
+	steps: {},
 };

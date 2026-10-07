@@ -40,6 +40,9 @@ const functionTag = z.strictObject({
 });
 export const tagSchema = z.union([expressionTag, functionTag]);
 
+/** Code the app ships for a decision no rule can make, with the inputs it is given. */
+const recordFunction = z.strictObject({ function: functionName, reads: z.array(name).min(1) });
+
 const example = z.strictObject({
 	about: z.string(),
 	rows: z.array(z.record(z.string(), z.string())).min(1),
@@ -73,6 +76,10 @@ export const mappingSchema = z.strictObject({
 		pick: z.literal("nearest").optional(),
 		/** The input whose shortest value wins among rows `pick` finds equally near. */
 		tieBreak: name.optional(),
+		/** Says a record is not a place of its own where that takes other records' rows, such as a section housed in its parent establishment. */
+		skipBy: recordFunction.optional(),
+		/** For a key the source lists at several sites, what the other rows add to the record's tags and a line for the reviewer. */
+		sitesBy: recordFunction.optional(),
 		/** Inputs holding a phone number or a mailbox that a record leaves out are counted, for the run's message. */
 		withheld: z.array(name).min(1).optional(),
 	}),

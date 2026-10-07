@@ -47,7 +47,7 @@ test("a source shows the column renaming the model stored, and cannot rename aga
 	await expect(page.getByText("renamed by qwen3-14b · 14-09-2026 06:12")).toBeVisible();
 	await expect(page.getByText("code_uai", { exact: true })).toBeVisible();
 	await expect(page.getByTitle("code_uai", { exact: true })).toBeVisible();
-	await expect(page.getByText("step sites, as adresse_1")).toBeVisible();
+	await expect(page.getByTitle("ligne_adresse", { exact: true })).toBeVisible();
 	await expect(page.getByText("ignored — free text no rule reads").first()).toBeHidden();
 	await page.getByText("6 ignored").click();
 	await expect(page.getByText("ignored — free text no rule reads").first()).toBeVisible();

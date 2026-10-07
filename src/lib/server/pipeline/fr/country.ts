@@ -1,3 +1,5 @@
+import { type CelFunction, celFunctions } from "./cel-functions";
+import { MAILBOX } from "./mailbox";
 import { phoneFR } from "./text";
 
 /** South, west, north, east. */
@@ -9,6 +11,9 @@ export interface Country {
 	boxes: Box[];
 	/** The number in OSM's spelling, or null when it is not a phone number there. */
 	phone(raw: string): string | null;
+	mailbox: RegExp;
+	/** The code a mapping's rules may call, by the kind it maps. */
+	celFunctions: Record<string, CelFunction[]>;
 }
 
 export const COUNTRIES: Record<string, Country> = {
@@ -25,6 +30,8 @@ export const COUNTRIES: Record<string, Country> = {
 			[-14.5, -178.5, -13, -176],
 		],
 		phone: phoneFR,
+		mailbox: MAILBOX,
+		celFunctions,
 	},
 };
 

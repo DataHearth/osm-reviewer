@@ -1,8 +1,11 @@
 import type { TagFunction } from "../mapping/evaluate";
+import type { SitesFunction, SkipFunction } from "../mapping/record";
 import { chargingFunctions } from "./charging-functions";
 import { MAILBOX, withheldMailbox } from "./mailbox";
 import { addressOf } from "./school-address";
+import { housedSection } from "./school-housed";
 import { schoolName } from "./school-name";
+import { alsoAtOtherSites } from "./school-sites";
 
 const cleaned = (raw: string) => (raw ? schoolName(raw) : "");
 
@@ -42,4 +45,14 @@ export const functions: Record<string, TagFunction> = {
 	"fr.school/name": name,
 	"fr.school/mailbox": mailbox,
 	"fr.school/address": address,
+};
+
+/** The code a mapping's `record.skipBy` names. */
+export const skipFunctions: Record<string, SkipFunction> = {
+	"fr.school/housed": housedSection,
+};
+
+/** The code a mapping's `record.sitesBy` names. */
+export const sitesFunctions: Record<string, SitesFunction> = {
+	"fr.school/sites": alsoAtOtherSites,
 };

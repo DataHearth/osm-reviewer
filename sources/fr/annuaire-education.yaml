@@ -134,6 +134,9 @@ rename:
   etat_etablissement: state
   code_nature: nature_code
   libelle_nature: nature_label
+  type_rattachement_etablissement_mere: attachment_type
+  etablissement_mere: parent_id
+  precision_localisation: location_precision
 
 ignored:
   code_commune: not read by the school mapping yet
@@ -193,17 +196,6 @@ overrides:
       rule: >-
         Only from 1978 on (earlier dates are this register's bulk entries) and never for a primaire
         (the date is a merger's).
-
-steps:
-  - name: fr.annuaire-education/sections
-    why: A SEGPA, or a section housed in its parent establishment, is not a place of its own, which takes the parent's rows.
-    reads: [type_rattachement_etablissement_mere, code_nature, etablissement_mere, adresse_1, code_postal]
-  - name: fr.annuaire-education/sites
-    why: One UAI over several sites comes as several rows; the main one is the row whose address is at the point, and the others' phone and website are values OSM may hold as well.
-    reads: [adresse_1, code_postal, latitude, longitude, nom_etablissement, telephone, web]
-  - name: fr.annuaire-education/precision
-    why: A point the directory gives only roughly is a line for the reviewer.
-    reads: [precision_localisation]
 
 examples:
   - about: the same primaire as the mapping's first example, through the Annuaire's own columns; the override drops its date

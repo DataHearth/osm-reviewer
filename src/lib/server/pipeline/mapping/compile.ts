@@ -41,12 +41,17 @@ export interface Program {
 		pick: "nearest" | null;
 		tieBreak: string | null;
 		withheld: string[];
+		skipBy: { function: string; reads: string[] } | null;
+		sitesBy: { function: string; reads: string[] } | null;
 		/** The lets the key, position, skip and address need, in order: all a reader evaluates beside them. */
 		lets: { name: string; check: Ok }[];
 	};
 	tags: CompiledTag[];
 	notes: { text: string; when: Ok }[];
 }
+
+/** An input named in braces in a note's text is replaced by its value. */
+export const NOTE_INPUT = /\{([a-z][a-z0-9_]*)\}/g;
 
 /** Which column each input came from: the first listed where several are renamed to it. */
 export function columnsByInput(rename: Iterable<[column: string, input: string]>) {
@@ -89,7 +94,7 @@ export function compile(
 	const inputs = Object.keys(mapping.inputs);
 	const isInput = new Set(inputs);
 	const groupBy = mapping.record.groupBy ?? null;
-	const scope = new Scope(inputs, groupBy !== null);
+	const scope = new Scope(mapping.id, inputs, groupBy !== null);
 	const read = new Set<string>();
 	const letReads = new Map<string, Set<string>>();
 	const letNames = new Map<string, ReadonlySet<string>>();
@@ -158,6 +163,14 @@ export function compile(
 	for (const input of [...(record.tieBreak ? [record.tieBreak] : []), ...(record.withheld ?? [])])
 		if (!isInput.has(input)) problems.push(`record: "${input}" is not an input`);
 	if (record.tieBreak) read.add(record.tieBreak);
+	for (const [by, named] of [
+		["skipBy", record.skipBy],
+		["sitesBy", record.sitesBy],
+	] as const)
+		for (const input of named?.reads ?? []) {
+			if (isInput.has(input)) read.add(input);
+			else problems.push(`record.${by}: reads "${input}", which is not an input`);
+		}
 
 	const tags: CompiledTag[] = [];
 	for (const [tagKey, tag] of Object.entries(mergeTags(mapping, renaming, problems))) {
@@ -189,6 +202,10 @@ export function compile(
 
 	const notes: Program["notes"] = [];
 	for (const [i, note] of (mapping.notes ?? []).entries()) {
+		for (const [, name] of note.text.matchAll(NOTE_INPUT)) {
+			if (isInput.has(name)) read.add(name);
+			else problems.push(`notes[${i}].text: {${name}} is not an input`);
+		}
 		const when = check(note.when, `notes[${i}].when`, "bool");
 		if (when) notes.push({ text: note.text, when });
 	}
@@ -230,6 +247,8 @@ export function compile(
 				pick: record.pick ?? null,
 				tieBreak: record.tieBreak ?? null,
 				withheld: record.withheld ?? [],
+				skipBy: record.skipBy ?? null,
+				sitesBy: record.sitesBy ?? null,
 				lets: lets.filter((l) => recordLets.has(l.name)),
 			},
 			tags,
