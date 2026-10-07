@@ -13,7 +13,7 @@ import {
 } from "./describe";
 import { notThePlace } from "./find";
 import { groundsOf } from "./grounds";
-import { kit, labelKeys, lookalikeHook, mainKeys } from "./kinds";
+import { kit, labelKeys, lookalikeHook, mainKeys, registry } from "./kinds";
 import {
 	companiesAgree,
 	NAME_MATCH,
@@ -24,7 +24,7 @@ import {
 	whoOn,
 	whoSimilarity,
 } from "./names";
-import { mainOf, type TagOp } from "./ops";
+import { ADDRESS_KEY, CONTACT, mainOf, type TagOp } from "./ops";
 import {
 	DUPLICATE_RADIUS_M,
 	LAT_PREFILTER,
@@ -229,6 +229,25 @@ function addressAway(x: Located & Partial<Pick<Extraction, "geocode">>): string[
 		: [];
 }
 
+const listed = (items: string[]) =>
+	items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items.join("");
+
+/** What a far match leaves out, of what the record's kind writes at all. */
+function leftOut(x: Placed): string {
+	const writes = (x.kind && registry().writes.get(x.kind)) || [];
+	const items = [
+		...(writes.some((k) => ADDRESS_KEY.test(k)) ? ["address"] : []),
+		...(writes.some((k) => CONTACT.includes(k)) ? ["contacts"] : []),
+		...organisations()
+			.filter((r) => writes.includes(r.key))
+			.map((r) => r.label),
+		...(writes.includes("start_date") ? ["opening date"] : []),
+	];
+	return items.length
+		? `, so its ${listed(items)} ${items.length > 1 ? "are" : "is"} left out`
+		: "";
+}
+
 /** What a reviewer must check before trusting this match, or this "new". */
 export function matchWarnings(
 	x: Placed & Located & Partial<Pick<Extraction, "geocode">>,
@@ -256,11 +275,7 @@ export function matchWarnings(
 		: "";
 	if (far)
 		out.push(
-			`Matched to ${osmRef(el)}${el.tags.name ? ` “${el.tags.name}”` : ""}, ${metres(far)} from where the source and the address base place it: the place may have moved, or the id on this object may be stale, so its ${[
-				"address",
-				"contacts",
-				...organisations().map((r) => r.label),
-			].join(", ")} and opening date are left out${standing}`,
+			`Matched to ${osmRef(el)}${el.tags.name ? ` “${el.tags.name}”` : ""}, ${metres(far)} from where the source and the address base place it: the place may have moved, or the id on this object may be stale${leftOut(x)}${standing}`,
 		);
 	// A station matched on its counts, not its id, reaches past where an operator would.
 	else if (

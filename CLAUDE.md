@@ -371,8 +371,8 @@ an object whose operator, network, owner or name (without the record's own opera
 agrees and whose counts repeat the record's is the station, with the "matched N m away" banner
 past 50 m; both distances are to a way's or relation's nearest box edge (Overpass answers
 `out bb`). A plain `ref` listing a borne's point ids names those points. A match more than
-500 m from both the source's point and the address base's gets no address, contacts, SIRET or
-`start_date` (and nothing at all on an object mapped as no place); one left with nothing to write is counted in the
+500 m from both the source's point and the address base's gets none of the address, contacts, SIRET or
+`start_date` its kind writes (the banner lists only those) (and nothing at all on an object mapped as no place); one left with nothing to write is counted in the
 run's message and listed in the diagnostics bundle. The fetch adds anything carrying a `ref:UAI`, a school's
 kin (`college`, `university`), a school mapped only as `building=school|college|university`
 (matched by name, the update adding the amenity; never matched unnamed), and a ~220 m margin

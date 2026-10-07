@@ -21,6 +21,8 @@ export interface TagOp extends ProposedTag {
 
 export const CONTACT = ["phone", "website", "email", "fax", "mobile"];
 
+export const ADDRESS_KEY = /^(addr|contact):/;
+
 /** A detail the object may already carry under another key: a station's phone is usually its operator's line. */
 const PHONES = ["phone", "contact:phone", "mobile", "contact:mobile"];
 

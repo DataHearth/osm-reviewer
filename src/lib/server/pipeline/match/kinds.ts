@@ -40,6 +40,7 @@ export interface Registry {
 	schemes: Map<string, Scheme>;
 	labelKeys: string[];
 	kitOf: Map<string, Kit>;
+	writes: Map<string, string[]>;
 	kits: Kit[];
 	accepts: Map<string, NonNullable<Kit["accepts"]>[string]>;
 	lookalikeHooks: Map<string, NonNullable<Kit["lookalikes"]>[string]>;
@@ -74,10 +75,12 @@ export function buildRegistry(
 	const lookalikes = new Map<string, Selector[]>();
 	const schemes = new Map<string, Scheme>();
 	const kitOf = new Map<string, Kit>();
+	const writes = new Map<string, string[]>();
 	const built = new Map<string, Kit>();
 	let shell = null as Shell | null;
 	for (const m of all) {
 		const b = m.matching;
+		writes.set(m.id, Object.keys(m.tags));
 		for (const [pair, values] of Object.entries(b.kin ?? {})) kin.set(pair, values);
 		for (const [pair, sels] of Object.entries(b.lookalikes ?? {}))
 			lookalikes.set(pair, sels.map(toSelector));
@@ -120,6 +123,7 @@ export function buildRegistry(
 		schemes,
 		labelKeys: unique([...mainKeys, ...lookalikeKeys, ...(shell ? [shell.k] : [])]),
 		kitOf,
+		writes,
 		kits,
 		accepts,
 		lookalikeHooks,

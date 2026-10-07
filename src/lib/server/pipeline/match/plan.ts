@@ -2,7 +2,7 @@ import type { OsmElement } from "../types";
 import { notThePlace } from "./find";
 import { groundsOf } from "./grounds";
 import { kit, mainKeys, registry } from "./kinds";
-import { CONTACT, disputedOps, mainOf, type TagOp, updateOps } from "./ops";
+import { ADDRESS_KEY, CONTACT, disputedOps, mainOf, type TagOp, updateOps } from "./ops";
 import { heldWithOthers, organisations } from "./refs";
 import {
 	farFromAddress,
@@ -17,7 +17,7 @@ import {
 /** Where the place is reached, and the organisation's own ids, which a far object's may not be. */
 const reachedAt = (o: TagOp) =>
 	o.group === "addr" ||
-	/^(addr|contact):/.test(o.k) ||
+	ADDRESS_KEY.test(o.k) ||
 	CONTACT.includes(o.k) ||
 	organisations().some((r) => r.key === o.k);
 

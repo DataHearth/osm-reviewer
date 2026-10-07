@@ -953,6 +953,19 @@ describe("far from the record's address", () => {
 		expect(planUpdate(x, near, [near]).ops).toHaveLength(3);
 	});
 
+	it("lists only what the record's kind writes", () => {
+		const far = (kind: string, tags: string[]) => {
+			const e = el(1, 45.735, 4.8, { amenity: tags[0] });
+			return matchWarnings({ ...x, kind, tags: [tag("amenity", tags[0])] }, e, [e])[0];
+		};
+		expect(far("FR:charging_station", ["charging_station"])).toMatch(
+			/stale, so its opening date is left out$/,
+		);
+		expect(far("FR:defibrillator", ["defibrillator"])).toMatch(
+			/stale, so its opening date is left out$/,
+		);
+	});
+
 	it("is near when either the source's point or the base's housenumber or street is", () => {
 		const school = el(1, 45.735, 4.8, { amenity: "school" });
 		const at = { lat: 45.734, lon: 4.8, label: "Chemin X" };
