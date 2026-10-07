@@ -189,9 +189,6 @@ function checkColumns(renaming: Renaming, mapping: Mapping, problems: string[]) 
 			problems.push(`column "${column}" is neither renamed, read by a step, nor ignored`);
 		}
 	}
-	const targets = Object.values(renaming.rename);
-	if (new Set(targets).size !== targets.length)
-		problems.push("two columns are renamed to one input");
 }
 
 /** Every mapping under `mappings/` and column renaming under `sources/`, checked and their examples run. */

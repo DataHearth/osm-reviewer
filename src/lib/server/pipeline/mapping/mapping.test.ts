@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { functions } from "../fr/functions";
-import { compile } from "./compile";
+import { compile, inputsOf, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
 import { closedEvidence, pickRow, readRecord } from "./record";
 import { type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
@@ -252,6 +252,34 @@ describe("refs, quotes and what a function says about the record", () => {
 			fit: [{ k: "socket:d", v: "1" }],
 			notes: ["The mapping's own line", "Declared as 3"],
 		});
+	});
+});
+
+describe("several columns renamed to one input", () => {
+	const renaming = (rename: Record<string, string>) =>
+		renamingSchema.parse({
+			format: 1,
+			source: "xx/own",
+			mapping: "XX:thing",
+			columns: Object.keys(rename),
+			rename,
+		});
+	const prog = program(mapping(), renaming({ ident: "id", note: "note", remarque: "note" }));
+
+	it("reads the first column listed that holds a value", () => {
+		expect(renameRow(prog, { ident: "A", note: "now", remarque: "before" }).note).toBe("now");
+		expect(renameRow(prog, { ident: "A", note: "", remarque: "before" }).note).toBe("before");
+		expect(renameRow(prog, { ident: "A", remarque: "before" }).note).toBe("before");
+		expect(renameRow(prog, { ident: "A", note: "now" }).note).toBe("now");
+		expect(inputsOf(prog, { ident: "A", note: "  ", remarque: " before " }).note).toBe("before");
+	});
+
+	it("leaves the input empty when every column is", () => {
+		expect(renameRow(prog, { ident: "A", note: "", remarque: "" }).note).toBe("");
+	});
+
+	it("shows the first column listed as the input's source", () => {
+		expect(prog.columnOf.get("note")).toBe("note");
 	});
 });
 
@@ -570,6 +598,17 @@ ${extra}`;
 			for (const name of named) expect(functions).toHaveProperty([name]);
 		},
 	);
+
+	it("lets a renaming send several columns to one input", () => {
+		const root = tree({
+			"mappings/xx/thing.yaml": mappingYaml,
+			"sources/xx/own.yaml": sourceYaml("").replace(
+				"rename: { ident: id, gratis: free }",
+				"rename: { ident: id, gratis: free, spare: free }",
+			),
+		});
+		expect(validate(root).flatMap((r) => r.problems)).toEqual([]);
+	});
 
 	it("passes every file the app ships", () => {
 		const reports = validate(join(import.meta.dirname, "../../../../.."));

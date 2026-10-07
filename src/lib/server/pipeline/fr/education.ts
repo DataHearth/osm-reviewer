@@ -12,13 +12,6 @@ import { fold } from "./text";
 
 const SOURCE = "fr/annuaire-education";
 
-/** The columns older exports spell otherwise, each read where the current one is empty. */
-const ALIASES: Record<string, string> = {
-	etat: "etat_etablissement",
-	siren_siret: "numero_siren_siret",
-	web: "site_web",
-};
-
 /** Positions the directory gives to the building; anything coarser is worth a look. */
 const EXACT = /^(parfaite|num[ée]ro de rue)$/i;
 
@@ -107,11 +100,6 @@ function quoted(key: string, r: Row): Pick<ProposedTag, "path" | "kind" | "parts
 	};
 }
 
-const withAliases = (r: Row): Row =>
-	Object.fromEntries(
-		Object.entries(ALIASES).map(([column, old]) => [column, str(r, column, old)]),
-	) as Row;
-
 const build = (programOf: () => Program): Preset => ({
 	id: "annuaire-education",
 	label: "Annuaire de l'éducation",
@@ -124,7 +112,7 @@ const build = (programOf: () => Program): Preset => ({
 	address: addressBase,
 	extract(rows, url, gaps, rowsOf) {
 		const program = programOf();
-		const toInputs = (row: Row) => inputsOf(program, { ...row, ...withAliases(row) });
+		const toInputs = (row: Row) => inputsOf(program, row);
 		const r = pickRow(program, rows, toInputs, gaps);
 		if (housedSection(r, rowsOf)) return null;
 		const inputs = toInputs(r);

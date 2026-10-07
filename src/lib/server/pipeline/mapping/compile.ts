@@ -21,7 +21,7 @@ export interface Program {
 	id: string;
 	inputs: string[];
 	grouped: boolean;
-	/** Which source column an input came from, for the evidence panel; empty without a renaming. */
+	/** Which source column an input came from, for the evidence panel (the first listed where several are renamed to it); empty without a renaming. */
 	columnOf: ReadonlyMap<string, string>;
 	rename: ReadonlyMap<string, string>;
 	lets: { name: string; check: Ok }[];
@@ -192,6 +192,8 @@ export function compile(
 	if (problems.length > 0 || !key || !lat || !lon) return { program: null, problems };
 
 	const rename = new Map(Object.entries(renaming?.rename ?? {}));
+	const columnOf = new Map<string, string>();
+	for (const [column, input] of rename) if (!columnOf.has(input)) columnOf.set(input, column);
 	const recordLets = new Set<string>();
 	const need = (name: string) => {
 		const own = letNames.get(name);
@@ -205,7 +207,7 @@ export function compile(
 			id: mapping.id,
 			inputs,
 			grouped: groupBy !== null,
-			columnOf: new Map([...rename].map(([column, input]) => [input, column])),
+			columnOf,
 			rename,
 			lets,
 			record: {
@@ -231,11 +233,15 @@ export function compile(
 	};
 }
 
-/** A source row under the mapping's input names; columns the renaming does not name are dropped. */
+/**
+ * A source row under the mapping's input names; columns the renaming does not name are dropped.
+ * Where several columns are renamed to one input, the first of them, in the order the renaming
+ * lists them, that holds a value gives it.
+ */
 export function renameRow(program: Program, row: Record<string, string>): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const [column, input] of program.rename) {
-		if (column in row) out[input] = row[column];
+		if (column in row && !(out[input] ?? "").trim()) out[input] = row[column];
 	}
 	return out;
 }

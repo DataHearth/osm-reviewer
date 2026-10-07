@@ -107,6 +107,8 @@ columns:
   - numero_siren_siret
   - site_web
 
+# Columns renamed to one input are read in the order listed, the first with a value winning: the
+# older spellings come after the current ones.
 rename:
   identifiant_de_l_etablissement: id
   nom_etablissement: name
@@ -121,12 +123,15 @@ rename:
   ecole_elementaire: has_elementaire
   telephone: phone
   web: website
+  site_web: website
   mail: email
   siren_siret: siret
+  numero_siren_siret: siret
   latitude: lat
   longitude: lon
   date_ouverture: opening_date
   etat: state
+  etat_etablissement: state
   code_nature: nature_code
 
 ignored:
@@ -190,9 +195,6 @@ overrides:
         (the date is a merger's).
 
 steps:
-  - name: fr.annuaire-education/aliases
-    why: Older exports spell three columns otherwise; each is read where the current one is empty.
-    reads: [etat_etablissement, numero_siren_siret, site_web]
   - name: fr.annuaire-education/sections
     why: A SEGPA, or a section housed in its parent establishment, is not a place of its own, which takes the parent's rows.
     reads: [type_rattachement_etablissement_mere, code_nature, etablissement_mere, adresse_1, code_postal]
@@ -232,3 +234,11 @@ examples:
     rows:
       - { identifiant_de_l_etablissement: 0690007G, type_etablissement: Collège, code_nature: "340", date_ouverture: "09/1992" }
     expect: { amenity: school, school:FR: collège, ref:UAI: 0690007G }
+  - about: an older export's spellings are read where the current columns are empty
+    rows:
+      - { identifiant_de_l_etablissement: 0690008H, type_etablissement: Collège, code_nature: "340", statut_public_prive: Public, siren_siret: "", numero_siren_siret: "19690008000011", web: "", site_web: ecole-exemple.fr }
+    expect: { amenity: school, school:FR: collège, ref:UAI: 0690008H, ref:FR:SIRET: "19690008000011", website: "https://ecole-exemple.fr", operator:type: public }
+  - about: the current columns win over an older export's spellings where both hold a value
+    rows:
+      - { identifiant_de_l_etablissement: 0690009J, type_etablissement: Collège, code_nature: "340", statut_public_prive: Public, siren_siret: "19690009000012", numero_siren_siret: "19690008000011", web: exemple.org, site_web: ecole-exemple.fr }
+    expect: { amenity: school, school:FR: collège, ref:UAI: 0690009J, ref:FR:SIRET: "19690009000012", website: "https://exemple.org", operator:type: public }

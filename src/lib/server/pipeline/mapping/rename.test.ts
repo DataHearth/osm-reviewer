@@ -164,7 +164,7 @@ describe("checkAnswer", () => {
 		]);
 	});
 
-	it("refuses an ignored column with no reason, and two columns sent to one input", () => {
+	it("refuses an ignored column with no reason, and two columns sent to one input, which only a shipped renaming may do", () => {
 		const answer = {
 			columns: [...good.columns.slice(0, 6), item("parent", "rename", { input: "phone" })],
 		};

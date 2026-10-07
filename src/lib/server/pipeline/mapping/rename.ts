@@ -106,9 +106,13 @@ export function renameMessage({ mapping, shipped, columns, sample }: RenameConte
 	});
 }
 
-/** The column of the shipped file each input comes from, which is the name the preset's code reads. */
-export const shippedColumns = (shipped: Renaming) =>
-	new Map(Object.entries(shipped.rename).map(([column, input]) => [input, column]));
+/** The column of the shipped file each input comes from (the first listed where several are), which is the name the preset's code reads. */
+export const shippedColumns = (shipped: Renaming) => {
+	const byInput = new Map<string, string>();
+	for (const [column, input] of Object.entries(shipped.rename))
+		if (!byInput.has(input)) byInput.set(input, column);
+	return byInput;
+};
 
 /** Each of the source's columns that the preset reads, under the name the shipped file gives it. */
 export function nativeColumns(shipped: Renaming, renaming: ColumnRenaming): Map<string, string> {
