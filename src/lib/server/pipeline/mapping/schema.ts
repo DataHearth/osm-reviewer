@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SCHEDULES, SOURCE_KINDS } from "$lib/schemas/source";
 
 const name = z.string().regex(/^[a-z][a-z0-9_]*$/, "lower-case letters, digits and underscores");
 
@@ -68,10 +69,38 @@ export const mappingSchema = z.strictObject({
 	examples: z.array(example),
 });
 
+const httpsUrl = z.url({ protocol: /^https$/ });
+
+/**
+ * What makes a shipped source official, and what a `sources` row needs to be made from it.
+ * The checklist is the design's: published by the organisation that runs or regulates the
+ * places, under a licence OSM can use, at a stable address.
+ */
+export const officialSchema = z.strictObject({
+	title: z.string().min(1),
+	publisher: z.strictObject({ name: z.string().min(1), relation: z.string().min(1) }),
+	licence: z.string().min(1),
+	/** The dataset's own page, which a person can open to check the other two. */
+	address: httpsUrl,
+	/** The OSM community's page or thread on using this dataset. */
+	discussion: httpsUrl,
+	source: z.strictObject({
+		kind: z.enum(SOURCE_KINDS),
+		endpoint: httpsUrl,
+		/** Addresses the dataset answered at before; a row made from the file under one still counts as official. */
+		formerEndpoints: z.array(httpsUrl).optional(),
+		schedule: z.enum(SCHEDULES),
+		matching: z.string().min(1),
+		floor: z.number().min(0).max(0.9),
+		allow: z.array(z.string().min(1)).min(1),
+	}),
+});
+
 export const renamingSchema = z.strictObject({
 	format: z.literal(1),
 	source: z.string().regex(/^[a-z]{2}\/[a-z0-9-]+$/, "country/source, e.g. fr/irve"),
 	mapping: z.string(),
+	official: officialSchema.optional(),
 	columns: z.array(z.string()).min(1),
 	rename: z.record(z.string(), name),
 	ignored: z.record(z.string(), z.string()).optional(),
@@ -104,4 +133,6 @@ export const renamingSchema = z.strictObject({
 export type Tag = z.infer<typeof tagSchema>;
 export type Example = z.infer<typeof example>;
 export type Mapping = z.infer<typeof mappingSchema>;
+export type Official = z.infer<typeof officialSchema>;
 export type Renaming = z.infer<typeof renamingSchema>;
+export type OfficialRenaming = Renaming & { official: Official };

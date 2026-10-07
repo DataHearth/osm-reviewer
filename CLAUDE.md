@@ -254,6 +254,21 @@ The shipped test looks at the read's own columns alone, and a shipped read sets 
 configured or where the last read used the shipped renaming (`renaming_used`), and the action
 refuses the same way. A run clears only the request it started with.
 
+An **official source** is a shipped source that meets the checklist in its file's `official:`
+block: published by the organisation that runs or regulates the places, under a licence OSM can
+use, at a stable address, with a link to the OSM community's page on it, and the values a
+`sources` row starts with (kind, endpoint, schedule, matching, floor, allowlist; the mapping is the
+file's own). `validate` refuses a block without all of it. The block is optional: a file without one only
+ships the column renaming and is never offered (`fr/irve` has none, since the publisher is retiring
+that dataset's address). `/server`'s sources rail offers each one
+no row is made from yet ("switch on", action `officialAdd`, through `sourceDraftSchema` and
+`applySourceDraft`, which also writes the licence). Whether a row is official is derived on every
+read (`officialFile` in `server/official.ts`): a deterministic row whose endpoint is the file's
+(or one in its `formerEndpoints`, for a dataset that moved) and whose kind of place is the file's
+mapping. Nothing is stored, so editing either takes the mark off. The review screen shows it
+beside the source with the tags the shipped renaming overrides, which apply to any source read
+through it and to none read through a renaming the model made.
+
 The **deterministic** extractor is a preset (`fr/irve.ts`, `fr/education.ts`): `irve` and `annuaire-education`,
 named on the source or detected from the columns, and a source that fits none fails its run
 rather than guessing. Where the source is not sure, the preset proposes nothing rather than a

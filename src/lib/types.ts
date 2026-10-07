@@ -43,6 +43,7 @@ export interface Candidate {
 	lat: number;
 	lon: number;
 	source: string;
+	origin: SourceOrigin;
 	conf: number;
 	version: number;
 	fetched: string;
@@ -113,6 +114,39 @@ export interface ColumnMapping {
 	refusal: RenameRefusal | null;
 }
 
+/** A source the app ships, with the checklist that makes it official and what a row made from it starts with. */
+export interface OfficialSource {
+	/** `fr/irve` */
+	file: string;
+	title: string;
+	publisher: { name: string; relation: string };
+	licence: string;
+	/** The dataset's own page. */
+	address: string;
+	/** The OSM community's page on using it. */
+	discussion: string;
+	kind: SourceKind;
+	kindLabel: string;
+	endpoint: string;
+	schedule: Source["schedule"];
+	matching: string;
+	/** `FR:school` */
+	mapping: string;
+	mappingTitle: string;
+	/** The tags the shipped column renaming replaces the mapping's rule for. */
+	overrides: string[];
+}
+
+/** Where a candidate's source stands, for the review screen. */
+export interface SourceOrigin {
+	official: boolean;
+	/** `FR:school`; null where no mapping is known yet. */
+	mapping: string | null;
+	/** Tags whose rule the source's shipped renaming replaces; none for a renaming the model made, null where the
+	 * source detects its preset from its columns and a run does not record which. */
+	overrides: string[] | null;
+}
+
 export interface RenameRefusal {
 	label: string;
 	reason: string;
@@ -140,6 +174,8 @@ export interface Source {
 	allow: string[];
 	/** Null for a model extractor, and for a source no mapping is named for: its columns pick the preset at the first run. */
 	columnMapping: ColumnMapping | null;
+	/** The shipped source this row was made from and still reads, or null for a custom one. */
+	official: OfficialSource | null;
 	/** Display rows, built from the columns and the last run at load. */
 	config: ConfigRow[];
 	/** Display rows, derived from runs, candidates and decisions at load. */

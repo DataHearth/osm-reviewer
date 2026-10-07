@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { RENAMED_SOURCE, SOURCE_COUNT } from "./fixture";
+import { OFFICIAL_SOURCE, RENAMED_SOURCE, SOURCE_COUNT } from "./fixture";
 import { ADMIN, postAction, signIn } from "./helpers";
 
 test("a source with a blank name is refused by the server and never reaches the rail", async ({
@@ -85,4 +85,52 @@ test("a source is pointed at a shipped mapping from the form, and the choice is 
 
 	await page.getByRole("button", { name: "create source" }).click();
 	await expect(page.getByText("deterministic field map · mapping FR:school")).toBeVisible();
+});
+
+test("a source made from a shipped file shows its checklist, and one that was edited away from it does not", async ({
+	page,
+}) => {
+	await signIn(page, ADMIN.email, "/server?s=sources");
+	await page.getByRole("button", { name: new RegExp(`^${OFFICIAL_SOURCE.name}`) }).click();
+
+	await expect(page.getByText("OFFICIAL SOURCE")).toBeVisible();
+	await expect(page.getByText("official", { exact: true })).toBeVisible();
+	await expect(page.getByText(/^Ministère de l'Éducation nationale/)).toBeVisible();
+	await expect(page.getByText("Licence Ouverte 2.0", { exact: true }).first()).toBeVisible();
+	await expect(
+		page.getByRole("link", { name: /wiki\.openstreetmap\.org\/wiki\/France\/data\.gouv\.fr/ }),
+	).toHaveAttribute("href", /^https:\/\/wiki\.openstreetmap\.org\//);
+	await expect(page.getByText("start_date", { exact: true })).toBeVisible();
+
+	await page.getByRole("button", { name: new RegExp(`^${RENAMED_SOURCE.name}`) }).click();
+	await expect(page.getByText("OFFICIAL SOURCE")).toBeHidden();
+	await expect(page.getByText("official", { exact: true })).toBeHidden();
+});
+
+test("a shipped source no row is made from is offered, and switching it on creates it from the file", async ({
+	page,
+}) => {
+	await signIn(page, ADMIN.email, "/server?s=sources");
+	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeHidden();
+
+	await page.getByRole("button", { name: new RegExp(`^${OFFICIAL_SOURCE.name}`) }).click();
+	await page.getByRole("button", { name: "edit", exact: true }).click();
+	await page.getByPlaceholder("e.g. data.bordeaux-metropole.fr").fill("Annuaire, copie locale");
+	await page.getByPlaceholder(/api\/explore/).fill("https://example.invalid/annuaire");
+	await page.getByRole("button", { name: "save changes" }).click();
+	await expect(page.getByText("OFFICIAL SOURCE")).toBeHidden();
+
+	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeVisible();
+	await page.getByRole("button", { name: new RegExp(`^${OFFICIAL_SOURCE.name}`) }).click();
+
+	await expect(page.getByText("CHECKLIST")).toBeVisible();
+	await expect(page.getByText("Licence Ouverte 2.0", { exact: true })).toBeVisible();
+	await expect(page.getByText("amenity=school", { exact: true })).toBeVisible();
+	await page.getByRole("button", { name: "switch on" }).click();
+
+	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeHidden();
+	await expect(page.getByText("OFFICIAL SOURCE")).toBeVisible();
+	await expect(page.getByText("official", { exact: true })).toBeVisible();
+	await expect(page.getByText("deterministic field map · mapping FR:school")).toBeVisible();
+	await expect(page.getByText("Licence Ouverte 2.0").first()).toBeVisible();
 });

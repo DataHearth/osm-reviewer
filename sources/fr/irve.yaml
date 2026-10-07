@@ -1,6 +1,8 @@
 format: 1
 source: fr/irve
 mapping: FR:charging_station
+# No official block: the publisher marks this dataset as replaced by the PAN's consolidation and removes it on 31-12-2026,
+# so it has no stable address. Add one once the replacement has a stable address and its own columns are mapped.
 columns:
   - id_station_itinerance
   - id_pdc_itinerance

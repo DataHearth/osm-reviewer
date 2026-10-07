@@ -180,3 +180,12 @@ export function recordBlocks(rows: Record<string, unknown>[]): [string, unknown]
 		...(varying.length ? rows.map((r) => varying.map((k): [string, unknown] => [k, r[k]])) : []),
 	];
 }
+
+export const overrideLabel = (n: number | undefined) =>
+	n === undefined
+		? "overrides not known"
+		: n === 0
+			? "no overrides"
+			: n === 1
+				? "1 override"
+				: `${n} overrides`;

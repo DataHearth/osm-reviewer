@@ -11,11 +11,13 @@ import {
 	type SortKey,
 } from "$lib/schemas/queue";
 import type { SourceDraft } from "$lib/schemas/source";
-import type { Area, Candidate, Counts, ScopeArea, Source } from "$lib/types";
+import type { Area, Candidate, Counts, OfficialSource, ScopeArea, Source } from "$lib/types";
 
 /** Which form a rail opened. The fields themselves live in the form's own store. */
 export interface DraftMark {
 	editId: string | null;
+	/** A shipped source being switched on, by its file id: the pane opens instead of the form. */
+	official?: string;
 }
 
 export interface Sending {
@@ -95,6 +97,11 @@ class ReviewState {
 
 	get areas(): Area[] {
 		return page.data.areas ?? [];
+	}
+
+	/** Shipped sources no row is made from yet. */
+	get offered(): OfficialSource[] {
+		return page.data.offered ?? [];
 	}
 
 	/** The queue's view: filters, sort and page, as the URL carries them. */
@@ -581,6 +588,10 @@ class ReviewState {
 	// ── drafts ──────────────────────────────────────────────────────────────
 	newSource() {
 		this.srcDraft = { editId: null };
+	}
+
+	switchOn(file: string) {
+		this.srcDraft = { editId: null, official: file };
 	}
 
 	editSource(s: Source) {

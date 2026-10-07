@@ -9,12 +9,18 @@ import {
 	userIdSchema,
 	userRoleSchema,
 } from "$lib/schemas/settings";
-import { sourceDraftSchema, sourceEnabledSchema, sourceIdSchema } from "$lib/schemas/source";
+import {
+	officialAddSchema,
+	sourceDraftSchema,
+	sourceEnabledSchema,
+	sourceIdSchema,
+} from "$lib/schemas/source";
 import { pipeline, sso, ssoShown } from "$lib/server/config";
 import { db } from "$lib/server/db";
 import { redact, shownNotif } from "$lib/server/diagnostics";
 import { health, instanceFacts, release } from "$lib/server/instance";
 import {
+	addOfficialSource,
 	applyAreaDraft,
 	applySourceDraft,
 	removeArea,
@@ -24,9 +30,10 @@ import {
 } from "$lib/server/mutations";
 import { sendTest } from "$lib/server/notify";
 import { modelLabel } from "$lib/server/pipeline/llm";
+import { shippedSources } from "$lib/server/pipeline/mapping/files";
 import { presetById } from "$lib/server/pipeline/presets";
 import { kick, requestRuns, sourcesOfArea } from "$lib/server/pipeline/runner";
-import { loadAreas, loadMappings, loadSources } from "$lib/server/queries";
+import { loadAreas, loadMappings, loadOffered, loadSources } from "$lib/server/queries";
 import { loadNotif, saveNotif } from "$lib/server/settings";
 import { requireAdmin, requireUser } from "$lib/server/user";
 import {
@@ -46,10 +53,11 @@ const lastAdmin = <T extends Record<string, unknown>>(form: SuperValidated<T>) =
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const user = requireUser(locals);
 	const admin = user.role === "admin";
-	const [sources, areas, sourceForm, areaForm, notif, newUser] = await Promise.all([
+	const [sources, areas, sourceForm, officialForm, areaForm, notif, newUser] = await Promise.all([
 		loadSources(db),
 		loadAreas(db),
 		superValidate(zod4(sourceDraftSchema)),
+		superValidate(zod4(officialAddSchema)),
 		superValidate(zod4(areaDraftSchema)),
 		// Nobody but an admin can save the pane, so nobody else needs its secrets to fill it.
 		loadNotif(db).then((v) =>
@@ -64,7 +72,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		areas: areas.areas,
 		yields: areas.yields,
 		mappings: loadMappings(),
-		forms: { source: sourceForm, area: areaForm, notif, newUser },
+		offered: loadOffered(sources),
+		forms: { source: sourceForm, official: officialForm, area: areaForm, notif, newUser },
 		release: release(url.host),
 		users: admin ? listUsers(db) : [],
 		user,
@@ -84,6 +93,18 @@ export const actions: Actions = {
 			return setError(form, "preset", "No shipped mapping reads that kind of place.");
 		const id = applySourceDraft(db, form.data);
 		if (!form.data.editId && pipeline.enabled) kick(db);
+		return { form, id };
+	},
+
+	officialAdd: async ({ request, locals }) => {
+		requireAdmin(locals);
+		const form = await superValidate(request, zod4(officialAddSchema));
+		if (!form.valid) return fail(400, { form });
+		const file = shippedSources().find((f) => f.source === form.data.file);
+		if (!file) return message(form, "The app ships no such source.", { status: 404 });
+		const id = addOfficialSource(db, file, form.data.areas);
+		if (!id) return message(form, "This source is already switched on.", { status: 409 });
+		if (pipeline.enabled) kick(db);
 		return { form, id };
 	},
 

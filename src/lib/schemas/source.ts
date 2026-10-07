@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const SOURCE_KINDS = ["registry", "crawl", "api"] as const;
+export const SOURCE_KINDS = ["registry", "crawl", "api"] as const;
 export const EXTRACTORS = ["deterministic", "model"] as const;
 export const SCHEDULES = ["every 12 h", "daily", "weekly", "monthly"] as const;
 
@@ -37,3 +37,11 @@ export const sourceEnabledSchema = z.object({
 });
 
 export const sourceIdSchema = z.object({ id: z.string().min(1) });
+
+/** Switching on a shipped source: the file's id such as `fr/irve`, and the areas to read it for. */
+export const officialAddSchema = z.object({
+	file: z.string().min(1),
+	areas: z.record(z.string(), z.boolean()).default({}),
+});
+
+export type OfficialAdd = z.infer<typeof officialAddSchema>;

@@ -34,6 +34,22 @@ const program = (m: Mapping, renaming?: Renaming) => {
 
 const row = (o: Record<string, string>) => ({ id: "A", lat: "45", lon: "5", ...o });
 
+const official = {
+	title: "Things",
+	publisher: { name: "The ministry", relation: "runs the things" },
+	licence: "Licence Ouverte 2.0",
+	address: "https://example.test/things",
+	discussion: "https://example.test/things/talk",
+	source: {
+		kind: "registry",
+		endpoint: "https://example.test/things.csv",
+		schedule: "weekly",
+		matching: "amenity=thing",
+		floor: 0.7,
+		allow: ["amenity", "fee"],
+	},
+};
+
 describe("compile", () => {
 	it("names a rule that reads something undeclared", () => {
 		const { program, problems } = compile(mapping({ tags: { x: { value: "nope", conf: 0.5 } } }));
@@ -80,6 +96,7 @@ describe("compile", () => {
 			format: 1,
 			source: "xx/own",
 			mapping: "XX:thing",
+			official,
 			columns: ["a"],
 			rename: { a: "id" },
 			overrides: { tags: { fee: { value: '"yes"' }, note: null } },
@@ -96,6 +113,7 @@ describe("compile", () => {
 			format: 1,
 			source: "xx/own",
 			mapping: "XX:thing",
+			official,
 			columns: ["a"],
 			rename: { a: "id" },
 			overrides: { tags: { fee: { conf: 7 } } },
@@ -312,6 +330,19 @@ examples:
 	const sourceYaml = (extra: string) => `format: 1
 source: xx/own
 mapping: XX:thing
+official:
+  title: Things
+  publisher: { name: The ministry, relation: runs the things }
+  licence: Licence Ouverte 2.0
+  address: https://example.test/things
+  discussion: https://example.test/things/talk
+  source:
+    kind: registry
+    endpoint: https://example.test/things.csv
+    schedule: weekly
+    matching: amenity=thing
+    floor: 0.7
+    allow: [amenity, fee]
 columns: [ident, gratis, spare]
 rename: { ident: id, gratis: free }
 ${extra}`;

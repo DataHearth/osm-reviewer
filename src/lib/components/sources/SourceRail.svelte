@@ -3,6 +3,7 @@ import { healthTone, railAdd, railRow, toneDot } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Source } from "$lib/types";
 
+const offeredOn = (file: string) => review.srcDraft?.official === file;
 const overviewOn = $derived(!review.srcId && !review.srcDraft);
 
 function meta(s: Source) {
@@ -51,3 +52,16 @@ function meta(s: Source) {
 		<div class="mt-1 truncate pl-4 text-[11px] text-faint">{meta(s)}</div>
 	</button>
 {/each}
+
+{#if review.offered.length > 0}
+	<div class="border-b border-line-soft bg-head py-1.5 pl-[14px] font-sans text-[10.5px] tracking-[0.08em] whitespace-nowrap text-muted">
+		OFFICIAL · {review.offered.length} TO SWITCH ON
+	</div>
+	{#each review.offered as o (o.file)}
+		{@const on = offeredOn(o.file)}
+		<button class={railRow(on)} onclick={() => review.switchOn(o.file)}>
+			<div class="truncate text-[12.5px] {on ? 'text-ink' : 'text-ink-2'}">{o.title}</div>
+			<div class="mt-1 truncate text-[11px] text-faint">{o.publisher.name} · not switched on</div>
+		</button>
+	{/each}
+{/if}

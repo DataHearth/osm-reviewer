@@ -123,3 +123,18 @@ test("a failed changeset opens with what went wrong", async ({ page }) => {
 	await expect(page.getByText(FAILED_CHANGESET.error)).toBeVisible();
 	await expect(page.getByText("No objects recorded — its candidates stayed staged.")).toBeVisible();
 });
+
+test("the source line says whether it is official, and which tags its shipped renaming overrides", async ({
+	page,
+}) => {
+	await page.goto("/review?id=c9");
+	await expect(onScreen(page.getByText("official · 1 override", { exact: true }))).toBeVisible();
+	await expect(onScreen(page.getByText("start_date", { exact: true }))).toBeVisible();
+	await expect(onScreen(page.getByText("FR:school", { exact: true }))).toBeVisible();
+
+	await page.goto("/review?id=c7");
+	await expect(
+		onScreen(page.getByText("custom · overrides not known", { exact: true })),
+	).toBeVisible();
+	await expect(onScreen(page.getByText("not known", { exact: true }))).toBeVisible();
+});

@@ -27,8 +27,9 @@ import type { QueueQuery, SortKey } from "$lib/schemas/queue";
 import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import { officialFile, officialView, originOf } from "$lib/server/official";
 import { modelLabel } from "$lib/server/pipeline/llm";
-import { shippedMappings } from "$lib/server/pipeline/mapping/files";
+import { shippedMappings, shippedSources } from "$lib/server/pipeline/mapping/files";
 import { contextTags } from "$lib/server/pipeline/match/ops";
 import { presetById } from "$lib/server/pipeline/presets";
 import { claimFresh } from "$lib/server/pipeline/runner";
@@ -44,6 +45,7 @@ import type {
 	Candidate,
 	Changeset,
 	Counts,
+	OfficialSource,
 	ScopeArea,
 	Source,
 	Staged,
@@ -100,6 +102,14 @@ const areaLastRun = (a: { lastRunAt: Date | null }) => (a.lastRunAt ? stamp(a.la
 
 /** The kinds of place a source can be pointed at: one per shipped mapping. */
 export const loadMappings = shippedMappings;
+
+/** The shipped sources no row is made from yet: what an operator can still switch on. */
+export function loadOffered(sources: Source[]): OfficialSource[] {
+	const have = new Set(sources.map((s) => s.official?.file));
+	return shippedSources()
+		.filter((f) => !have.has(f.source))
+		.map(officialView);
+}
 
 export async function loadSources(db: Db): Promise<Source[]> {
 	const [rows, reviewed, evidence, links] = await Promise.all([
@@ -163,6 +173,7 @@ export async function loadSources(db: Db): Promise<Source[]> {
 			licence: s.licence,
 			allow: s.allowedTags.map((a) => a.pattern),
 			columnMapping: columnMapping(s, s.renaming, modelLabel() !== null),
+			official: officialOf(s),
 			config: configRows(s, last, model),
 			metrics: metricRows({
 				areas: linksBy.get(s.id) ?? 0,
@@ -175,6 +186,11 @@ export async function loadSources(db: Db): Promise<Source[]> {
 			runs: s.runs.map((r) => runRow(r, s.kind)),
 		};
 	});
+}
+
+function officialOf(s: Parameters<typeof officialFile>[0]) {
+	const file = officialFile(s);
+	return file && officialView(file);
 }
 
 export async function loadAreas(db: Db): Promise<{ areas: Area[]; yields: Yields }> {
@@ -351,6 +367,10 @@ const CANDIDATE_WITH = {
 	},
 	nearby: { orderBy: (x, { asc }) => asc(x.position) },
 	conflictTags: { orderBy: (x, { asc }) => asc(x.position) },
+	source: {
+		columns: { endpoint: true, preset: true, extractor: true, renamingUsed: true },
+		with: { renaming: { columns: { mapping: true } } },
+	},
 } satisfies NonNullable<Parameters<Db["query"]["candidates"]["findMany"]>[0]>["with"];
 
 type CandidateRow = Omit<typeof t.candidates.$inferSelect, "record"> & {
@@ -361,6 +381,10 @@ type CandidateRow = Omit<typeof t.candidates.$inferSelect, "record"> & {
 	})[];
 	nearby: (typeof t.candidateNearby.$inferSelect)[];
 	conflictTags: (typeof t.candidateConflictTags.$inferSelect)[];
+	source: Pick<
+		typeof t.sources.$inferSelect,
+		"endpoint" | "preset" | "extractor" | "renamingUsed"
+	> & { renaming: { mapping: string } | null };
 };
 
 function toCandidate(c: CandidateRow): Candidate {
@@ -396,6 +420,7 @@ function toCandidate(c: CandidateRow): Candidate {
 		lat: c.lat,
 		lon: c.lon,
 		source: c.sourceId,
+		origin: originOf(c.source, c.source.renaming),
 		conf: c.conf,
 		version: c.version,
 		fetched: fmtDate(c.fetchedAt),

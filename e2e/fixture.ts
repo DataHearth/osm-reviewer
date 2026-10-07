@@ -18,6 +18,8 @@ interface FixtureCandidate {
 	tags: FixtureTag[];
 	conflict?: true;
 	warning?: string;
+	/** A source of the fixture; the default is the custom one. */
+	source?: string;
 }
 
 /**
@@ -71,6 +73,7 @@ export const CANDIDATES: FixtureCandidate[] = [
 		conf: 0.88,
 		ageDays: 1,
 		tags: [["shop", "tobacco", "activité: |tabac|"]],
+		source: "annuaire",
 	},
 	{
 		id: "c1",
@@ -120,8 +123,15 @@ export const CANDIDATES: FixtureCandidate[] = [
 	},
 ];
 
-export const SOURCE_COUNT = 3;
+export const SOURCE_COUNT = 4;
 export const RENAMED_SOURCE = { id: "ecoles", name: "Écoles — custom export" };
+/** Made from the shipped Annuaire file: the endpoint is written out so a file that moves it fails here. */
+export const OFFICIAL_SOURCE = {
+	id: "annuaire",
+	name: "Annuaire de l'éducation",
+	endpoint:
+		"https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-annuaire-education/records",
+};
 export const FAILED_CHANGESET = {
 	id: "e2e-failed",
 	comment: "Closures from SIRENE cessations",
@@ -182,6 +192,16 @@ export async function insertFixture(path: string) {
 					licence: "Licence Ouverte 2.0",
 				},
 				{ id: "web", name: "Operator website crawl", kind: "crawl", health: "ok", floor: 0.55 },
+				{
+					id: OFFICIAL_SOURCE.id,
+					name: OFFICIAL_SOURCE.name,
+					kind: "api",
+					health: "ok",
+					floor: 0.7,
+					endpoint: OFFICIAL_SOURCE.endpoint,
+					preset: "FR:school",
+					licence: "Licence Ouverte 2.0",
+				},
 				{
 					id: RENAMED_SOURCE.id,
 					name: RENAMED_SOURCE.name,
@@ -253,7 +273,7 @@ export async function insertFixture(path: string) {
 					osmId: c.type === "new" ? null : `node/${1000 + i}`,
 					sourceRecordKey: c.id,
 					areaId: "tls",
-					sourceId: "sirene",
+					sourceId: c.source ?? "sirene",
 					type: c.type,
 					name: c.name,
 					addr: "Toulouse",

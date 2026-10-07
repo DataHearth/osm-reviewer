@@ -3,7 +3,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { compile, type Program } from "./compile";
-import { type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
+import {
+	type Mapping,
+	mappingSchema,
+	type OfficialRenaming,
+	type Renaming,
+	renamingSchema,
+} from "./schema";
 
 /**
  * Bundled to a different depth in dev than in the adapter-node output, so the folder is found
@@ -59,6 +65,24 @@ export function shippedMappings(): { id: string; title: string }[] {
 			return { id, title };
 		})
 		.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+let shipped: OfficialRenaming[] | null = null;
+
+/** Every shipped source that carries an `official:` block, read from `sources/` so a new file is offered without a code change. */
+export function shippedSources(): OfficialRenaming[] {
+	if (shipped) return shipped;
+	const base = join(root(), "sources");
+	shipped = readdirSync(base, { withFileTypes: true })
+		.filter((d) => d.isDirectory())
+		.flatMap((d) =>
+			readdirSync(join(base, d.name))
+				.filter((f) => f.endsWith(".yaml"))
+				.map((f) => renamingFor(`${d.name}/${f.slice(0, -".yaml".length)}`)),
+		)
+		.filter((r): r is OfficialRenaming => r.official !== undefined)
+		.sort((a, b) => a.source.localeCompare(b.source));
+	return shipped;
 }
 
 const programs = new Map<string, Program>();

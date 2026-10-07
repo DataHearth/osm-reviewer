@@ -3,9 +3,17 @@ import { join, relative, resolve } from "node:path";
 import { parse } from "yaml";
 import type { ZodType } from "zod";
 import { functions } from "../fr/functions";
+import { allowedBy } from "../tagfilter";
 import { compile, type Program, renameRow } from "./compile";
 import { evaluate } from "./evaluate";
-import { type Example, type Mapping, mappingSchema, type Renaming, renamingSchema } from "./schema";
+import {
+	type Example,
+	type Mapping,
+	mappingSchema,
+	type Official,
+	type Renaming,
+	renamingSchema,
+} from "./schema";
 
 export interface Report {
 	file: string;
@@ -110,29 +118,48 @@ function checkMapping(file: string, root: string): { report: Report; mapping: Ma
 	};
 }
 
-function checkRenaming(file: string, root: string, mappings: Map<string, Mapping>): Report {
+function checkRenaming(
+	file: string,
+	root: string,
+	mappings: Map<string, Mapping>,
+): { report: Report; renaming: Renaming | null } {
 	const problems: string[] = [];
 	const renaming = load(file, renamingSchema, problems);
-	if (!renaming) return { file, summary: "", problems };
+	if (!renaming) return { report: { file, summary: "", problems }, renaming };
 	const expected = join(root, "sources", `${renaming.source}.yaml`);
 	if (file !== expected)
 		problems.push(`source ${renaming.source} belongs in ${relative(root, expected)}`);
 	const mapping = mappings.get(renaming.mapping);
 	if (!mapping) {
 		problems.push(`mapping ${renaming.mapping} does not exist`);
-		return { file, summary: "", problems };
+		return { report: { file, summary: "", problems }, renaming };
 	}
 	checkColumns(renaming, mapping, problems);
+	if (renaming.official) checkOfficial(renaming.official, mapping, problems);
 	const { program, problems: compiled } = compile(mapping, renaming);
 	problems.push(...compiled);
 	const examples = renaming.examples ?? [];
 	let passed = 0;
 	if (program) passed = runExamples(program, examples, (row) => renameRow(program, row), problems);
 	return {
-		file,
-		summary: `${passed}/${examples.length} examples, ${Object.keys(renaming.rename).length} columns renamed, ${Object.keys(renaming.ignored ?? {}).length} ignored, ${(renaming.steps ?? []).length} code steps, ${Object.keys(renaming.overrides?.tags ?? {}).length} overrides`,
-		problems,
+		renaming,
+		report: {
+			file,
+			summary: `${passed}/${examples.length} examples, ${Object.keys(renaming.rename).length} columns renamed, ${Object.keys(renaming.ignored ?? {}).length} ignored, ${(renaming.steps ?? []).length} code steps, ${Object.keys(renaming.overrides?.tags ?? {}).length} overrides`,
+			problems,
+		},
 	};
+}
+
+/** What a `sources` row made from the file will need to read the source at all. */
+function checkOfficial(official: Official, mapping: Mapping, problems: string[]) {
+	const { source } = official;
+	for (const key of Object.keys(mapping.tags)) {
+		if (!allowedBy(source.allow, key))
+			problems.push(`official: source.allow does not let ${mapping.id}'s tag ${key} through`);
+	}
+	if (source.formerEndpoints?.includes(source.endpoint))
+		problems.push("official: source.endpoint is also listed as a former endpoint");
 }
 
 function checkColumns(renaming: Renaming, mapping: Mapping, problems: string[]) {
@@ -178,8 +205,16 @@ export function validate(dir: string): Report[] {
 		if (mapping) mappings.set(mapping.id, mapping);
 		reports.push(report);
 	}
+	const endpoints = new Map<string, string>();
 	for (const file of yamlFiles(join(root, "sources"))) {
-		reports.push(checkRenaming(file, root, mappings));
+		const { report, renaming } = checkRenaming(file, root, mappings);
+		const { endpoint, formerEndpoints = [] } = renaming?.official?.source ?? {};
+		for (const address of endpoint ? [endpoint, ...formerEndpoints] : []) {
+			const other = endpoints.get(address);
+			if (other) report.problems.push(`${address} is also ${relative(root, other)}'s endpoint`);
+			else endpoints.set(address, file);
+		}
+		reports.push(report);
 	}
 	return reports.map((r) => ({ ...r, file: relative(root, r.file) }));
 }

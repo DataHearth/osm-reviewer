@@ -8,6 +8,7 @@ import AreaRail from "$lib/components/areas/AreaRail.svelte";
 import Diagnostics from "$lib/components/settings/Diagnostics.svelte";
 import Notifications from "$lib/components/settings/Notifications.svelte";
 import Users from "$lib/components/settings/Users.svelte";
+import OfficialPane from "$lib/components/sources/OfficialPane.svelte";
 import SourceDetail from "$lib/components/sources/SourceDetail.svelte";
 import SourceForm from "$lib/components/sources/SourceForm.svelte";
 import SourceOverview from "$lib/components/sources/SourceOverview.svelte";
@@ -73,7 +74,9 @@ $effect(() => {
 const label = $derived(
 	sec === "sources"
 		? review.srcDraft
-			? "new source"
+			? review.srcDraft.official
+				? "official source"
+				: "new source"
 			: review.srcId
 				? (data.sources.find((s) => s.id === review.srcId)?.name ?? "")
 				: "All sources"
@@ -171,7 +174,14 @@ const exitCls = $derived(dir === "fwd" ? "z-1 m-push-out" : "z-2 m-back-out");
 		</div>
 
 		{#if sec === "sources"}
-			{#if review.srcDraft}
+			{#if review.srcDraft?.official}
+				{@const offered = data.offered.find((o) => o.file === review.srcDraft?.official)}
+				{#if offered}
+					{#key offered.file}
+						<OfficialPane form={data.forms.official} official={offered} />
+					{/key}
+				{/if}
+			{:else if review.srcDraft}
 				<SourceForm form={data.forms.source} mappings={data.mappings} />
 			{:else if review.srcId}
 				<SourceDetail />

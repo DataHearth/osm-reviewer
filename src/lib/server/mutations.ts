@@ -3,8 +3,10 @@ import type { AreaDraft } from "$lib/schemas/area";
 import type { SourceDraft } from "$lib/schemas/source";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
+import { officialDraft, officialFile } from "$lib/server/official";
 import { fetchElements } from "$lib/server/osm/api";
 import type { OsmElement } from "$lib/server/osm/osmchange";
+import type { OfficialRenaming } from "$lib/server/pipeline/mapping/schema";
 import { unchangedTags } from "$lib/server/pipeline/match/ops";
 import { RefusedError } from "$lib/server/review";
 import { renameRefusal } from "$lib/server/source-display";
@@ -34,7 +36,8 @@ function nextId(db: Writer, table: typeof t.sources | typeof t.areas, prefix: st
 	return prefix + n;
 }
 
-export function applySourceDraft(db: Db, d: SourceDraft): string {
+/** `licence` is written only to a row being created: the source form has no field for it. */
+export function applySourceDraft(db: Db, d: SourceDraft, licence?: string): string {
 	const allow = d.allow.map((x) => x.trim()).filter(Boolean);
 	const fields = {
 		name: d.name,
@@ -64,6 +67,7 @@ export function applySourceDraft(db: Db, d: SourceDraft): string {
 					...fields,
 					id,
 					apiKey: key || null,
+					licence: licence ?? "",
 					health: "ok",
 					failing: false,
 					enabled: true,
@@ -81,6 +85,25 @@ export function applySourceDraft(db: Db, d: SourceDraft): string {
 		for (const [areaId, on] of Object.entries(d.areas)) setLink(tx, areaId, id, on);
 		return id;
 	});
+}
+
+/** Null when a row made from this shipped source is already there. */
+export function addOfficialSource(
+	db: Db,
+	file: OfficialRenaming,
+	areas: Record<string, boolean>,
+): string | null {
+	const present = db
+		.select({
+			endpoint: t.sources.endpoint,
+			preset: t.sources.preset,
+			extractor: t.sources.extractor,
+		})
+		.from(t.sources)
+		.all()
+		.some((s) => officialFile(s)?.source === file.source);
+	if (present) return null;
+	return applySourceDraft(db, officialDraft(file, areas), file.official.licence);
 }
 
 export function applyAreaDraft(db: Db, d: AreaDraft): string {

@@ -12,6 +12,7 @@ import {
 	KBD,
 	KBD_ACCENT,
 	osmUrl,
+	overrideLabel,
 	pct,
 	recordBlocks,
 	TEXT_BTN,
@@ -240,6 +241,7 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 								><span class="h-[7px] w-[7px] rounded-full {typeDot(c.type)}"></span>{typeLabel(c.type)}</span
 							>
 							<span class="font-mono">{c.source}</span>
+							<span class={c.origin.official ? "text-ok" : ""}>{c.origin.official ? "official" : "custom"} · {overrideLabel(c.origin.overrides?.length)}</span>
 							<span>conf <span class="font-mono {confText(c.conf)}">{pct(c.conf)}</span></span>
 						</div>
 					{/if}
@@ -433,6 +435,9 @@ const banner = `${CHIP} border-transparent font-semibold text-bg`;
 						<div class={label}>Provenance</div>
 						<div class="grid grid-cols-[72px_minmax(0,1fr)] gap-x-2">
 							<span class="text-faint">Source</span><span class="font-mono text-[12px]">{c?.source}</span>
+							<span class="text-faint">Origin</span><span>{c?.origin.official ? "official" : "custom"}</span>
+							<span class="text-faint">Mapping</span><span class="font-mono text-[12px]">{c?.origin.mapping ?? "—"}</span>
+							<span class="text-faint">Overrides</span><span class="font-mono text-[12px]">{c?.origin.overrides ? c.origin.overrides.join(", ") || "none" : "not known"}</span>
 							<span class="text-faint">Fetched</span><span class="font-mono text-[12px]">{c?.fetched}</span>
 						</div>
 					</div>

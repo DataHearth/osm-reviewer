@@ -5,6 +5,7 @@
 import Bar from "$lib/components/Bar.svelte";
 import MetricTiles from "$lib/components/MetricTiles.svelte";
 import RunButton from "$lib/components/RunButton.svelte";
+import OfficialChecklist from "$lib/components/sources/OfficialChecklist.svelte";
 import { INERT_BTN, num } from "$lib/format";
 import { review } from "$lib/stores/review.svelte";
 import type { Tone } from "$lib/types";
@@ -42,6 +43,7 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 		<div class="flex min-w-0 flex-wrap items-baseline gap-3">
 			<span class="text-[14px] font-medium whitespace-nowrap text-ink">{s.name}</span>
 			<span class="text-[11.5px] text-faint">{s.kindLabel}</span>
+			{#if s.official}<span class="text-[11.5px] text-ok">official</span>{/if}
 		</div>
 		<div class="flex items-center gap-2">
 			<button
@@ -141,6 +143,13 @@ const runCols = "grid grid-cols-[136px_66px_88px_96px_74px_minmax(0,1fr)]";
 			<div class="px-4 py-[9px] text-[11px] text-faint">Enabling an area backfills the last 30 days on its next run.</div>
 		</div>
 	</div>
+
+	{#if s.official}
+		<div class="border-b border-line-soft">
+			<div class="border-b border-line-soft px-4 py-[9px] font-sans text-[10.5px] tracking-[0.08em] text-muted">OFFICIAL SOURCE</div>
+			<OfficialChecklist official={s.official} />
+		</div>
+	{/if}
 
 	{#if s.columnMapping}
 		{@const cm = s.columnMapping}
