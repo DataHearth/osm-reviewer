@@ -24,6 +24,8 @@ export const sourceDraftSchema = z.object({
 	matching: z.string().default(""),
 	budget: z.string().default(""),
 	extractor: z.enum(EXTRACTORS).default("deterministic"),
+	/** A mapping id such as `FR:school`, or null to detect the preset from the columns. */
+	preset: z.string().nullable().default(null),
 	areas: z.record(z.string(), z.boolean()).default({}),
 });
 

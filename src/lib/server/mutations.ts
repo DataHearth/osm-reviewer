@@ -45,6 +45,7 @@ export function applySourceDraft(db: Db, d: SourceDraft): string {
 		matching: d.matching.trim(),
 		budget: d.budget.trim(),
 		extractor: d.extractor,
+		preset: d.extractor === "model" ? null : d.preset,
 	};
 	const key = d.key.trim();
 

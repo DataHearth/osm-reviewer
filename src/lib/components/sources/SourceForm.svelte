@@ -8,7 +8,10 @@ import { boxBtn, ghost, INPUT, INPUT_SM, primaryBtn } from "$lib/format";
 import { EP_LABEL, type SourceDraft, sourceDraftSchema } from "$lib/schemas/source";
 import { type DraftMark, review } from "$lib/stores/review.svelte";
 
-let { form: initial }: { form: SuperValidated<SourceDraft> } = $props();
+let {
+	form: initial,
+	mappings,
+}: { form: SuperValidated<SourceDraft>; mappings: { id: string; title: string }[] } = $props();
 
 const { form, errors, enhance } = superForm(
 	untrack(() => initial),
@@ -137,6 +140,22 @@ function allowKeydown(e: KeyboardEvent) {
 					: "field-to-tag map only — no model in the loop"}
 			</span>
 		</div>
+
+		{#if d.extractor === "deterministic"}
+			<span class="text-[11px] text-muted">kind of place</span>
+			<div class="flex flex-col gap-[5px]">
+				<select class="{INPUT_SM} max-w-[400px]" bind:value={$form.preset}>
+					<option value={null}>detect from the columns</option>
+					{#each mappings as m (m.id)}
+						<option value={m.id}>{m.title} · {m.id}</option>
+					{/each}
+					{#if d.preset && !mappings.some((m) => m.id === d.preset)}
+						<option value={d.preset}>{d.preset}</option>
+					{/if}
+				</select>
+				{#if $errors.preset}<div class="text-[11px] text-bad">{$errors.preset[0]}</div>{/if}
+			</div>
+		{/if}
 
 		<span class="text-[11px] text-muted">schedule</span>
 		<div class="flex flex-wrap gap-1.5">

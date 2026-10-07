@@ -609,6 +609,7 @@ class ReviewState {
 			matching: "",
 			budget: "400 pages / run · 1 request / 4 s per host",
 			extractor: "deterministic",
+			preset: null,
 			areas: Object.fromEntries(this.areas.map((a, i) => [a.id, i === 0])),
 		};
 		const s = editId ? this.sources.find((x) => x.id === editId) : null;
@@ -627,6 +628,7 @@ class ReviewState {
 			matching: s.matching,
 			budget: s.budget,
 			extractor: s.extractor,
+			preset: s.preset,
 			areas: Object.fromEntries(this.areas.map((a) => [a.id, !!links[`${s.id}:${a.id}`]])),
 		};
 	}

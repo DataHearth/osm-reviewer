@@ -172,7 +172,7 @@ const exitCls = $derived(dir === "fwd" ? "z-1 m-push-out" : "z-2 m-back-out");
 
 		{#if sec === "sources"}
 			{#if review.srcDraft}
-				<SourceForm form={data.forms.source} />
+				<SourceForm form={data.forms.source} mappings={data.mappings} />
 			{:else if review.srcId}
 				<SourceDetail />
 			{:else}

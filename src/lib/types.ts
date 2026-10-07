@@ -134,6 +134,8 @@ export interface Source {
 	matching: string;
 	budget: string;
 	extractor: "deterministic" | "model";
+	/** The mapping id the source is pointed at, null when its columns decide. */
+	preset: string | null;
 	licence: string;
 	allow: string[];
 	/** Null for a model extractor, and for a source no mapping is named for: its columns pick the preset at the first run. */

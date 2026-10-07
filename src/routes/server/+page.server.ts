@@ -1,5 +1,5 @@
 import { fail } from "@sveltejs/kit";
-import { message, type SuperValidated, superValidate } from "sveltekit-superforms";
+import { message, type SuperValidated, setError, superValidate } from "sveltekit-superforms";
 import { zod4 } from "sveltekit-superforms/adapters";
 import { areaDraftSchema, areaIdSchema, areaPausedSchema } from "$lib/schemas/area";
 import {
@@ -24,8 +24,9 @@ import {
 } from "$lib/server/mutations";
 import { sendTest } from "$lib/server/notify";
 import { modelLabel } from "$lib/server/pipeline/llm";
+import { presetById } from "$lib/server/pipeline/presets";
 import { kick, requestRuns, sourcesOfArea } from "$lib/server/pipeline/runner";
-import { loadAreas, loadSources } from "$lib/server/queries";
+import { loadAreas, loadMappings, loadSources } from "$lib/server/queries";
 import { loadNotif, saveNotif } from "$lib/server/settings";
 import { requireAdmin, requireUser } from "$lib/server/user";
 import {
@@ -62,6 +63,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		sources: admin ? sources : (redact(sources) as typeof sources),
 		areas: areas.areas,
 		yields: areas.yields,
+		mappings: loadMappings(),
 		forms: { source: sourceForm, area: areaForm, notif, newUser },
 		release: release(url.host),
 		users: admin ? listUsers(db) : [],
@@ -77,6 +79,9 @@ export const actions: Actions = {
 		requireAdmin(locals);
 		const form = await superValidate(request, zod4(sourceDraftSchema));
 		if (!form.valid) return fail(400, { form });
+		const { preset } = form.data;
+		if (preset !== null && !presetById(preset))
+			return setError(form, "preset", "No shipped mapping reads that kind of place.");
 		const id = applySourceDraft(db, form.data);
 		if (!form.data.editId && pipeline.enabled) kick(db);
 		return { form, id };

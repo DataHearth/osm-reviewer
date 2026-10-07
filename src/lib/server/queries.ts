@@ -28,7 +28,9 @@ import { llm } from "$lib/server/config";
 import type { Db } from "$lib/server/db/client";
 import * as t from "$lib/server/db/schema";
 import { modelLabel } from "$lib/server/pipeline/llm";
+import { shippedMappings } from "$lib/server/pipeline/mapping/files";
 import { contextTags } from "$lib/server/pipeline/match/ops";
+import { presetById } from "$lib/server/pipeline/presets";
 import { claimFresh } from "$lib/server/pipeline/runner";
 import {
 	columnMapping,
@@ -96,6 +98,9 @@ const areaStatus = (a: { paused: boolean; lastRunAt: Date | null }) =>
 	a.paused ? "disabled" : a.lastRunAt ? "active" : "first run queued";
 const areaLastRun = (a: { lastRunAt: Date | null }) => (a.lastRunAt ? stamp(a.lastRunAt) : "never");
 
+/** The kinds of place a source can be pointed at: one per shipped mapping. */
+export const loadMappings = shippedMappings;
+
 export async function loadSources(db: Db): Promise<Source[]> {
 	const [rows, reviewed, evidence, links] = await Promise.all([
 		db.query.sources.findMany({
@@ -154,6 +159,7 @@ export async function loadSources(db: Db): Promise<Source[]> {
 			matching: s.matching,
 			budget: s.budget,
 			extractor: s.extractor,
+			preset: presetById(s.preset)?.mapping ?? s.preset,
 			licence: s.licence,
 			allow: s.allowedTags.map((a) => a.pattern),
 			columnMapping: columnMapping(s, s.renaming, modelLabel() !== null),

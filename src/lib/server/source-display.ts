@@ -144,6 +144,7 @@ function nextRun(s: SourceFacts): ConfigRow {
 
 /** `model` is the configured LLM's label, or null when none is configured. */
 export function configRows(s: SourceFacts, last: RunFacts | undefined, model: string | null) {
+	const mapping = presetById(s.preset)?.mapping ?? s.preset;
 	const extractor: ConfigRow =
 		s.extractor === "model"
 			? model
@@ -151,7 +152,7 @@ export function configRows(s: SourceFacts, last: RunFacts | undefined, model: st
 				: ["extractor", "no model configured", "warn"]
 			: [
 					"extractor",
-					`deterministic field map · ${s.preset ? `${MAPPING_ID.test(s.preset) ? "mapping" : "preset"} ${s.preset}` : "no model"}`,
+					`deterministic field map · ${mapping ? `${MAPPING_ID.test(mapping) ? "mapping" : "preset"} ${mapping}` : "no model"}`,
 					"code",
 				];
 	const schedule: ConfigRow = s.failing

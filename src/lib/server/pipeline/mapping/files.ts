@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
@@ -42,6 +42,23 @@ export function mappingFor(id: string): Mapping {
 	const mapping = mappingSchema.parse(read(`mappings/${country}/${kind}.yaml`));
 	mappings.set(id, mapping);
 	return mapping;
+}
+
+/** Every mapping the app ships, read from `mappings/` so a new file is offered without a code change. */
+export function shippedMappings(): { id: string; title: string }[] {
+	const base = join(root(), "mappings");
+	return readdirSync(base, { withFileTypes: true })
+		.filter((d) => d.isDirectory())
+		.flatMap((d) =>
+			readdirSync(join(base, d.name))
+				.filter((f) => f.endsWith(".yaml"))
+				.map((f) => `${d.name}/${f}`),
+		)
+		.map((f) => {
+			const { id, title } = mappingSchema.parse(read(`mappings/${f}`));
+			return { id, title };
+		})
+		.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 const programs = new Map<string, Program>();
