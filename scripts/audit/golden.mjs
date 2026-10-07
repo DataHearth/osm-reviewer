@@ -105,7 +105,7 @@ const tags = sql.prepare(
 	`select id, ${cols("candidate_tags", ["id", "candidate_id"])} from candidate_tags where candidate_id = ? order by position`,
 );
 const evidence = sql.prepare(
-	`select id, ${cols("evidence", ["id", "tag_id"])} from evidence where tag_id = ? order by id`,
+	`select id, ${cols("evidence", ["id", "tag_id", "when"])} from evidence where tag_id = ? order by id`,
 );
 const parts = sql.prepare(
 	"select text, mark from evidence_parts where evidence_id = ? order by position",
