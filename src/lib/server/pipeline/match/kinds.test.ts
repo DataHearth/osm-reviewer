@@ -407,6 +407,23 @@ examples:
 		);
 	});
 
+	it("refuses a pair keyed outside main and a kit member nothing reads", () => {
+		const bad = (matching: string, kits?: Record<string, KitFactory>) =>
+			problemsOf(yaml(matching), kits).join("\n");
+		expect(bad("  main: [amenity]\n  kin: { shop=a: [a, b] }")).toContain(
+			"matching.kin.shop=a: its key is not among main",
+		);
+		expect(bad("  main: [amenity]\n  lookalikes: { shop=a: [{ k: amenity }] }")).toContain(
+			"matching.lookalikes.shop=a: its key is not among main",
+		);
+		expect(
+			bad("  main: [amenity]\n  kit: xx.pharmacy", {
+				"xx.pharmacy": stub({ nothing: () => true } as never),
+			}),
+		).toContain("matching.kit: xx.pharmacy has unknown nothing");
+		expect(bad("  main: [amenity]\n  refs: { ref:XX: { fetch: [{ k: '' }] } }")).not.toBe("");
+	});
+
 	it("refuses a pair or a ref two files declare differently, and a hook two kits define", () => {
 		const first = yaml("  main: [amenity]\n  refs: { ref:XX: { rules_out: hard } }");
 		const second = first

@@ -140,6 +140,13 @@ function checkMatching(mapping: Mapping, kits: Record<string, KitFactory>, probl
 	}
 	if (m.shell && !m.main.includes(m.shell.of))
 		problems.push(`matching.shell.of: ${m.shell.of} is not among main`);
+	for (const [table, pairs] of [
+		["kin", m.kin],
+		["lookalikes", m.lookalikes],
+	] as const)
+		for (const pair of Object.keys(pairs ?? {}))
+			if (!m.main.includes(pair.split("=")[0]))
+				problems.push(`matching.${table}.${pair}: its key is not among main`);
 	for (const key of Object.keys(m.refs ?? {})) {
 		const tag = mapping.tags[key];
 		if (!tag?.ref) problems.push(`matching.refs.${key}: is not a tag with ref: true`);
@@ -157,6 +164,9 @@ function checkMatching(mapping: Mapping, kits: Record<string, KitFactory>, probl
 		problems.push(`matching.kit: ${m.kit} is scoped to another kind of place`);
 	}
 	const kit = factory(lib());
+	const members = [...METHODS, "accepts", "lookalikes", "same", "refs"];
+	for (const member of Object.keys(kit))
+		if (!members.includes(member)) problems.push(`matching.kit: ${m.kit} has unknown ${member}`);
 	const named = (what: string, table: object | undefined, declared: object | undefined) => {
 		for (const key of Object.keys(table ?? {}))
 			if (!(key in (declared ?? {})))

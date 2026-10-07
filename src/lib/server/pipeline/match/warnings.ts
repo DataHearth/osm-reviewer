@@ -347,7 +347,7 @@ const TWIN_RADIUS_M = 10;
 
 /**
  * As far apart as one car park's stations, or two files' points for one site, when the
- * operator or the name agrees. Two establishments' UAIs are two places however close.
+ * operator or the name agrees. Two places carrying different ids of a ruling-out scheme are two however close.
  */
 const LIKE_TWIN_RADIUS_M = 60;
 

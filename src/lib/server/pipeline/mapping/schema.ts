@@ -50,10 +50,13 @@ const example = z.strictObject({
 	notes: z.array(z.string()).optional(),
 });
 
+const osmKey = z.string().min(1);
+const osmValues = z.array(z.string().min(1)).min(1);
+
 const selector = z.strictObject({
-	k: z.string(),
-	v: z.array(z.string()).min(1).optional(),
-	not: z.strictObject({ k: z.string(), v: z.array(z.string()).min(1) }).optional(),
+	k: osmKey,
+	v: osmValues.optional(),
+	not: z.strictObject({ k: osmKey, v: osmValues }).optional(),
 });
 
 const pair = z.string().regex(/^[A-Za-z0-9_:]+=[^\s=]+$/, "key=value, e.g. amenity=school");
