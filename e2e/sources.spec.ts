@@ -71,6 +71,7 @@ test("a source is pointed at a shipped mapping from the form, and the choice is 
 	await expect(picker.getByRole("option")).toHaveText([
 		"detect from the columns",
 		"Charging stations in France · FR:charging_station",
+		"Defibrillators in France · FR:defibrillator",
 		"Schools in France · FR:school",
 	]);
 
@@ -114,7 +115,7 @@ test("a shipped source no row is made from is offered, and switching it on creat
 	page,
 }) => {
 	await signIn(page, ADMIN.email, "/server?s=sources");
-	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeVisible();
+	await expect(page.getByText("OFFICIAL · 2 TO SWITCH ON")).toBeVisible();
 
 	await page.getByRole("button", { name: new RegExp(`^${OFFICIAL_SOURCE.name}`) }).click();
 	await page.getByRole("button", { name: "edit", exact: true }).click();
@@ -123,7 +124,7 @@ test("a shipped source no row is made from is offered, and switching it on creat
 	await page.getByRole("button", { name: "save changes" }).click();
 	await expect(page.getByText("OFFICIAL SOURCE")).toBeHidden();
 
-	await expect(page.getByText("OFFICIAL · 2 TO SWITCH ON")).toBeVisible();
+	await expect(page.getByText("OFFICIAL · 3 TO SWITCH ON")).toBeVisible();
 	await page.getByRole("button", { name: new RegExp(`^${OFFICIAL_SOURCE.name}`) }).click();
 
 	await expect(page.getByText("CHECKLIST")).toBeVisible();
@@ -131,7 +132,7 @@ test("a shipped source no row is made from is offered, and switching it on creat
 	await expect(page.getByText("amenity=school", { exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "switch on" }).click();
 
-	await expect(page.getByText("OFFICIAL · 1 TO SWITCH ON")).toBeVisible();
+	await expect(page.getByText("OFFICIAL · 2 TO SWITCH ON")).toBeVisible();
 	await expect(page.getByText("OFFICIAL SOURCE")).toBeVisible();
 	await expect(page.getByText("official", { exact: true })).toBeVisible();
 	await expect(page.getByText("deterministic field map · mapping FR:school")).toBeVisible();
