@@ -68,8 +68,9 @@ describe("the registry the shipped mappings declare", () => {
 			"leisure",
 			"craft",
 			"healthcare",
+			"emergency",
 		]);
-		expect(selectorKeys()).toEqual([...mainKeys(), "public_transport"]);
+		expect(selectorKeys()).toEqual([...mainKeys().slice(0, 7), "public_transport", "emergency"]);
 		expect(labelKeys()).toEqual([...mainKeys(), "man_made", "building"]);
 		const schools = ["school", "college", "university"];
 		for (const v of schools) expect(kinValues("amenity", v)).toEqual(schools);

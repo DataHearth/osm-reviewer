@@ -227,7 +227,13 @@ in `any/charging-station.ts`, `fr.school` in `fr/school.ts`): a record's rule is
 else the one kit that defines it, else the engine's default, so a rule written for one kind
 keeps running on the others until a second kit defines it. `validate` checks the block and
 prints which kinds each method reaches by fallback. A kind with nothing special writes
-`main: [...]` and no kit. Everything French is in `fr/`: the IRVE file's declarations (the
+`main: [...]` and no kit: `FR:defibrillator`, read from Géo'DAE (`sources/fr/geodae.yaml`, the
+register on data.gouv.fr), is that kind and has no TypeScript on its path. Its ref is a tag with
+`ref: true` and no rule, so another value of `ref:FR:GeoDAE` on an object never rules it out (the
+register renumbers devices), and it proposes no `name`: `Extraction.name` is also what matching
+scores against a named object, so a display name would stop an unnamed record matching the
+"Défibrillateur" node 10 m away. The queue therefore shows it with a blank name until
+`Extraction.label` exists. Everything French is in `fr/`: the IRVE file's declarations (the
 source's steps, registered in `functions.ts` beside the functions), the address base (`ban.ts`,
 reached only through `COUNTRIES` in `country.ts`, by the mapping's country code), the
 data.gouv.fr dataset pages (`datagouv.ts`), French spelling (`text.ts`, `school-name.ts`,

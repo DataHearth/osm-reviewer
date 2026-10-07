@@ -1,0 +1,143 @@
+format: 1
+source: fr/geodae
+mapping: FR:defibrillator
+official:
+  title: "Géo'DAE, base nationale des défibrillateurs"
+  publisher:
+    name: Atlasanté, for the Ministère de la Santé
+    relation: runs the register in which operators must declare their defibrillators under the loi du 28 juin 2018 and the arrêté du 29 octobre 2019
+  licence: Licence Ouverte 2.0
+  address: https://www.data.gouv.fr/datasets/geodae-base-nationale-des-defibrillateurs/
+  discussion:
+    - https://wiki.openstreetmap.org/wiki/FR:Key:ref:FR:GeoDAE
+    - https://lists.openstreetmap.org/pipermail/talk-fr/2020-September/101341.html
+  source:
+    kind: registry
+    endpoint: https://www.data.gouv.fr/api/1/datasets/61556e1e9d6adb2df86eb0fc/
+    schedule: daily
+    matching: emergency=defibrillator
+    floor: 0.6
+    allow:
+      - emergency
+      - ref:FR:GeoDAE
+      - indoor
+      - access
+      - level
+      - defibrillator:location
+      - opening_hours
+      - start_date
+columns:
+  - gid
+  - c_gid
+  - c_etat_valid
+  - c_nom
+  - c_x_coor2
+  - c_y_coor2
+  - c_lat_coor1
+  - c_long_coor1
+  - c_xy_precis
+  - c_id_adr
+  - c_adr_num
+  - c_adr_voie
+  - c_com_cp
+  - c_com_insee
+  - c_com_nom
+  - c_acc
+  - c_acc_lib
+  - c_acc_pcsec
+  - c_acc_acc
+  - c_acc_etg
+  - c_acc_complt
+  - c_photo1
+  - c_photo2
+  - c_disp_complt
+  - c_date_instal
+  - c_etat_fonct
+  - c_lc_ped
+  - c_dtpr_lcped
+  - c_dtpr_lcad
+  - c_dtpr_bat
+  - c_freq_mnt
+  - c_dispsurv
+  - c_dermnt
+  - c_maj_don
+  - c_expt_siren
+  - c_expt_rais
+  - c_etat
+  - c_application_provenance
+  - c_doublon
+  - c__edit_datemaj
+  - c_srid_origin
+  - c_expt_siret
+  - c_dae_mobile
+  - c_dispo_horaires
+  - the_geom
+  - cc_photo1
+
+rename:
+  c_gid: id
+  c_etat_valid: validation
+  c_acc: environment
+  c_acc_lib: free_access
+  c_acc_etg: floor
+  c_acc_complt: access_note
+  c_disp_complt: availability_note
+  c_dispo_horaires: hours
+  c_date_instal: installed_on
+  c_etat_fonct: state
+  c_doublon: duplicate
+  c_dae_mobile: itinerant
+  c__edit_datemaj: edited_at
+  c_lat_coor1: lat
+  c_long_coor1: lon
+
+ignored:
+  gid: the export's row number (1 to N), not the device's id; c_gid is the id OSM's ref:FR:GeoDAE holds
+  c_nom: a label the operator chose, from a device model to a site, sometimes a private person's name
+  c_x_coor2: empty in all but three rows
+  c_y_coor2: empty in all but three rows
+  c_xy_precis: the geocoding score, empty in three rows of four; the position's decimals say as much
+  c_id_adr: the address base's key for the site's address, which is no tag of a device
+  c_adr_num: the site's address, which a device node does not carry
+  c_adr_voie: the site's address, which a device node does not carry
+  c_com_cp: the site's address, which a device node does not carry
+  c_com_insee: the site's address, which a device node does not carry
+  c_com_nom: the site's address, which a device node does not carry
+  c_acc_pcsec: "todo: Osmose writes security_desk=yes/no; it describes the building, not the device"
+  c_acc_acc: "todo: Osmose writes reception_desk=yes/no; it describes the building, not the device"
+  c_photo1: the file name of a photo whose licence the registry does not state
+  c_photo2: the file name of a photo whose licence the registry does not state
+  cc_photo1: the URL of c_photo1, with the same doubt about its licence
+  c_lc_ped: "todo: paediatric electrodes; no defibrillator:* key for them is used in France"
+  c_dtpr_lcped: the expiry date of a consumable, changed with every replacement and no map data
+  c_dtpr_lcad: the expiry date of a consumable, changed with every replacement and no map data
+  c_dtpr_bat: the expiry date of a consumable, changed with every replacement and no map data
+  c_freq_mnt: the maintenance frequency in free text, no map data
+  c_dispsurv: the device's remote monitoring; surveillance=* means a camera in OSM
+  c_dermnt: "todo: the date of the last maintenance, last_maintenance:date; changes yearly and 2000-01-01 stands for none"
+  c_maj_don: the date the operator last updated the record
+  c_expt_siren: "todo: operator:ref:FR:SIREN, which must not name a natural person and the file cannot tell"
+  c_expt_rais: "todo: operator, the operator's legal name in capitals, which must not name a natural person ('DR …') and needs the SIRENE legal category to tell"
+  c_expt_siret: "the operator's SIRET, often spaced or truncated, with no documented key for a device"
+  c_etat: the record's state, 'Actif', empty or 'Non identifié', which the schema does not explain
+  c_application_provenance: empty in every row
+  c_srid_origin: the projection the record was entered in; the coordinates read here are WGS84 in every row
+  the_geom: the exact point as hex EWKB, of which the latitude and longitude columns are a rounded copy (a position function would read it)
+
+examples:
+  - about: outdoor at a hospital entrance, free access, 24/7, through the registry's own columns (gid 1899)
+    rows:
+      - { gid: "1", c_gid: "1899", c_etat_valid: validées, c_nom: DAE Hôpital Montbrison, c_lat_coor1: "45.6127", c_long_coor1: "4.04854", c_acc: Extérieur, c_acc_lib: t, c_acc_etg: "0", c_acc_complt: "Entrée principale du bâtiment, au niveau du dépose minute", c_date_instal: "2019-11-18", c_etat_fonct: En fonctionnement, c_expt_rais: CENTRE HOSPITALIER DU FOREZ, c_doublon: f, c__edit_datemaj: "2023-04-11 19:30:44.302674", c_dae_mobile: f, c_dispo_horaires: "24/7" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "1899", indoor: "no", access: "yes", defibrillator:location: "Entrée principale du bâtiment, au niveau du dépose minute", opening_hours: 24/7, start_date: "2019-11-18" }
+  - about: the export's gid is a row number and never the ref
+    rows:
+      - { gid: "2", c_gid: "1896", c_etat_valid: validées, c_lat_coor1: "43.6582", c_long_coor1: "-1.43677", c_acc: Intérieur, c_acc_lib: f, c_acc_etg: "1", c_acc_complt: sur le chariot d'urgence, c_etat_fonct: En fonctionnement, c_doublon: f, c_dae_mobile: f, c__edit_datemaj: "2023-04-11 19:30:44.302674", c_dispo_horaires: Mo-Su off }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "1896", indoor: "yes", level: "1", defibrillator:location: sur le chariot d'urgence }
+  - about: a private person's name in the label is never read, and a device in a person's flat is skipped
+    rows:
+      - { c_gid: "256474", c_nom: "Club Coeur et Sante Saumur - 7 quai Mayaud - Mme Françoise Lejeune", c_lat_coor1: "47.255135", c_long_coor1: "-0.06600017", c_acc: Intérieur, c_acc_lib: f, c_acc_etg: "0", c_acc_complt: "Appartement - Appartement d'un particulier", c_disp_complt: Appartement d'un particulier, c_etat_fonct: En fonctionnement, c_doublon: f, c_dae_mobile: f, c_dispo_horaires: Mo-Su off }
+    expect: null
+  - about: a phone number in the free text is cut off the location (c_gid 2362)
+    rows:
+      - { gid: "2362", c_gid: "2362", c_etat_valid: validées, c_lat_coor1: "49.2695", c_long_coor1: "6.30913", c_acc: Extérieur, c_acc_lib: t, c_acc_complt: "Entre les deux portes d'entrée, sur la façade_ Tél. Mairie : 0382835192", c_date_instal: "2013-11-25", c_etat_fonct: En fonctionnement, c_doublon: f, c__edit_datemaj: "2023-04-11 19:30:44.302674", c_dae_mobile: f, c_dispo_horaires: "24/7" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "2362", indoor: "no", access: "yes", defibrillator:location: "Entre les deux portes d'entrée, sur la façade", opening_hours: 24/7, start_date: "2013-11-25" }

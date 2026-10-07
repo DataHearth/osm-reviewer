@@ -1,0 +1,201 @@
+format: 1
+id: FR:defibrillator
+language: cel
+title: Defibrillators in France
+
+inputs:
+  id: the defibrillator's Géo'DAE id
+  validation: whether the registry has checked the record, in words
+  environment: Intérieur or Extérieur, where the device is reached
+  free_access: t or f, usable without an authorised person (not in a locked cabinet)
+  floor: the floor the device is reached on, as written
+  access_note: where the device is, in the operator's words
+  availability_note: the operator's free text on when it is available
+  hours: opening hours in OSM syntax, or the registry's placeholder
+  installed_on: the date the device was installed, YYYY-MM-DD
+  state: the device's working state, in words
+  duplicate: t or f, the registry flags the record as a duplicate
+  itinerant: t or f, the device moves (a vehicle's)
+  edited_at: when the record was last edited
+  lat: latitude, WGS84
+  lon: longitude, WGS84
+
+record:
+  key: id
+  lat: lat
+  lon: lon
+  skip: >-
+    duplicate == "t" || itinerant == "t" || lat == "" || lon == "" || double(lat) == 0.0
+    || state in ["Hors service", "Absent momentanément", "Inconnu", "Supprimé définitivement"]
+    || (access_note + " " + availability_note).imatches("(appartement|domicile|chez) .{0,20}particulier")
+
+matching:
+  main: [emergency]
+
+let:
+  indoor: 'environment == "Intérieur"'
+  etg: 'floor.trim()'
+  suffix: 'availability_note != "" ? " - " + availability_note : ""'
+  place: >-
+    suffix != "" && access_note.endsWith(suffix)
+    ? access_note.substring(0, size(access_note) - size(suffix)) : access_note
+  location: >-
+    place.remove(r"[\s_-]*T[ée]l\b.*$").replace("  ", " ").replace("  ", " ").trim()
+  unfilled: 'hours.matches(r"^(Mo-Su off|OFF)(; PH off)?$")'
+  contradicted: >-
+    hours == "24/7" && availability_note != ""
+    && !availability_note.imatches(r"24\s*h?\s*/\s*24|7\s*j?\s*/\s*7")
+
+tags:
+  emergency:
+    value: '"defibrillator"'
+    conf: 0.95
+    quote: [id]
+  ref:FR:GeoDAE:
+    value: id
+    conf: 0.98
+    fill: true
+    ref: true
+    rule: The Géo'DAE id is the export's c_gid, which is what mappers wrote; the export's own gid is a row number.
+  indoor:
+    value: 'environment == "Intérieur" ? "yes" : environment == "Extérieur" ? "no" : ""'
+    conf: 0.85
+    fill: true
+  access:
+    value: 'free_access == "t" ? "yes" : ""'
+    conf: 0.7
+    fill: true
+    rule: >-
+      Usable without an authorised person is access=yes. Not free is left out rather than written
+      permissive: it covers a locked cabinet, an emergency trolley and a security desk, which are
+      private, customers or permissive depending on the place.
+  level:
+    value: >-
+      indoor ? (
+      etg.imatches(r"^(rez[ -]de[ -]chauss[ée]+e?|r\.?d\.?c\.?h?)$") ? "0"
+      : etg.matches(r"^-?[1-9]$") ? etg
+      : etg.imatches(r"^r\+[1-9]$") ? etg.remove(r"^[rR]\+")
+      : etg.imatches(r"^[1-9] ?(er|[èe]me|nd|e)( [ée]tage)?$") ? etg.remove(r"[^0-9].*$")
+      : "") : ""
+    conf: 0.6
+    fill: true
+    rule: >-
+      Only for an indoor device, and only when the floor is a floor and nothing else: rez-de-chaussée
+      or RDC is 0, "2ème", "1er étage", "R+1" and "-1" are the number. A bare 0 is the form's default
+      and proposes nothing, as does anything with more words ("ACCUEIL", "99").
+  defibrillator:location:
+    value: >-
+      location != "" && size(location) <= 255
+      && !location.matches(r"(\+33|\b0)[1-9]([ .-]?\d{2}){4}|@") ? location : ""
+    conf: 0.6
+    fill: true
+    rule: >-
+      The operator's note on where the device is, without the availability text the export appends
+      to it (" - L au V 8h/16h30") and without a trailing phone number ("_ Tél. : 06 …"). A note still
+      holding a phone number or an email is not proposed.
+  opening_hours:
+    value: 'hours != "" && !unfilled && !contradicted ? hours : ""'
+    conf: 0.7
+    fill: true
+    rule: >-
+      The registry's hours are already in OSM syntax. "Mo-Su off" and "OFF" are what an unfilled form
+      exports (four fifths of the file), so they propose nothing. 24/7 is dropped when the free-text
+      availability says otherwise ("Selon évènements").
+  start_date:
+    value: >-
+      installed_on.matches(r"^\d{4}-\d{2}-\d{2}$") && installed_on > "2000-01-01"
+      && size(edited_at) >= 10 && installed_on <= edited_at.substring(0, 10) ? installed_on : ""
+    conf: 0.6
+    fill: true
+    rule: >-
+      The installation date, when it is after 2000 (1905-06-30, 0012-12-04 and 1970-01-01 occur) and
+      not later than the record's own last edit (devices are declared before they are installed).
+
+notes:
+  - when: 'validation.imatches("attente|doute")'
+    text: The registry has not validated this defibrillator, so its position may be approximate
+  - when: 'lat.matches(r"^-?\d+(\.\d{1,3})?$")'
+    text: The registry gives the position to three decimals or fewer, which can be up to a kilometre off
+
+examples:
+  - about: outdoor, free access, 24/7, hospital entrance (c_gid 1899)
+    rows:
+      - { id: "1899", validation: validées, environment: Extérieur, free_access: t, floor: "0", access_note: "Entrée principale du bâtiment, au niveau du dépose minute", availability_note: "", hours: "24/7", installed_on: "2019-11-18", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-04-11 19:30:44.302674", lat: "45.6127", lon: "4.04854" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "1899", indoor: "no", access: "yes", defibrillator:location: "Entrée principale du bâtiment, au niveau du dépose minute", opening_hours: 24/7, start_date: "2019-11-18" }
+  - about: a landline after the location note is cut off (c_gid 2362)
+    rows:
+      - { id: "2362", validation: validées, environment: Extérieur, free_access: t, floor: "", access_note: "Entre les deux portes d'entrée, sur la façade_ Tél. Mairie : 0382835192", availability_note: "", hours: "24/7", installed_on: "2013-11-25", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-04-11 19:30:44.302674", lat: "49.2695", lon: "6.30913" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "2362", indoor: "no", access: "yes", defibrillator:location: "Entre les deux portes d'entrée, sur la façade", opening_hours: 24/7, start_date: "2013-11-25" }
+  - about: pending validation and a mobile number cut off; unfilled hours "Mo-Su off" are not proposed (c_gid 2344)
+    rows:
+      - { id: "2344", validation: en attente de validation, environment: Intérieur, free_access: t, floor: "", access_note: "Mur à côté de l'entrée à gauche du bureau du concierge et de la réserve_ Tél. : 06 74 18 82 71", availability_note: "", hours: "Mo-Su off", installed_on: "", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-04-11 19:30:44.302674", lat: "49.1862", lon: "6.88952" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "2344", indoor: "yes", access: "yes", defibrillator:location: "Mur à côté de l'entrée à gauche du bureau du concierge et de la réserve" }
+    notes:
+      - The registry has not validated this defibrillator, so its position may be approximate
+  - about: a hospital's device behind staff, indoors on the ground floor written out; not free (c_gid 1904)
+    rows:
+      - { id: "1904", validation: validées, environment: Intérieur, free_access: f, floor: Rez de chaussée, access_note: "Hall d'entrée du self", availability_note: "", hours: "Mo-Su off", installed_on: "", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-04-11 19:30:44.302674", lat: "45.534", lon: "4.88038" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "1904", indoor: "yes", level: "0", defibrillator:location: "Hall d'entrée du self" }
+    notes:
+      - The registry gives the position to three decimals or fewer, which can be up to a kilometre off
+  - about: the availability text the export appends to the location is removed, and a 24/7 it contradicts is dropped (c_gid 132245)
+    rows:
+      - { id: "132245", validation: validées, environment: Intérieur, free_access: f, floor: "0", access_note: "Dans la salle des fetes  accessible sur manifestations - Selon évènements", availability_note: Selon évènements, hours: "24/7", installed_on: "2021-05-28", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2026-03-11 14:19:09.835872", lat: "43.53028", lon: "0.212806" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "132245", indoor: "yes", defibrillator:location: "Dans la salle des fetes accessible sur manifestations", start_date: "2021-05-28" }
+  - about: a 24/7 the availability text confirms is kept (c_gid 132281)
+    rows:
+      - { id: "132281", validation: validées, environment: Extérieur, free_access: t, floor: "0", access_note: "A gauche de l'entrée de la mairie - 7j/7 24h/24", availability_note: 7j/7 24h/24, hours: "24/7", installed_on: "2021-03-24", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2026-07-28 09:49:04.540175", lat: "49.354153", lon: "-1.321925" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "132281", indoor: "no", access: "yes", defibrillator:location: "A gauche de l'entrée de la mairie", opening_hours: 24/7, start_date: "2021-03-24" }
+  - about: structured hours kept; the floor of an outdoor device is not a level (c_gid 132871)
+    rows:
+      - { id: "132871", validation: validées, environment: Extérieur, free_access: t, floor: NON, access_note: "DAE EN EXTERIEUR A COTE DE LA SALLE DE REPOS DES CONDUCTEURS", availability_note: "", hours: "Mo-Fr 05:15-21:00; Sa 05:15-20:00; Su off", installed_on: "2021-06-09", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2026-09-28 16:55:01.719234", lat: "42.5504", lon: "3.00927" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "132871", indoor: "no", access: "yes", defibrillator:location: "DAE EN EXTERIEUR A COTE DE LA SALLE DE REPOS DES CONDUCTEURS", opening_hours: "Mo-Fr 05:15-21:00; Sa 05:15-20:00; Su off", start_date: "2021-06-09" }
+  - about: "2ème is level 2 (c_gid 2668)"
+    rows:
+      - { id: "2668", validation: validées, environment: Intérieur, free_access: t, floor: 2ème, access_note: gymnase, hours: "Mo-Su off", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-12-28 13:47:29.597467", lat: "49.2012", lon: "6.92749" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "2668", indoor: "yes", access: "yes", level: "2", defibrillator:location: gymnase }
+  - about: R+1 is level 1 (c_gid 135358)
+    rows:
+      - { id: "135358", validation: validées, environment: Intérieur, free_access: t, floor: R+1, access_note: "Hall des sports Raymond Montet, à côté du local SSI", hours: "Mo-Su off", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-04-11 20:00:53.809533", lat: "42.2995", lon: "9.15383" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "135358", indoor: "yes", access: "yes", level: "1", defibrillator:location: "Hall des sports Raymond Montet, à côté du local SSI" }
+  - about: an installation date of 1905 is not proposed (c_gid 5240)
+    rows:
+      - { id: "5240", validation: en attente de validation, environment: Intérieur, free_access: t, floor: "", access_note: "", hours: "Mo-Su off", installed_on: "1905-06-30", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-04-11 19:31:44.209863", lat: "47.2861", lon: "5.01147" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "5240", indoor: "yes", access: "yes" }
+    notes:
+      - The registry has not validated this defibrillator, so its position may be approximate
+  - about: a position to two decimals gets a line for the reviewer (c_gid 2456)
+    rows:
+      - { id: "2456", validation: en attente de validation, environment: Intérieur, free_access: t, floor: "", access_note: "Entrée de la salle : route de Béchy_ Tél. : 03 87 64 69 98", hours: "Mo-Su off", installed_on: "", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-12-28 13:56:54.023876", lat: "49.01", lon: "6.39173" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "2456", indoor: "yes", access: "yes", defibrillator:location: "Entrée de la salle : route de Béchy" }
+    notes:
+      - The registry has not validated this defibrillator, so its position may be approximate
+      - The registry gives the position to three decimals or fewer, which can be up to a kilometre off
+  - about: a phone number and an email in the note, so no location (c_gid 4997)
+    rows:
+      - { id: "4997", validation: validées, environment: Extérieur, free_access: t, floor: "", access_note: "Devant le Tank à lait // JM DUSSARRAT // +33616387303 // jmdussarrat@gmail.com", hours: "24/7", installed_on: "2013-12-23", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-12-28 13:51:53.975066", lat: "45.8774", lon: "5.48179" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "4997", indoor: "no", access: "yes", opening_hours: 24/7, start_date: "2013-12-23" }
+  - about: flagged duplicate is skipped (c_gid 4024)
+    rows:
+      - { id: "4024", validation: validées, environment: Intérieur, free_access: f, floor: "2", access_note: Chariot d'urgence, hours: "24/7", state: En fonctionnement, duplicate: t, itinerant: f, lat: "44.8575", lon: "-0.588066" }
+    expect: null
+  - about: a device in a patrol car is skipped (c_gid 4592)
+    rows:
+      - { id: "4592", validation: validées, environment: Intérieur, free_access: f, floor: véhicule de patrouille, access_note: dans un véhicule de patrouille disponible lors des patrouilles de la police, hours: "Mo-Su off", state: En fonctionnement, duplicate: f, itinerant: t, lat: "44.3495", lon: "2.57674" }
+    expect: null
+  - about: out of order is skipped (c_gid 4334)
+    rows:
+      - { id: "4334", validation: validées, environment: Extérieur, free_access: t, access_note: sous le porche à droite de l'escalier, hours: "24/7", state: Hors service, duplicate: f, itinerant: f, lat: "45.2025", lon: "2.32464" }
+    expect: null
+  - about: a record the operator deleted is skipped (c_gid 162087)
+    rows:
+      - { id: "162087", validation: validées, environment: Intérieur, free_access: t, floor: mur de gauche entree principale, hours: "Mo-Su off", state: Supprimé définitivement, duplicate: f, itinerant: f, edited_at: "2026-07-07 13:48:02.244629", lat: "48.5038", lon: "2.3725" }
+    expect: null
+  - about: no position (0, 0) is skipped (c_gid 5601)
+    rows:
+      - { id: "5601", validation: en attente de validation, environment: Intérieur, free_access: t, access_note: entrée de la salle des fêtes, hours: "Mo-Su off", state: En fonctionnement, duplicate: f, itinerant: f, lat: "0", lon: "0" }
+    expect: null
+  - about: a hall let to associations and individuals is a place; a flat of a private person is not (c_gid 5746)
+    rows:
+      - { id: "5746", validation: validées, environment: Intérieur, free_access: f, access_note: "Peut être loué par des associations ou particuliers (fêtes familiales ou manifestations amicales) - disponible pour les locataires le weekend", hours: "Mo-Su off", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-12-28 13:57:51.893165", lat: "46.3676", lon: "-0.525345" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "5746", indoor: "yes", defibrillator:location: "Peut être loué par des associations ou particuliers (fêtes familiales ou manifestations amicales) - disponible pour les locataires le weekend" }

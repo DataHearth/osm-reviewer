@@ -149,6 +149,7 @@ describe("switching a shipped source on", () => {
 	it("creates the row from the file, once, and then stops offering it", async () => {
 		expect(loadOffered(await loadSources(db)).map((o) => o.file)).toEqual([
 			"fr/annuaire-education",
+			"fr/geodae",
 			"fr/irve",
 		]);
 
@@ -183,7 +184,7 @@ describe("switching a shipped source on", () => {
 
 		const sources = await loadSources(db);
 		expect(sources[0].official?.file).toBe("fr/annuaire-education");
-		expect(loadOffered(sources).map((o) => o.file)).toEqual(["fr/irve"]);
+		expect(loadOffered(sources).map((o) => o.file)).toEqual(["fr/geodae", "fr/irve"]);
 		expect(addOfficialSource(db, education, {})).toBeNull();
 	});
 });
