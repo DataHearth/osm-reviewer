@@ -40,7 +40,7 @@ let:
     suffix != "" && access_note.endsWith(suffix)
     ? access_note.substring(0, size(access_note) - size(suffix)) : access_note
   location: >-
-    place.remove(r"[\s_-]*T[ée]l\b.*$").replace("  ", " ").replace("  ", " ").trim()
+    place.remove(r"[\s_-]*T[ée]l\b.*$").replace("  ", " ").replace("  ", " ").remove(r"^[\s_-]+|[\s_-]+$")
   unfilled: 'hours.matches(r"^(Mo-Su off|OFF)(; PH off)?$")'
   contradicted: >-
     hours == "24/7" && availability_note != ""
@@ -85,14 +85,14 @@ tags:
       and proposes nothing, as does anything with more words ("ACCUEIL", "99").
   defibrillator:location:
     value: >-
-      location != "" && size(location) <= 255
+      location.matches(r"[A-Za-zÀ-ÿ]{3}") && size(location) <= 255
       && !location.matches(r"(\+33|\b0)[1-9]([ .-]?\d{2}){4}|@") ? location : ""
     conf: 0.6
     fill: true
     rule: >-
       The operator's note on where the device is, without the availability text the export appends
       to it (" - L au V 8h/16h30") and without a trailing phone number ("_ Tél. : 06 …"). A note still
-      holding a phone number or an email is not proposed.
+      holding a phone number or an email is not proposed, nor one without a word in it (" - ", "2").
   opening_hours:
     value: 'hours != "" && !unfilled && !contradicted ? hours : ""'
     conf: 0.7
@@ -175,6 +175,14 @@ examples:
     rows:
       - { id: "4997", validation: validées, environment: Extérieur, free_access: t, floor: "", access_note: "Devant le Tank à lait // JM DUSSARRAT // +33616387303 // jmdussarrat@gmail.com", hours: "24/7", installed_on: "2013-12-23", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-12-28 13:51:53.975066", lat: "45.8774", lon: "5.48179" }
     expect: { emergency: defibrillator, ref:FR:GeoDAE: "4997", indoor: "no", access: "yes", opening_hours: 24/7, start_date: "2013-12-23" }
+  - about: a note that is only a separator proposes no location, and one that is only a number neither (seen in the file of 07-10-2026)
+    rows:
+      - { id: "9001", validation: validées, environment: Intérieur, free_access: t, floor: "1", access_note: " - ", hours: "Mo-Su off", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-12-18 10:00:00.000000", lat: "45.1234", lon: "4.1234" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "9001", indoor: "yes", access: "yes", level: "1" }
+  - about: a trailing underscore is trimmed from the note
+    rows:
+      - { id: "9002", validation: validées, environment: Extérieur, free_access: t, access_note: "Façade Mairie_", hours: "Mo-Su off", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2023-12-18 10:00:00.000000", lat: "45.1234", lon: "4.1234" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "9002", indoor: "no", access: "yes", defibrillator:location: "Façade Mairie" }
   - about: flagged duplicate is skipped (c_gid 4024)
     rows:
       - { id: "4024", validation: validées, environment: Intérieur, free_access: f, floor: "2", access_note: Chariot d'urgence, hours: "24/7", state: En fonctionnement, duplicate: t, itinerant: f, lat: "44.8575", lon: "-0.588066" }

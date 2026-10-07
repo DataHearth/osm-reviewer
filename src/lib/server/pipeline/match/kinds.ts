@@ -41,6 +41,7 @@ export interface Registry {
 	schemes: Map<string, Scheme>;
 	labelKeys: string[];
 	kitOf: Map<string, Kit>;
+	kitless: Set<string>;
 	kits: Kit[];
 	accepts: Map<string, NonNullable<Kit["accepts"]>[string]>;
 	lookalikeHooks: Map<string, NonNullable<Kit["lookalikes"]>[string]>;
@@ -76,6 +77,7 @@ export function buildRegistry(
 	const lookalikes = new Map<string, Selector[]>();
 	const schemes = new Map<string, Scheme>();
 	const kitOf = new Map<string, Kit>();
+	const kitless = new Set<string>();
 	const built = new Map<string, Kit>();
 	let shell = null as Shell | null;
 	for (const m of all) {
@@ -94,7 +96,7 @@ export function buildRegistry(
 			const kit = built.get(b.kit) ?? factory(forKits);
 			built.set(b.kit, kit);
 			kitOf.set(m.id, kit);
-		}
+		} else kitless.add(m.id);
 	}
 	const kits = [...built.values()];
 	const accepts: Registry["accepts"] = new Map();
@@ -125,6 +127,7 @@ export function buildRegistry(
 		schemes,
 		labelKeys: unique([...mainKeys, ...lookalikeKeys, ...(shell ? [shell.k] : [])]),
 		kitOf,
+		kitless,
 		kits,
 		accepts,
 		lookalikeHooks,
@@ -167,6 +170,8 @@ export const kinValues = (k: string, v: string) => registry().kin.get(`${k}=${v}
 /**
  * The kit method answering for a record: its own kind's kit, else the one kit that defines it
  * (so a rule written for one kind keeps running on the others, as it always has), else none.
+ * A kind that declares no kit at all gets none: another kind's grounds, sockets or campuses have
+ * no business on its records.
  */
 export function kit<M extends KitMethod>(
 	x: Pick<Extraction, "kind"> | { kind?: string },
@@ -175,6 +180,7 @@ export function kit<M extends KitMethod>(
 	const r = registry();
 	const own = x.kind ? r.kitOf.get(x.kind) : undefined;
 	if (own?.[method]) return own[method];
+	if (x.kind && r.kitless.has(x.kind)) return undefined;
 	const definers = r.definers.get(method) ?? [];
 	return definers.length === 1 ? definers[0][method] : undefined;
 }

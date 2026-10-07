@@ -169,6 +169,12 @@ describe("the kit a record answers to", () => {
 		expect(kit({ kind: "XX:nothing" }, "counts")).toBe(kit({}, "counts"));
 	});
 
+	it("is none for a kind that declares no kit, whatever other kinds define", () => {
+		expect(kit({ kind: "FR:defibrillator" }, "fit")).toBeUndefined();
+		expect(kit({ kind: "FR:defibrillator" }, "pick")).toBeUndefined();
+		expect(kit({ kind: "FR:defibrillator" }, "newBanners")).toBeUndefined();
+	});
+
 	it("gives a record with no kind and a capacity the station fit and its score", () => {
 		const fitOf = kit({}, "fit");
 		const x = record({ tags: [tag("capacity", "4")] });
@@ -332,7 +338,7 @@ describe("a kind with a block and no kit", () => {
 		const c = mapping("XX:gamma", { main: ["amenity"] });
 		const pick = stub({ pick: () => null });
 		expect(fallbackSummary([a, b, c], { "xx.alpha": pick, "xx.beta": stub({}) })).toBe(
-			"pick (xx.alpha) -> XX:beta, XX:gamma",
+			"pick (xx.alpha) -> XX:beta",
 		);
 		expect(fallbackSummary([a, b, c], { "xx.alpha": pick, "xx.beta": pick })).toBe(
 			"pick: defined by xx.alpha and xx.beta, so no fallback",

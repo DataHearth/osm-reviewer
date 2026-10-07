@@ -244,7 +244,9 @@ export function fallbackSummary(mappings: Mapping[], kits: Record<string, KitFac
 			lines.push(`${method}: defined by ${definers.join(" and ")}, so no fallback`);
 			continue;
 		}
-		const reached = mappings.filter((m) => m.matching.kit !== definers[0]).map((m) => m.id);
+		const reached = mappings
+			.filter((m) => m.matching.kit && m.matching.kit !== definers[0])
+			.map((m) => m.id);
 		lines.push(`${method} (${definers[0]}) -> ${reached.join(", ") || "none"}`);
 	}
 	return lines.join("; ");
