@@ -63,8 +63,8 @@ function communeWords(x: Named, e: OsmElement): Set<string> {
 /**
  * How well an OSM name names the record, or null when it names nothing: a generic label
  * ("Recharge", "Borne de recharge Révéo") or the operator's own name ("Allego"), which leave
- * the operator to decide. `kindWords` are the record's kind's own generic words, its kit's. A mapper's short name all inside the record's long one ("La Fourmi"
- * in "École élémentaire privée La Fourmi") counts as a strong match. With `withoutWho`, the
+ * the operator to decide. `kindWords` are the record's kind's own generic words, its kit's.
+ * A mapper's short name all inside the record's long one ("La Fourmi" in "École élémentaire privée La Fourmi") counts as a strong match. With `withoutWho`, the
  * words of the record's own operator and owner are dropped first: "Parc LPA Béraudier P1" is
  * "Parking Béraudier P1" run for LPA.
  */
