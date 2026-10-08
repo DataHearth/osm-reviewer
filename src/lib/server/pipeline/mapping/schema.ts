@@ -102,6 +102,8 @@ export const mappingSchema = z.strictObject({
 		closed: z.string().optional(),
 		/** What the review screen calls the record where no tag is named `name`. */
 		name: z.string().optional(),
+		/** What the queue shows in place of the name, for a kind whose name must stay empty because matching scores it against the object's. */
+		label: z.string().optional(),
 		/** The address the review screen shows for the record, as the source writes it. */
 		addr: z.string().optional(),
 		/** The line the country's address base is asked for; empty where the record has none. */

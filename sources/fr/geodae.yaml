@@ -77,6 +77,7 @@ columns:
 rename:
   c_gid: id
   c_etat_valid: validation
+  c_com_nom: commune
   c_acc: environment
   c_acc_lib: free_access
   c_acc_etg: floor
@@ -102,7 +103,6 @@ ignored:
   c_adr_voie: the site's address, which a device node does not carry
   c_com_cp: the site's address, which a device node does not carry
   c_com_insee: the site's address, which a device node does not carry
-  c_com_nom: the site's address, which a device node does not carry
   c_acc_pcsec: "todo: Osmose writes security_desk=yes/no; it describes the building, not the device"
   c_acc_acc: "todo: Osmose writes reception_desk=yes/no; it describes the building, not the device"
   c_photo1: the file name of a photo whose licence the registry does not state

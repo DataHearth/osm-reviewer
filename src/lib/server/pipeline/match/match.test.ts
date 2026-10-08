@@ -877,6 +877,13 @@ describe("twinWarnings", () => {
 		expect(twins.get("e")?.[0]).toMatch(/“f” \(f\), has the same address/);
 		expect(twins.has("g")).toBe(false);
 	});
+
+	it("names a twin by its label where it has one, and matching still reads its name only", () => {
+		const twins = twinWarnings([rec("a", 45.7), rec("b", 45.70001, { name: "", label: "Hall" })]);
+		expect(twins.get("a")).toEqual([
+			"Another new candidate, “Hall” (b), lies 1 m away: the two may be one place",
+		]);
+	});
 });
 
 describe("modWarnings", () => {
@@ -2120,6 +2127,21 @@ describe("stations told apart by what they hold", () => {
 		expect(out.map((m) => m.el?.id ?? null)).toEqual([null, 1]);
 		expect((out[0].x as { notes?: string[] }).notes).toEqual([
 			"node/1 fits “cars” (cars) better, which keeps it",
+		]);
+	});
+
+	it("names the record that keeps an object by its label", () => {
+		const node = el(1, 43.604, 1.4503, { amenity: "charging_station", capacity: "2" });
+		const out = yieldToFit(
+			[
+				{ x: station("two-wheels", "3"), el: node },
+				{ x: { ...station("cars", "2"), label: "Parking Nord" }, el: node },
+			],
+			new Map(),
+			new Set(),
+		);
+		expect((out[0].x as { notes?: string[] }).notes).toEqual([
+			"node/1 fits “Parking Nord” (cars) better, which keeps it",
 		]);
 	});
 

@@ -11,6 +11,7 @@ import { inArea } from "./geo";
 import { getJson } from "./http";
 import { askModel, modelLabel, vetTags } from "./llm";
 import { deprecatedWarnings } from "./match/deprecated";
+import { shown } from "./match/describe";
 import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./match/find";
 import { closureOps, mainOf, newOps, type TagOp, unchangedTags } from "./match/ops";
 import { planUpdate } from "./match/plan";
@@ -326,7 +327,15 @@ export async function processArea(
 		// quotes the object's current values, so it is held to the same rule. What an accept
 		// is checked against (the groups, the object's other tags) goes with the operations.
 		const proposal = hash(
-			JSON.stringify([x.name, x.addr, x.lat, x.lon, x.tags, x.closedBy ?? null]),
+			JSON.stringify([
+				x.name,
+				x.addr,
+				x.lat,
+				x.lon,
+				x.tags,
+				x.closedBy ?? null,
+				...(x.label ? [x.label] : []),
+			]),
 		);
 		const kept = el ? unchangedTags(el.tags, new Set(ops.map((o) => o.k))) : [];
 		const written = ops.map((o) => [o.op, o.k, o.v, o.was, o.group ?? null, o.pair ?? null]);
@@ -344,7 +353,7 @@ export async function processArea(
 				...matchWarnings(x, el, fetched, refIndex, shared, byElement, listed),
 				...(twins.get(x.key) ?? []),
 				...others.map(
-					(o) => `Also matched by “${o.name}” (${o.key}), another candidate on this object`,
+					(o) => `Also matched by “${shown(o)}” (${o.key}), another candidate on this object`,
 				),
 			].join("\n") || null;
 		const same = moved
@@ -368,7 +377,7 @@ export async function processArea(
 				type,
 				osmId,
 				version: el?.version ?? 0,
-				name: x.name,
+				name: shown(x),
 				addr: x.addr,
 				lat: x.lat,
 				lon: x.lon,

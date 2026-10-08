@@ -53,8 +53,9 @@ export interface Evaluated {
 	key: string;
 	position: [number, number] | null;
 	closed: boolean;
-	/** `record.name` and `record.addr`, empty where the mapping gives none. */
+	/** `record.name`, `record.label` and `record.addr`, empty where the mapping gives none. */
 	name: string;
+	label: string;
 	addr: string;
 	tags: EvaluatedTag[];
 	notes: string[];
@@ -161,6 +162,7 @@ export function evaluate(
 		position: coord(run(record.lat, "record.lat"), run(record.lon, "record.lon")),
 		closed: record.closed ? !!run(record.closed, "record.closed") : false,
 		name: record.name ? String(run(record.name, "record.name")) : "",
+		label: record.label ? String(run(record.label, "record.label")) : "",
 		addr: record.addr ? String(run(record.addr, "record.addr")) : "",
 		tags,
 		notes: [

@@ -9,6 +9,7 @@ import {
 	type MatchedBy,
 	matchedElsewhere,
 	type Placed,
+	shown,
 	tagsOf,
 } from "./describe";
 import { notThePlace } from "./find";
@@ -398,7 +399,7 @@ export function twinWarnings(news: Extraction[]): Map<string, string[]> {
 	const say = (x: Extraction, other: Extraction, why: string) =>
 		out.set(x.key, [
 			...(out.get(x.key) ?? []),
-			`Another new candidate, “${other.name}” (${other.key}), ${why}: the two may be one place`,
+			`Another new candidate, “${shown(other)}” (${other.key}), ${why}: the two may be one place`,
 		]);
 	for (const [i, a] of news.entries())
 		for (const b of news.slice(i + 1)) {

@@ -100,6 +100,20 @@ describe("the record block", () => {
 		).toBeUndefined();
 	});
 
+	it("evaluates a label beside the name, empty where there is none, and refuses one that is not a string", () => {
+		const made = (record: Record<string, unknown>, o: Record<string, string> = {}) =>
+			evaluate(program(place(record)), [row(o)]);
+		expect(made({ label: 'note != "" ? note : "Thing " + id' }, { note: "Hall" })).toMatchObject({
+			name: "",
+			label: "Hall",
+		});
+		expect(made({ label: 'note != "" ? note : "Thing " + id' })?.label).toBe("Thing A");
+		expect(made({})?.label).toBe("");
+		expect(compile(place({ label: 'note == "x"' })).problems.join("; ")).toContain(
+			"gives bool, expected string",
+		);
+	});
+
 	it("refuses a distance, a pick or a tie-break without what they belong to", () => {
 		const problems = (record: Record<string, unknown>) =>
 			compile(place(record)).problems.join("; ");

@@ -1,6 +1,7 @@
 import { distance, distanceTo, latGap, metres } from "../geo";
 import { lookalike, shell } from "../tagfilter";
 import { type Extraction, type OsmElement, osmRef } from "../types";
+import { shown } from "./describe";
 import { groundsOf } from "./grounds";
 import { kit, mainKeys, wordsOf } from "./kinds";
 import { companiesAgree, NAME_MATCH, nameScore, whoOf, whoSimilarity } from "./names";
@@ -233,7 +234,7 @@ export function yieldToFit<
 	return matched.map((m) => {
 		const winner = loses.get(m);
 		if (!winner || !m.el) return m;
-		const note = `${osmRef(m.el)} fits “${winner.x.name}” (${winner.x.key}) better, which keeps it`;
+		const note = `${osmRef(m.el)} fits “${shown(winner.x)}” (${winner.x.key}) better, which keeps it`;
 		return { ...m, el: null, x: { ...m.x, notes: [...(m.x.notes ?? []), note] } } as M;
 	});
 }

@@ -111,6 +111,21 @@ const REAL: Record<string, string>[] = [
 	},
 ];
 
+REAL.push({
+	c_gid: "5240",
+	c_etat_valid: "validées",
+	c_lat_coor1: "44.0181",
+	c_long_coor1: "1.3551",
+	c_com_nom: "Montauban",
+	c_acc: "Intérieur",
+	c_acc_lib: "t",
+	c_etat_fonct: "En fonctionnement",
+	c_doublon: "f",
+	c__edit_datemaj: "2023-04-11 19:31:44.209863",
+	c_dae_mobile: "f",
+	c_dispo_horaires: "Mo-Su off",
+});
+
 const quote = (v: string) => `"${v.replaceAll('"', '""')}"`;
 const csv = [
 	COLUMNS.join(";"),
@@ -205,8 +220,14 @@ const tagsOf = (key: string) =>
 
 describe("a defibrillator from Géo'DAE, with no code of its own on the record's path", () => {
 	it("reads the dataset, drops the record flagged as a duplicate and keeps the rest", () => {
-		expect(db.select().from(t.runs).get()).toMatchObject({ result: "ok", fetched: 6, cands: 5 });
+		expect(db.select().from(t.runs).get()).toMatchObject({ result: "ok", fetched: 7, cands: 6 });
 		expect(cand("4024")).toBeUndefined();
+	});
+
+	it("shows the operator's location note as the name, and the commune where there is none", () => {
+		expect(cand("1899")?.name).toBe("Entrée principale du bâtiment, au niveau du dépose minute");
+		expect(cand("2362")?.name).toBe("Entre les deux portes d'entrée, sur la façade");
+		expect(cand("5240")?.name).toBe("Montauban");
 	});
 
 	it("matches by the Géo'DAE ref and adds only what the node lacks", () => {

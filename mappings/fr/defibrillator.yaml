@@ -17,6 +17,7 @@ inputs:
   duplicate: t or f, the registry flags the record as a duplicate
   itinerant: t or f, the device moves (a vehicle's)
   edited_at: when the record was last edited
+  commune: the commune the device stands in
   lat: latitude, WGS84
   lon: longitude, WGS84
 
@@ -24,6 +25,7 @@ record:
   key: id
   lat: lat
   lon: lon
+  label: 'location != "" ? location : commune != "" ? commune : "Defibrillator " + id'
   skip: >-
     duplicate == "t" || itinerant == "t" || lat == "" || lon == "" || double(lat) == 0.0
     || state in ["Hors service", "Absent momentanément", "Inconnu", "Supprimé définitivement"]

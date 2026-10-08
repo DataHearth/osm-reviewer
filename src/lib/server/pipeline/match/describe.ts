@@ -4,6 +4,9 @@ import { type Extraction, type OsmElement, osmRef } from "../types";
 export const label = (e: OsmElement, d: number) =>
 	`${osmRef(e)}${e.tags.name ? ` “${e.tags.name}”` : ""}, ${Math.round(d)} m away`;
 
+/** What the queue calls the record: its label where the mapping gives one, its name otherwise. */
+export const shown = (x: Pick<Extraction, "name" | "label">) => x.label || x.name;
+
 export const tagsOf = (x: Pick<Extraction, "tags">) =>
 	Object.fromEntries(x.tags.map((t) => [t.k, t.v]));
 
@@ -18,7 +21,7 @@ export type Placed = Pick<Extraction, "lat" | "lon" | "tags" | "refs" | "name" |
 	Partial<Pick<Extraction, "key" | "kind">>;
 
 /** Each matched object's records in this run, by the object's OSM ref. */
-export type MatchedBy = Map<string, Pick<Extraction, "key" | "name" | "tags" | "refs">[]>;
+export type MatchedBy = Map<string, Pick<Extraction, "key" | "name" | "label" | "tags" | "refs">[]>;
 
 /** The run's other records matched to `e`. */
 export const matchedElsewhere = (

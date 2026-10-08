@@ -35,6 +35,7 @@ export interface Program {
 		/** The inputs `closed` read, which are its evidence. */
 		closedReads: string[];
 		name: Ok | null;
+		label: Ok | null;
 		addr: Ok | null;
 		address: Ok | null;
 		/** Metres, or a rule giving them; null where the record carries no address to move to. */
@@ -152,6 +153,7 @@ export function compile(
 	const closed = record.closed ? check(record.closed, "record.closed", "bool") : null;
 	const closedReads = closed ? readsOf(closed.names) : [];
 	const name = record.name ? check(record.name, "record.name", "string") : null;
+	const label = record.label ? check(record.label, "record.label", "string") : null;
 	const addr = record.addr ? check(record.addr, "record.addr", "string") : null;
 	const address = record.address ? check(record.address, "record.address", "string") : null;
 	const farM =
@@ -248,6 +250,7 @@ export function compile(
 				closed,
 				closedReads,
 				name,
+				label,
 				addr,
 				address,
 				farM,

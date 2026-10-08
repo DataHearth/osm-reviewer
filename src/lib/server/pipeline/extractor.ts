@@ -223,6 +223,7 @@ function build(table: Table): Extractor {
 				kind: program.id,
 				url,
 				name: tags.find((t) => t.k === "name")?.v ?? made.name,
+				label: made.label || undefined,
 				addr: made.addr,
 				lat: made.position[0],
 				lon: made.position[1],

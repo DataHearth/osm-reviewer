@@ -58,6 +58,8 @@ export interface Extraction {
 	kind?: string;
 	url: string;
 	name: string;
+	/** What the queue shows in place of `name`, which only matching reads. */
+	label?: string;
 	addr: string;
 	lat: number;
 	lon: number;
