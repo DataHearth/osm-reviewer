@@ -231,7 +231,21 @@ const fit = (x: Subject, e: OsmElement): Fit | null => {
 	return f && { ...f, score: f.agree - f.against };
 };
 
+/** What a station's name says it is: "Borne de recharge Révéo" names no place. */
+const STATION_WORDS = new Set([
+	"borne",
+	"bornes",
+	"recharge",
+	"station",
+	"stations",
+	"charging",
+	"irve",
+	"electrique",
+	"vehicules",
+]);
+
 export const kit: KitFactory = (): Kit => ({
+	words: STATION_WORDS,
 	excludes: (x, e, matched) => forTwoWheels(x, e) || (!!matched && otherBorne(matched, e)),
 	fit,
 	// The network's own station a few metres off, with the record's connectors, is the
@@ -245,7 +259,7 @@ export const kit: KitFactory = (): Kit => ({
 			exact:
 				edge <= DUPLICATE_RADIUS_M &&
 				(!renumbered || renumberedPool(e, x.refs)) &&
-				(agree >= NAME_MATCH || (nameScore(x, e, true) ?? 0) >= NAME_MATCH) &&
+				(agree >= NAME_MATCH || (nameScore(x, e, STATION_WORDS, true) ?? 0) >= NAME_MATCH) &&
 				exactFit(x, e),
 		};
 	},

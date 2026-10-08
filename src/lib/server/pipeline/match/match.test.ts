@@ -4,6 +4,8 @@ import type { Extraction, OsmElement, ProposedTag } from "../types";
 import { contextTags } from "./context";
 import { deprecatedWarnings } from "./deprecated";
 import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./find";
+import { wordsOf } from "./kinds";
+import { nameScore } from "./names";
 import { closureOps, disputedOps, newOps, unchangedTags, updateOps } from "./ops";
 import { planUpdate } from "./plan";
 import { indexRefs, sharedRefs } from "./refs";
@@ -189,6 +191,7 @@ describe("findMatch", () => {
 	it("leaves a brand or a generic label to the operator, not the name", () => {
 		const allego = [el(15, 45.7003, 4.8, { name: "Allego", operator: "Allego" })];
 		const x = {
+			kind: "FR:charging_station",
 			lat: 45.7,
 			lon: 4.8,
 			name: "Tisséo Borderouge",
@@ -198,6 +201,13 @@ describe("findMatch", () => {
 		expect(findMatch(x, allego, new Map())?.id).toBe(15);
 		const generic = [el(16, 45.7001, 4.8, { name: "Recharge" })];
 		expect(findMatch({ ...x, tags: [] }, generic, new Map())?.id).toBe(16);
+	});
+
+	it("strips a station's words from a station's names only", () => {
+		const recharge = el(16, 45.7001, 4.8, { name: "Recharge" });
+		const named = { lat: 45.7, lon: 4.8, name: "Notre-Dame de la Recharge", refs: {} };
+		expect(nameScore(named, recharge, wordsOf({ kind: "FR:school" }))).not.toBeNull();
+		expect(nameScore(named, recharge, wordsOf({ kind: "FR:charging_station" }))).toBeNull();
 	});
 
 	it("tells stations apart by their EVSE ids, across a change of operator code", () => {

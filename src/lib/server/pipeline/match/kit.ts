@@ -80,6 +80,8 @@ export interface Kit {
 			listed?: Set<string>;
 		},
 	): { sibling: string | null; unlisted: string[] };
+	/** Words that say what a place of this kind is, not which one: left out when names are compared. */
+	words?: ReadonlySet<string>;
 	accepts?: Record<string, (tags: Record<string, string>) => boolean>;
 	lookalikes?: Record<string, (x: Subject, e: OsmElement) => boolean>;
 	same?: Record<string, (a: string, b: string) => boolean>;

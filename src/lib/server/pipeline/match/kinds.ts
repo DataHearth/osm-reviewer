@@ -170,6 +170,9 @@ export function kit<M extends KitMethod>(
 	return x.kind ? registry().kitOf.get(x.kind)?.[method] : undefined;
 }
 
+export const wordsOf = (x: { kind?: string }) =>
+	x.kind ? registry().kitOf.get(x.kind)?.words : undefined;
+
 export const sameHook = (key: string) => registry().same.get(key);
 
 export const lookalikeHook = (pair: string) => registry().lookalikeHooks.get(pair);

@@ -11,7 +11,7 @@ import {
 import { ids, nameSimilarity, normaliseName, tokens } from "../text";
 import { type OsmElement, osmRef } from "../types";
 import { fold } from "./text";
-import { GENERIC } from "./words";
+import { STATUS } from "./words";
 
 const UAI = "ref:UAI";
 const SIRET = "ref:FR:SIRET";
@@ -147,7 +147,7 @@ const kindWords = (name: string) =>
 /** What is left of a school's name without its kind and status: "Geneviève de Gaulle Anthonioz". */
 const properName = (name: string) =>
 	[...tokens(name)]
-		.filter((w) => !KIND_WORDS.has(w) && !GENERIC.has(w))
+		.filter((w) => !KIND_WORDS.has(w) && !STATUS.has(w))
 		.sort()
 		.join(" ");
 

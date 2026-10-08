@@ -2,7 +2,7 @@ import { distance, distanceTo, metres } from "../geo";
 import { lookalike, shell } from "../tagfilter";
 import { type Extraction, type OsmElement, osmRef } from "../types";
 import { groundsOf } from "./grounds";
-import { kit, mainKeys } from "./kinds";
+import { kit, mainKeys, wordsOf } from "./kinds";
 import { companiesAgree, NAME_MATCH, nameScore, whoOf, whoSimilarity } from "./names";
 import { type Main, mainOf, RETIRED } from "./ops";
 import { DUPLICATE_RADIUS_M, LAT_PREFILTER, MATCH_RADIUS_M } from "./radii";
@@ -85,7 +85,7 @@ export function findMatch(
 		const building = shell(e.tags);
 		if (building && !e.tags.name) continue;
 		const d = distance(x.lat, x.lon, e.lat, e.lon);
-		const named = e.tags.name && x.name ? nameScore(x, e) : null;
+		const named = e.tags.name && x.name ? nameScore(x, e, wordsOf(x)) : null;
 		// Most charging stations on OSM have no name, and the registry places them up to tens of
 		// metres off; the operator agreeing is what lets one match beyond a coincident point,
 		// though never as far as a name does: one operator runs every station in a town.

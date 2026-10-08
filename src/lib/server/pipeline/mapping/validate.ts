@@ -164,7 +164,7 @@ function checkMatching(mapping: Mapping, kits: Record<string, KitFactory>, probl
 		problems.push(`matching.kit: ${m.kit} is scoped to another kind of place`);
 	}
 	const kit = factory(lib());
-	const members = [...METHODS, "accepts", "lookalikes", "same", "refs"];
+	const members = [...METHODS, "words", "accepts", "lookalikes", "same", "refs"];
 	for (const member of Object.keys(kit))
 		if (!members.includes(member)) problems.push(`matching.kit: ${m.kit} has unknown ${member}`);
 	const named = (what: string, table: object | undefined, declared: object | undefined) => {

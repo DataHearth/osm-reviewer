@@ -21,22 +21,8 @@ export const LEGAL_TAIL =
 /** A company's trade name as mappers write it, under the name a registry gives it. */
 export const TRADING_AS: Record<string, string> = { alize: "bouygues" };
 
-/** Words that say what an object is or its status, not which one it is. */
-export const GENERIC = new Set([
-	"borne",
-	"bornes",
-	"recharge",
-	"station",
-	"stations",
-	"charging",
-	"irve",
-	"electrique",
-	"vehicules",
-	"prive",
-	"privee",
-	"public",
-	"publique",
-]);
+/** Words that say what an object's status is, not which one it is; a kind's own are its kit's. */
+export const STATUS = new Set(["prive", "privee", "public", "publique"]);
 
 /** How French files write "true". */
 export const TRUE_WORDS = ["oui", "vrai"];

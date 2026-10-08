@@ -13,7 +13,7 @@ import {
 } from "./describe";
 import { notThePlace } from "./find";
 import { groundsOf } from "./grounds";
-import { kit, labelKeys, lookalikeHook, mainKeys, registry } from "./kinds";
+import { kit, labelKeys, lookalikeHook, mainKeys, registry, wordsOf } from "./kinds";
 import {
 	companiesAgree,
 	NAME_MATCH,
@@ -341,7 +341,7 @@ function namesakeOf(
 	const own = kit(x, "namesake");
 	const named = (e: OsmElement) => {
 		if (own) return own(x, el, e, { els, matchedBy });
-		if (!el.tags.name) return (nameScore(x, e) ?? 0) >= WHOLE_NAME;
+		if (!el.tags.name) return (nameScore(x, e, wordsOf(x)) ?? 0) >= WHOLE_NAME;
 		return (
 			fold(e.tags.name ?? "") === fold(el.tags.name) ||
 			(!carriesHard(e) && nameSimilarity(e.tags.name ?? "", el.tags.name) >= WHOLE_NAME)

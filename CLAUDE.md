@@ -379,7 +379,8 @@ kin (`college`, `university`), a school mapped only as `building=school|college|
 round the box. Lookalikes that must never be matched are fetched for the banner only:
 `man_made=charge_point` beside stations, `healthcare=centre` and `amenity=clinic` beside
 institutes (and an unnamed school building, as beside schools). The commune's words count for
-nothing in a name match. What matching cannot settle
+nothing in a name match, nor do the status words (private, public) or, for a station, the words of what
+it is (borne, recharge, station), which are the charging kit's: a school named "Recharge" keeps the word. What matching cannot settle
 is not guessed: a "new" POI with an object of its kind within 150 m (300 m when its operator or
 address agrees; one without another station's id named first, and the rest of its site within
 25 m counted), a match more than 150 m away (naming what of its kind stands within 50 m of the
