@@ -1,5 +1,12 @@
 import { COUNTRIES } from "./fr/country";
-import { functions, notesFunctions, sitesFunctions, skipFunctions, steps } from "./fr/functions";
+import {
+	functions,
+	notesFunctions,
+	sitesFunctions,
+	skipFunctions,
+	steps,
+	warmers,
+} from "./fr/functions";
 import { distance } from "./geo";
 import { columnsByInput, compile, inputsOf, type Program } from "./mapping/compile";
 import { evaluate } from "./mapping/evaluate";
@@ -67,6 +74,11 @@ export interface Extractor {
 		gaps?: Map<Row, number>,
 		rowsOf?: (key: string) => Row[] | undefined,
 	): Extraction | null;
+	/**
+	 * Fetches what the mapping's functions need for a record before `extract`, and says how many
+	 * fetches failed. Present only where a function of the mapping asks for it.
+	 */
+	warm?(rows: Row[]): Promise<number>;
 	/** The country's address base, for a mapping whose records carry a `geocode`. */
 	address?: AddressBase;
 	/** What to ask the address base for one row's own address, for a key at several sites. */
@@ -179,6 +191,9 @@ function build(table: Table): Extractor {
 		return known;
 	};
 	const key = (row: Row) => head(row).key;
+	const warming = [
+		...new Set(program.tags.flatMap(({ tag }) => ("function" in tag ? [tag.function] : []))),
+	].filter((name) => warmers[name]);
 
 	return {
 		mapping: table.shipped.mapping,
@@ -186,6 +201,16 @@ function build(table: Table): Extractor {
 		key,
 		position: (row) => head(row).position,
 		skip: (row) => head(row).skip,
+		warm:
+			warming.length > 0
+				? async (rows) => {
+						if (head(rows[0]).skip) return 0;
+						const reads = toInputs(rows[0]);
+						let failed = 0;
+						for (const name of warming) failed += await warmers[name](reads);
+						return failed;
+					}
+				: undefined,
 		siteQuery: (row) => (program.record.pick ? head(row).address || null : null),
 		address: COUNTRIES[program.id.split(":")[0]]?.address,
 		site: site && ((row) => site(toNative(row))),

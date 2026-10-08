@@ -97,6 +97,11 @@ export const ban = {
 	url: base(process.env.BAN_URL, "https://api-adresse.data.gouv.fr"),
 };
 
+/** The register of companies, which says whether a SIREN is a legal entity. */
+export const sirene = {
+	url: base(process.env.SIRENE_URL, "https://recherche-entreprises.api.gouv.fr"),
+};
+
 /**
  * `false` disables the scheduler and every fetch at boot. "Run now" still works, because
  * that is an operator asking. The e2e suite sets it so it stays offline.

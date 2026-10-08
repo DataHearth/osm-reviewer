@@ -43,6 +43,7 @@ interface Exec {
 	licence?: string;
 	outside?: number;
 	withheld?: number;
+	unresolved?: number;
 	/** Undefined when nothing was read, which leaves the last read's list standing. */
 	far?: (FarMatch & { area: string })[];
 	/** Said when the source's columns were renamed by the model during the run. */
@@ -68,19 +69,31 @@ function absorb(out: Exec, p: AreaOutcome, area: AreaRow) {
 	out.errors.push(...p.errors);
 	out.outside = (out.outside ?? 0) + p.outside;
 	out.withheld = (out.withheld ?? 0) + p.withheld;
+	out.unresolved = (out.unresolved ?? 0) + p.unresolved;
 	out.far = [...(out.far ?? []), ...p.far.map((f) => ({ area: area.id, ...f }))];
 }
 
 const FAR_ASIDE = "the place may have moved or its id may be stale";
 
 /** What a run set aside on purpose, which the run's line says whether or not it also failed somewhere. */
-const asides = ({ outside = 0, withheld = 0, far = [], empty, renamed = [] }: Exec) => [
+const asides = ({
+	outside = 0,
+	withheld = 0,
+	unresolved = 0,
+	far = [],
+	empty,
+	renamed = [],
+}: Exec) => [
 	...renamed,
 	...(empty ? ["the source returned no rows, so nothing was swept"] : []),
 	...(outside === 1 ? ["1 record placed outside the area by its own address"] : []),
 	...(outside > 1 ? [`${outside} records placed outside the area by their own address`] : []),
 	...(withheld === 1 ? ["1 personal contact detail left out"] : []),
 	...(withheld > 1 ? [`${withheld} personal contact details left out`] : []),
+	...(unresolved === 1 ? ["1 company lookup failed, so its operator is not proposed"] : []),
+	...(unresolved > 1
+		? [`${unresolved} company lookups failed, so their operators are not proposed`]
+		: []),
 	...(far.length === 1 ? [`1 match far from its address left out: ${FAR_ASIDE}`] : []),
 	...(far.length > 1
 		? [`${far.length} matches far from their address left out: ${FAR_ASIDE}`]

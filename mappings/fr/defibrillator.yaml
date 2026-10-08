@@ -17,6 +17,7 @@ inputs:
   duplicate: t or f, the registry flags the record as a duplicate
   itinerant: t or f, the device moves (a vehicle's)
   edited_at: when the record was last edited
+  siren: the SIREN of the operator the registry names, as written
   commune: the commune the device stands in
   lat: latitude, WGS84
   lon: longitude, WGS84
@@ -91,6 +92,21 @@ tags:
       Only for an indoor device, and only when the floor is a floor and nothing else: rez-de-chaussée
       or RDC is 0, "2ème", "1er étage", "R+1", "-1" and a bare 0 are the number. Anything with more words
       ("ACCUEIL", "99") proposes nothing.
+  operator:
+    function: fr/sirene
+    reads: [siren]
+    conf: 0.7
+    fill: true
+    rule: >-
+      The legal name the company register gives the operator's SIREN, and only where it is a legal
+      entity. The registry's own name column can hold a natural person ("DR …") and the file
+      cannot tell, so it is never read; a lookup that fails or finds an individual entrepreneur
+      proposes nothing.
+  operator:ref:FR:SIREN:
+    function: fr/sirene
+    reads: [siren]
+    conf: 0.8
+    fill: true
   defibrillator:location:
     value: >-
       location.matches(r"[A-Za-zÀ-ÿ]{3}") && size(location) <= 255

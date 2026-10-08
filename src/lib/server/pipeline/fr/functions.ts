@@ -11,6 +11,7 @@ import { addressOf } from "./school-address";
 import { housedSection } from "./school-housed";
 import { schoolName } from "./school-name";
 import { alsoAtOtherSites } from "./school-sites";
+import { resolveSiren, sirene } from "./sirene";
 
 const cleaned = (raw: string) => (raw ? schoolName(raw) : "");
 
@@ -50,6 +51,16 @@ export const functions: Record<string, TagFunction> = {
 	"fr.school/name": name,
 	"fr.school/mailbox": mailbox,
 	"fr.school/address": address,
+	"fr/sirene": sirene,
+};
+
+/**
+ * What a function needs fetched before it runs, by the function's name: it gets the same inputs
+ * and answers how many fetches failed, which the run reports. A function stays synchronous and
+ * reads what this left behind.
+ */
+export const warmers: Record<string, (reads: Record<string, string>) => Promise<number>> = {
+	"fr/sirene": ({ siren }) => resolveSiren(siren),
 };
 
 /** The code a mapping's `record.skipBy` names. */

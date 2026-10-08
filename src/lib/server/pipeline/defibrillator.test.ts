@@ -6,11 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "$lib/server/db/client";
 import { runMigrations } from "$lib/server/db/migrate";
 import * as t from "$lib/server/db/schema";
-import type { OsmElement } from "./types";
+import { clearSirenCache } from "./fr/sirene";
 import { mappingFor, renamingFor, shippedCovering, shippedSources } from "./mapping/files";
 import { indexRefs } from "./match/refs";
 import { matchWarnings } from "./match/warnings";
 import { runSource } from "./runner";
+import type { OsmElement } from "./types";
 
 const DATASET = "https://www.data.gouv.fr/api/1/datasets/geodae-test/";
 const FILE = "https://static.data.gouv.fr/20261007-100011/geodae.csv";
@@ -21,6 +22,7 @@ const COLUMNS = renamingFor("fr/geodae").columns;
 const REAL: Record<string, string>[] = [
 	{
 		c_gid: "1899",
+		c_expt_siren: "200000000",
 		c_etat_valid: "validées",
 		c_lat_coor1: "45.6127",
 		c_long_coor1: "4.04854",
@@ -37,6 +39,7 @@ const REAL: Record<string, string>[] = [
 	},
 	{
 		c_gid: "2362",
+		c_expt_siren: "400000000",
 		c_etat_valid: "validées",
 		c_lat_coor1: "49.2695",
 		c_long_coor1: "6.30913",
@@ -166,6 +169,7 @@ let dir: string;
 let db: Db;
 
 beforeEach(async () => {
+	clearSirenCache();
 	dir = mkdtempSync(join(tmpdir(), "osm-reviewer-defib-"));
 	db = createDb(join(dir, "test.db"));
 	runMigrations(db);
@@ -180,6 +184,16 @@ beforeEach(async () => {
 				});
 			if (url === FILE) return new Response(csv);
 			if (url.includes("overpass")) return Response.json(osm);
+			if (url.startsWith("https://recherche-entreprises.api.gouv.fr/search?q=200000000"))
+				return Response.json({
+					results: [
+						{
+							siren: "200000000",
+							nom_raison_sociale: "CENTRE HOSPITALIER DU FOREZ",
+							nature_juridique: "7364",
+						},
+					],
+				});
 			return new Response("not found", { status: 404, statusText: "Not Found" });
 		}),
 	);
@@ -237,10 +251,17 @@ const tagsOf = (key: string) =>
 			.map((x) => [x.k, x.op === "del" ? null : x.v]),
 	);
 
-describe("a defibrillator from Géo'DAE, with no code of its own on the record's path", () => {
+describe("a defibrillator from Géo'DAE, with no code but the company lookup on the record's path", () => {
 	it("reads the dataset, drops the record flagged as a duplicate and keeps the rest", () => {
 		expect(db.select().from(t.runs).get()).toMatchObject({ result: "ok", fetched: 9, cands: 7 });
 		expect(cand("4024")).toBeUndefined();
+	});
+
+	it("proposes no operator where the company register failed, and says so in the run's message", () => {
+		expect(tagsOf("2362")).not.toHaveProperty("operator");
+		expect(db.select().from(t.runs).get()?.message).toContain(
+			"1 company lookup failed, so its operator is not proposed",
+		);
 	});
 
 	it("shows the operator's location note as the name, and the commune where there is none", () => {
@@ -254,6 +275,8 @@ describe("a defibrillator from Géo'DAE, with no code of its own on the record's
 		expect(tagsOf("1899")).toEqual({
 			access: "yes",
 			"defibrillator:location": "Entrée principale du bâtiment, au niveau du dépose minute",
+			operator: "CENTRE HOSPITALIER DU FOREZ",
+			"operator:ref:FR:SIREN": "200000000",
 			opening_hours: "24/7",
 			start_date: "2019-11-18",
 		});

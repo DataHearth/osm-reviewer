@@ -26,6 +26,8 @@ official:
       - defibrillator:location
       - opening_hours
       - start_date
+      - operator
+      - operator:ref:FR:SIREN
 columns:
   - gid
   - c_gid
@@ -88,6 +90,7 @@ rename:
   c_etat_fonct: state
   c_doublon: duplicate
   c_dae_mobile: itinerant
+  c_expt_siren: siren
   c__edit_datemaj: edited_at
   c_lat_coor1: lat
   c_long_coor1: lon
@@ -116,8 +119,7 @@ ignored:
   c_dispsurv: the device's remote monitoring; surveillance=* means a camera in OSM
   c_dermnt: "todo: the date of the last maintenance, last_maintenance:date; changes yearly and 2000-01-01 stands for none"
   c_maj_don: the date the operator last updated the record
-  c_expt_siren: "todo: operator:ref:FR:SIREN, which must not name a natural person and the file cannot tell"
-  c_expt_rais: "todo: operator, the operator's legal name in capitals, which must not name a natural person ('DR …') and needs the SIRENE legal category to tell"
+  c_expt_rais: "the operator's name in capitals, which can name a natural person ('DR …'); the legal name comes from the company register, by the SIREN"
   c_expt_siret: "the operator's SIRET, often spaced or truncated, with no documented key for a device"
   c_etat: the record's state, 'Actif', empty or 'Non identifié', which the schema does not explain
   c_application_provenance: empty in every row

@@ -71,6 +71,8 @@ export interface AreaOutcome {
 	outside: number;
 	/** Contact details left out as a person's own. */
 	withheld: number;
+	/** Lookups a function needed from a register and did not get, so its tags are missing. */
+	unresolved: number;
 	/** Matches left with nothing to write, lying too far from where the record is. */
 	far: FarMatch[];
 }
@@ -142,6 +144,7 @@ async function readRecords(source: SourceRow, input: AreaInput, allow: string[])
 	const unchanged: string[] = [];
 	const read: { x: Extraction; rec: RawRecord }[] = [];
 	let withheld = 0;
+	let unresolved = 0;
 
 	let failedInARow = 0;
 	const byKey = new Map(input.records.map((rec) => [rec.key, rec.rows]));
@@ -151,6 +154,7 @@ async function readRecords(source: SourceRow, input: AreaInput, allow: string[])
 			continue;
 		}
 		try {
+			unresolved += (await input.reader?.extractor?.warm?.(rec.rows)) ?? 0;
 			const raw = await extract(source, rec, input.reader, allow, (key) => byKey.get(key));
 			failedInARow = 0;
 			if (!raw) continue;
@@ -168,7 +172,7 @@ async function readRecords(source: SourceRow, input: AreaInput, allow: string[])
 				throw new PipelineError(`the model keeps failing: ${errors[errors.length - 1]}`);
 		}
 	}
-	return { read, errors, failedKeys, unchanged, withheld };
+	return { read, errors, failedKeys, unchanged, withheld, unresolved };
 }
 
 /** Each record with the OSM object it is, or none, and what the run fetched to tell. */
@@ -285,7 +289,11 @@ export async function processArea(
 		.all()
 		.map((r) => r.pattern);
 	const existing = existingCandidates(db, source.id);
-	const { read, errors, failedKeys, unchanged, withheld } = await readRecords(source, input, allow);
+	const { read, errors, failedKeys, unchanged, withheld, unresolved } = await readRecords(
+		source,
+		input,
+		allow,
+	);
 	const { matched, fetched, elements, refIndex, shared, byElement, twins, outside } =
 		await matchRecords(source, area, input, read);
 	await readFirstMappings(matched);
@@ -404,5 +412,5 @@ export async function processArea(
 	const pois = await poisOf(area);
 	db.update(t.areas).set({ lastRunAt: new Date(), pois }).where(eq(t.areas.id, area.id)).run();
 
-	return { cands, errors, failedKeys, outside, withheld, far };
+	return { cands, errors, failedKeys, outside, withheld, unresolved, far };
 }

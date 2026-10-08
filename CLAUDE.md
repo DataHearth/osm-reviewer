@@ -161,6 +161,14 @@ server calls is configuration rather than code:
   family (Overpass, and the sites a crawl reads) send `osm-reviewer/<version> (+<ORIGIN>)`
   as their User-Agent, so set `ORIGIN` to something an operator of those services can
   contact.
+- **The company register is the pipeline's one more host, for defibrillators only.** `SIRENE_URL`
+  (default `https://recherche-entreprises.api.gouv.fr`, no key) is asked by `fr/sirene` for the
+  SIREN the Géo'DAE file names, once per SIREN an hour, at most six requests a second process-wide, 10 s
+  timeout. The operator and `operator:ref:FR:SIREN` are proposed only when the register calls it a legal
+  entity (a legal category other than 1, the individual entrepreneur): the file's own name column can
+  hold a natural person and cannot say. A function is synchronous, so `warmers` in `fr/functions.ts`
+  fetch before `extract` and the function reads the cache; a lookup that fails proposes nothing and is
+  counted in the run's message, never an error.
 - **Boundary search goes through the server.** The area form's relation picker calls
   `GET /server/boundaries`, which asks `NOMINATIM_URL` (`src/lib/server/nominatim.ts`) — the
   browser never does, so the visitor's address stays off Nominatim and one process-wide
@@ -228,7 +236,7 @@ else the engine's default. A kit never runs on another kind's records, and a kin
 kit gets none: school grounds and EVSE sockets have no business on a defibrillator. `validate`
 checks the block. A kind with nothing
 special writes `main: [...]` and no kit: `FR:defibrillator`, read from Géo'DAE (`sources/fr/geodae.yaml`, the
-register on data.gouv.fr), is that kind and has no TypeScript on its path. Its ref is a tag with
+register on data.gouv.fr), is that kind and has one function of TypeScript on its path, `fr/sirene`. Its ref is a tag with
 `ref: true` and one rule, `site`: two objects carrying one id are one device mapped twice, so they
 get the "Same site" line. No `rules_out`, so another value of `ref:FR:GeoDAE` on an object never
 rules it out (the register renumbers devices), and it proposes no `name`: `Extraction.name` is also what matching
