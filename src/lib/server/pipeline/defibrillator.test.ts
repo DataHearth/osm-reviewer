@@ -265,6 +265,11 @@ describe("a defibrillator from Géo'DAE, with no code of its own on the record's
 		);
 	});
 
+	it("proposes level 0 for a bare floor 0 of an indoor device, and none for an outdoor one", () => {
+		expect(tagsOf("132245")).toMatchObject({ indoor: "yes", level: "0" });
+		expect(tagsOf("1899")).not.toHaveProperty("level");
+	});
+
 	it("tells the reviewer a position is approximate where the registry has not validated it", () => {
 		expect(cand("2456")?.warning).toContain("has not validated this defibrillator");
 		expect(cand("2456")?.warning).toContain("three decimals or fewer");

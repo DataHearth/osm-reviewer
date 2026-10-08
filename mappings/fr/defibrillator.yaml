@@ -77,7 +77,7 @@ tags:
     value: >-
       indoor ? (
       etg.imatches(r"^(rez[ -]de[ -]chauss[ée]+e?|r\.?d\.?c\.?h?)$") ? "0"
-      : etg.matches(r"^-?[1-9]$") ? etg
+      : etg.matches(r"^(-?[1-9]|0)$") ? etg
       : etg.imatches(r"^r\+[1-9]$") ? etg.remove(r"^[rR]\+")
       : etg.imatches(r"^[1-9] ?(er|[èe]me|nd|e)( [ée]tage)?$") ? etg.remove(r"[^0-9].*$")
       : "") : ""
@@ -85,8 +85,8 @@ tags:
     fill: true
     rule: >-
       Only for an indoor device, and only when the floor is a floor and nothing else: rez-de-chaussée
-      or RDC is 0, "2ème", "1er étage", "R+1" and "-1" are the number. A bare 0 is the form's default
-      and proposes nothing, as does anything with more words ("ACCUEIL", "99").
+      or RDC is 0, "2ème", "1er étage", "R+1", "-1" and a bare 0 are the number. Anything with more words
+      ("ACCUEIL", "99") proposes nothing.
   defibrillator:location:
     value: >-
       location.matches(r"[A-Za-zÀ-ÿ]{3}") && size(location) <= 255
@@ -145,7 +145,7 @@ examples:
   - about: the availability text the export appends to the location is removed, and a 24/7 it contradicts is dropped (c_gid 132245)
     rows:
       - { id: "132245", validation: validées, environment: Intérieur, free_access: f, floor: "0", access_note: "Dans la salle des fetes  accessible sur manifestations - Selon évènements", availability_note: Selon évènements, hours: "24/7", installed_on: "2021-05-28", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2026-03-11 14:19:09.835872", lat: "43.53028", lon: "0.212806" }
-    expect: { emergency: defibrillator, ref:FR:GeoDAE: "132245", indoor: "yes", defibrillator:location: "Dans la salle des fetes accessible sur manifestations", start_date: "2021-05-28" }
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "132245", indoor: "yes", level: "0", defibrillator:location: "Dans la salle des fetes accessible sur manifestations", start_date: "2021-05-28" }
   - about: a 24/7 the availability text confirms is kept (c_gid 132281)
     rows:
       - { id: "132281", validation: validées, environment: Extérieur, free_access: t, floor: "0", access_note: "A gauche de l'entrée de la mairie - 7j/7 24h/24", availability_note: 7j/7 24h/24, hours: "24/7", installed_on: "2021-03-24", state: En fonctionnement, duplicate: f, itinerant: f, edited_at: "2026-07-28 09:49:04.540175", lat: "49.354153", lon: "-1.321925" }
