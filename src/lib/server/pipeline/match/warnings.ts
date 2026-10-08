@@ -1,6 +1,6 @@
 import { fold } from "../fr/text";
 import { distance, metres } from "../geo";
-import { lookalike, sameKind } from "../tagfilter";
+import { lookalike, lookalikeKey, sameKind } from "../tagfilter";
 import { nameSimilarity } from "../text";
 import { type Extraction, type OsmElement, osmRef } from "../types";
 import {
@@ -149,7 +149,9 @@ function duplicates(
 	const out = [kin, alike]
 		.filter((n) => n !== undefined)
 		.map(({ e, d }) => {
-			const k = labelKeys().find((key) => e.tags[key]) ?? main.k;
+			const k =
+				(e === alike?.e && lookalikeKey(main.k, main.v, e.tags)) ||
+				(labelKeys().find((key) => e.tags[key]) ?? main.k);
 			const rival = theirs(e) ? rivalOf(e) : undefined;
 			const id = rival ? ` (${rival.inline})` : "";
 			// The rest of a site mapped as several objects; one with another station's id beside

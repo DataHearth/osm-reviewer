@@ -62,6 +62,10 @@ export function lookalike(k: string, v: string, tags: Record<string, string>): b
 	return (registry().lookalikes.get(`${k}=${v}`) ?? []).some((s) => selects(s, tags));
 }
 
+/** The key of the first selector that makes an object a lookalike of `k=v`, which is the tag a reviewer sees it by. */
+export const lookalikeKey = (k: string, v: string, tags: Record<string, string>) =>
+	(registry().lookalikes.get(`${k}=${v}`) ?? []).find((s) => selects(s, tags))?.k;
+
 /** What a source's extracted tags say its records are, so a filter written for one kind still finds the other. */
 export function selectorsFromTags(tags: { k: string; v: string }[]): Selector[] {
 	const keys = selectorKeys();

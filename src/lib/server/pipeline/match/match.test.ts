@@ -788,6 +788,10 @@ describe("matchWarnings", () => {
 		expect(matchWarnings(x, null, [point])[0]).toMatch(
 			/^Possible duplicate: man_made=charge_point/,
 		);
+		const six = el(13, 45.7001, 4.8, { "capacity:charging": "6" });
+		expect(matchWarnings(x, null, [six])[0]).toMatch(
+			/^Possible duplicate: capacity:charging=6 already mapped at node\/13/,
+		);
 		const cra = {
 			...x,
 			name: "Centre ressources autisme",
