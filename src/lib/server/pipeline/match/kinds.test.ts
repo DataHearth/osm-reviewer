@@ -94,7 +94,7 @@ describe("the registry the shipped mappings declare", () => {
 			{ k: "ref:EU:EVSE", v: null, not: { k: "man_made", v: ["charge_point"] } },
 		]);
 		expect(refSelectors("ref:FR:SIRET")).toEqual([]);
-		expect(siteRefs()).toEqual(["ref:EU:EVSE", "ref:UAI"]);
+		expect(siteRefs()).toEqual(["ref:EU:EVSE", "ref:FR:GeoDAE", "ref:UAI"]);
 	});
 
 	it("is built on the first call, in a module graph where nothing else was imported", async () => {

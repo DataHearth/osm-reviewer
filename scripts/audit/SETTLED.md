@@ -148,6 +148,7 @@ Matching and banners:
 - A place's main keys are one list, the legacy seven plus whatever each mapping's `matching.main` names: a building also tagged with any of them (an `emergency` device included) is not a bare shell, and the area's "POIs watched" counts every one.
 - A closure is written as `disused:` on the main key the record carries, not the object's first one; an object without that key gets no closure.
 - Matching cuts objects by the nearest edge of their box, not their centre's latitude, so a large way whose edge is within reach is considered; the Overpass margin is the farthest reach plus 70 m.
+- Two objects carrying one `ref:FR:GeoDAE` are one site mapped as two objects, however far apart, and get the "Same site" line.
 
 Known gaps, deliberately not done: mention them only as a count, do not analyse them. This list replaces any earlier one: a stale UAI on an object more than 50 m from a "new" record that shares no address, phone, email or SIRET with it (never matched, and named by no banner line), and one the run's read cannot judge (a directory row with no position is not read); point-inside-area containment; street names not verified against OSM highways; no banner when a fill-only value contradicts the source; an IRVE operator, owner or network written as the registry spells it (capitals, legal names); operator:email / charge / maxheight not proposed. A station's real opening date where the registry only holds a re-declaration (the first-mapping day stands in for it).
 

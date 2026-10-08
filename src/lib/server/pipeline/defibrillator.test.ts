@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "$lib/server/db/client";
 import { runMigrations } from "$lib/server/db/migrate";
 import * as t from "$lib/server/db/schema";
+import type { OsmElement } from "./types";
 import { mappingFor, renamingFor, shippedCovering, shippedSources } from "./mapping/files";
+import { indexRefs } from "./match/refs";
+import { matchWarnings } from "./match/warnings";
 import { runSource } from "./runner";
 
 const DATASET = "https://www.data.gouv.fr/api/1/datasets/geodae-test/";
@@ -276,9 +279,33 @@ describe("a defibrillator from Géo'DAE, with no code of its own on the record's
 	});
 });
 
+describe("two nodes carrying one Géo'DAE id", () => {
+	const at = (id: number, lat: number) =>
+		node(id, lat, 4, { "ref:FR:GeoDAE": "156653" }) as unknown as OsmElement;
+	const [a, b] = [at(10, 45), at(11, 45 + 300 * METRE)];
+	const x = {
+		kind: "FR:defibrillator",
+		lat: 45,
+		lon: 4,
+		name: "",
+		tags: [],
+		refs: { "ref:FR:GeoDAE": "156653" },
+	};
+
+	it("are one site mapped as two objects, though 300 m apart", () => {
+		const index = indexRefs([a, b], ["ref:FR:GeoDAE"]);
+		expect(matchWarnings(x, a, [a, b], index)[0]).toMatch(
+			/^Same site may be mapped as 2 objects \(also node\/11/,
+		);
+	});
+});
+
 describe("the shipped files", () => {
-	it("declare matching as the main key alone, with no kit and no ref rule", () => {
-		expect(mappingFor("FR:defibrillator").matching).toEqual({ main: ["emergency"] });
+	it("declare matching as the main key and the id as a site, with no kit", () => {
+		expect(mappingFor("FR:defibrillator").matching).toEqual({
+			main: ["emergency"],
+			refs: { "ref:FR:GeoDAE": { site: true } },
+		});
 	});
 
 	it("offer the register as an official source, found by its columns and by its dataset", () => {

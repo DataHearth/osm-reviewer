@@ -229,8 +229,9 @@ kit gets none: school grounds and EVSE sockets have no business on a defibrillat
 checks the block. A kind with nothing
 special writes `main: [...]` and no kit: `FR:defibrillator`, read from Géo'DAE (`sources/fr/geodae.yaml`, the
 register on data.gouv.fr), is that kind and has no TypeScript on its path. Its ref is a tag with
-`ref: true` and no rule, so another value of `ref:FR:GeoDAE` on an object never rules it out (the
-register renumbers devices), and it proposes no `name`: `Extraction.name` is also what matching
+`ref: true` and one rule, `site`: two objects carrying one id are one device mapped twice, so they
+get the "Same site" line. No `rules_out`, so another value of `ref:FR:GeoDAE` on an object never
+rules it out (the register renumbers devices), and it proposes no `name`: `Extraction.name` is also what matching
 scores against a named object, so a display name would stop an unnamed record matching the
 "Défibrillateur" node 10 m away. `record.label` is its display name instead (the operator's location
 note, else the commune): the queue, the review title and the twin and "Also matched by" lines show
