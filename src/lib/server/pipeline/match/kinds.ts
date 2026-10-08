@@ -25,13 +25,13 @@ export interface Scheme extends RefHooks {
 	organisation?: string;
 }
 
-export interface Shell {
+interface Shell {
 	k: string;
 	v: string[];
 	of: string;
 }
 
-export interface Registry {
+interface Registry {
 	mainKeys: string[];
 	selectorKeys: string[];
 	kin: Map<string, string[]>;
@@ -63,7 +63,7 @@ export function lib(): Lib {
 	return { mainOf, sameKind, shell: shellOf, sameValue, keyOn, rulesOut, idsOn };
 }
 
-export function buildRegistry(
+function buildRegistry(
 	all: Mapping[],
 	factories: Record<string, KitFactory>,
 	forKits: Lib = lib(),

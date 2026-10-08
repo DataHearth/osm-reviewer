@@ -35,6 +35,12 @@ export function distanceTo(
 	return distance(lat, lon, clamp(lat, b.minlat, b.maxlat), clamp(lon, b.minlon, b.maxlon));
 }
 
+/** Degrees of latitude from a point to the object's box, which is what bounds `distanceTo` from below. */
+export function latGap(lat: number, e: { lat: number; bounds?: Box }): number {
+	if (!e.bounds) return Math.abs(e.lat - lat);
+	return Math.max(0, e.bounds.minlat - lat, lat - e.bounds.maxlat);
+}
+
 export const metres = (d: number) =>
 	d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1)} km`;
 

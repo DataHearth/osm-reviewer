@@ -27,7 +27,7 @@ import {
 import { ADDRESS_KEY, CONTACT, mainOf, type TagOp } from "./ops";
 import {
 	DUPLICATE_RADIUS_M,
-	LAT_PREFILTER,
+	latDegrees,
 	MATCH_RADIUS_M,
 	SAME_OPERATOR_RADIUS_M,
 	SPLIT_RADIUS_M,
@@ -369,7 +369,7 @@ const TWIN_RADIUS_M = 10;
 const LIKE_TWIN_RADIUS_M = 60;
 
 function twinReason(a: Extraction, b: Extraction): string | null {
-	if (Math.abs(a.lat - b.lat) < LAT_PREFILTER) {
+	if (Math.abs(a.lat - b.lat) < latDegrees(LIKE_TWIN_RADIUS_M)) {
 		const d = distance(a.lat, a.lon, b.lat, b.lon);
 		const alike =
 			!hardKeys().some((k) => a.refs[k] && b.refs[k]) &&

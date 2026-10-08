@@ -1,11 +1,11 @@
-import { distance, distanceTo, metres } from "../geo";
+import { distance, distanceTo, latGap, metres } from "../geo";
 import { lookalike, shell } from "../tagfilter";
 import { type Extraction, type OsmElement, osmRef } from "../types";
 import { groundsOf } from "./grounds";
 import { kit, mainKeys, wordsOf } from "./kinds";
 import { companiesAgree, NAME_MATCH, nameScore, whoOf, whoSimilarity } from "./names";
 import { type Main, mainOf, RETIRED } from "./ops";
-import { DUPLICATE_RADIUS_M, LAT_PREFILTER, MATCH_RADIUS_M } from "./radii";
+import { DUPLICATE_RADIUS_M, latDegrees, MATCH_RADIUS_M, REACH_M } from "./radii";
 import { refHits, rulesOut } from "./refs";
 
 /** With a name missing on either side only a near-coincident point is trusted. */
@@ -72,6 +72,7 @@ export function findMatch(
 		const own = kit(x, "ownGrounds");
 		return grounds && (!own || own(x, grounds, els)) ? grounds : byRef;
 	}
+	const reachDeg = latDegrees(REACH_M);
 	const excludes = kit(x, "excludes");
 	const fitOf = kit(x, "fit");
 	const certain = kit(x, "certain");
@@ -79,7 +80,7 @@ export function findMatch(
 	let best: { el: OsmElement; score: number } | null = null;
 	for (const e of els) {
 		if (rulesOut(e, x.refs, "hard") || excludes?.(x, e)) continue;
-		if (Math.abs(e.lat - x.lat) > LAT_PREFILTER) continue;
+		if (latGap(x.lat, e) > reachDeg) continue;
 		// What its id cannot make the place, its name or position cannot either.
 		if (notThePlace(e, main, now)) continue;
 		const building = shell(e.tags);

@@ -53,7 +53,7 @@ const evseRef = (e: OsmElement) =>
 const evseOn = (e: OsmElement) => [e.tags["ref:EU:EVSE"], evseRef(e)].filter(Boolean).join(";");
 
 /** The tag an object carries its EVSE id under, as the reviewer would look it up. */
-export const evseTag = (e: OsmElement) =>
+const evseTag = (e: OsmElement) =>
 	e.tags["ref:EU:EVSE"] ? `ref:EU:EVSE=${e.tags["ref:EU:EVSE"]}` : `ref=${e.tags.ref}`;
 
 const EVSE_PARTS = /^[A-Z]{2}([A-Z0-9]{3})([EP])/;
@@ -63,7 +63,7 @@ const EVSE_PARTS = /^[A-Z]{2}([A-Z0-9]{3})([EP])/;
  * `FR*ELC*P12953885`), which the network has renumbered since. A point's id names a point of
  * some station, more likely a neighbour's than this one's.
  */
-export function renumberedPool(e: OsmElement, refs: Record<string, string>): boolean {
+function renumberedPool(e: OsmElement, refs: Record<string, string>): boolean {
 	const ours = new Set(ids(refs["ref:EU:EVSE"] ?? "").map((id) => EVSE_PARTS.exec(id)?.[1]));
 	const theirs = ids(evseOn(e)).map((id) => EVSE_PARTS.exec(id));
 	return theirs.length > 0 && theirs.every((m) => m?.[2] === "P" && ours.has(m[1]));
@@ -73,10 +73,7 @@ export function renumberedPool(e: OsmElement, refs: Record<string, string>): boo
  * The record's points the object's ids name, when they name some of them and nothing else:
  * one borne of the station, `ref=FR*TLS*E31555*059*3*1` for its third point.
  */
-export function pointsOn(
-	e: OsmElement,
-	refs: Record<string, string>,
-): { on: number; of: number } | null {
+function pointsOn(e: OsmElement, refs: Record<string, string>): { on: number; of: number } | null {
 	const points = ids(refs["ref:EU:EVSE"] ?? "").filter((id) => /^[A-Z]{2}[A-Z0-9]{3}E/.test(id));
 	const theirs = ids(evseOn(e));
 	if (!theirs.length || !theirs.every((t) => points.some((p) => t.startsWith(p)))) return null;
@@ -90,7 +87,7 @@ export function pointsOn(
  * One station's bornes named after it, `BRN06A` and `BRN06B`, beside another's, `BRN07A`: two
  * plain refs that read as a station and a borne letter name one station only if the stations agree.
  */
-export function otherBorne(a: OsmElement, b: OsmElement): boolean {
+function otherBorne(a: OsmElement, b: OsmElement): boolean {
 	const station = (e: OsmElement) =>
 		evseRef(e) ? null : /^(.*\d)[A-Z]$/i.exec(e.tags.ref ?? "")?.[1];
 	const [sa, sb] = [station(a), station(b)];
@@ -176,7 +173,7 @@ const CAR_SOCKET = /^socket:(type2|type2_cable|type2_combo|type1|type1_combo|cha
  * one with domestic Schuko outlets alone (Carrefour Francheville's padlocked e-bike lockers).
  * A two-wheeler station's own record (`motorcycle=yes`) may still be matched to one.
  */
-export function forTwoWheels(x: Partial<Pick<Extraction, "tags" | "fit">>, e: OsmElement): boolean {
+function forTwoWheels(x: Partial<Pick<Extraction, "tags" | "fit">>, e: OsmElement): boolean {
 	const listed = [...(x.tags ?? []), ...(x.fit ?? [])];
 	if (!listed.some((t) => CAR_SOCKET.test(t.k)) || listed.some((t) => t.k === "motorcycle"))
 		return false;
@@ -196,7 +193,7 @@ export function forTwoWheels(x: Partial<Pick<Extraction, "tags" | "fit">>, e: Os
  * record's, some count agrees, and none the record is sure of differs, nor its kind of current.
  * A count that only fills a gap may agree; one that differs says nothing either way.
  */
-export function exactFit(x: Partial<Pick<Extraction, "tags" | "fit">>, e: OsmElement): boolean {
+function exactFit(x: Partial<Pick<Extraction, "tags" | "fit">>, e: OsmElement): boolean {
 	const listed = [...(x.tags ?? []), ...(x.fit ?? [])];
 	if (e.tags.capacity !== undefined && !listed.some((t) => t.k === "capacity")) return false;
 	let agree = 0;

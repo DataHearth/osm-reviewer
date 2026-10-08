@@ -375,8 +375,10 @@ past 50 m; both distances are to a way's or relation's nearest box edge (Overpas
 `start_date` its kind writes (the banner lists only those) (and nothing at all on an object mapped as no place); one left with nothing to write is counted in the
 run's message and listed in the diagnostics bundle. The fetch adds anything carrying a `ref:UAI`, a school's
 kin (`college`, `university`), a school mapped only as `building=school|college|university`
-(matched by name, the update adding the amenity; never matched unnamed), and a ~220 m margin
-round the box. Lookalikes that must never be matched are fetched for the banner only:
+(matched by name, the update adding the amenity; never matched unnamed), and a margin
+round the box of the farthest reach any matching rule has plus 70 m (`REACH_M` in `match/radii.ts`,
+220 m today). Matching cuts candidates by an object's nearest edge, never its centre, since a
+car park's centre can lie past the reach while its bays are within it. Lookalikes that must never be matched are fetched for the banner only:
 `man_made=charge_point` beside stations, `healthcare=centre` and `amenity=clinic` beside
 institutes (and an unnamed school building, as beside schools). The commune's words count for
 nothing in a name match, nor do the status words (private, public) or, for a station, the words of what

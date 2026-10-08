@@ -2,6 +2,7 @@ import { overpass } from "$lib/server/config";
 import { type AreaShape, areaBox, hasShape } from "./geo";
 import { request, sleep } from "./http";
 import { mainKeys } from "./match/kinds";
+import { latDegrees, REACH_M } from "./match/radii";
 import { overpassFilter, type Selector } from "./tagfilter";
 import { type OsmElement, PipelineError } from "./types";
 
@@ -23,11 +24,11 @@ function scope(a: OverpassArea): { head: string; where: string } {
 }
 
 /**
- * About 220 m, over the 150 m duplicate radius: a record just inside the box edge has its
- * OSM object just outside it. Longitude gets 1.5× for the latitudes France sits at.
+ * The farthest reach of any matching rule, and slack beyond it: a record just inside the box
+ * edge has its OSM object just outside it. Longitude gets 1.5× for the latitudes France sits at.
  */
-const MATCH_MARGIN_DEG = 0.002;
-const MATCH_MARGIN_M = 220;
+const MATCH_MARGIN_M = REACH_M + 70;
+const MATCH_MARGIN_DEG = latDegrees(MATCH_MARGIN_M);
 
 /**
  * What a candidate is matched against has to cover the same ground its records were cut

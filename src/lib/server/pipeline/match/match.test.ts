@@ -1257,6 +1257,24 @@ describe("which object", () => {
 			const another = { ...way, tags: { ...way.tags, "ref:EU:EVSE": "FR*TLS*P31555020" } };
 			expect(findMatch(clinique, [another], new Map())).toBeNull();
 		});
+
+		it("cuts on a way's nearest edge, not on its centre", () => {
+			const lot = station(
+				"Parking Nord",
+				45.7,
+				4.8,
+				[fill("operator", "e-totem"), tag("capacity", "20")],
+				"FRX1",
+			);
+			const tags = { amenity: "charging_station", capacity: "20", operator: "e-totem" };
+			const lotWay = (minlat: number): OsmElement => ({
+				...el(9, 45.7018, 4.8, tags),
+				type: "way",
+				bounds: { minlat, minlon: 4.7995, maxlat: 45.7036, maxlon: 4.8005 },
+			});
+			expect(findMatch(lot, [lotWay(45.7004)], new Map())?.id).toBe(9);
+			expect(findMatch(lot, [lotWay(45.7016)], new Map())).toBeNull();
+		});
 	});
 
 	describe("a car station beside two-wheeler chargers", () => {
