@@ -514,6 +514,17 @@ describe("newOps / closureOps", () => {
 		expect(ops[0].was).toBe("amenity=school");
 	});
 
+	it("closure disuses the record's own main key, not the object's first", () => {
+		const by = { path: "p", kind: "k", parts: [] };
+		const current = { amenity: "clock", emergency: "defibrillator", phone: "+33 1" };
+		expect(closureOps(by, current, 0.8, "emergency").map((o) => [o.op, o.k, o.v])).toEqual([
+			["mod", "disused:emergency", "defibrillator"],
+			["del", "phone", "+33 1"],
+		]);
+		expect(closureOps(by, { amenity: "clock" }, 0.8, "emergency")).toEqual([]);
+		expect(closureOps(by, current, 0.8)[0].k).toBe("disused:amenity");
+	});
+
 	it("closure of an element with no main tag proposes nothing", () => {
 		expect(closureOps({ path: "p", kind: "k", parts: [] }, { name: "x" }, 0.8)).toEqual([]);
 	});

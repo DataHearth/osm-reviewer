@@ -12,7 +12,7 @@ import { getJson } from "./http";
 import { askModel, modelLabel, vetTags } from "./llm";
 import { deprecatedWarnings } from "./match/deprecated";
 import { findAtAddress, findMatch, settlePoints, yieldToFit, yieldToIds } from "./match/find";
-import { closureOps, newOps, type TagOp, unchangedTags } from "./match/ops";
+import { closureOps, mainOf, newOps, type TagOp, unchangedTags } from "./match/ops";
 import { planUpdate } from "./match/plan";
 import { indexRefs, refSelectors, sharedRefs } from "./match/refs";
 import { type MatchedBy, matchWarnings, nearbyLabels, twinWarnings } from "./match/warnings";
@@ -302,7 +302,7 @@ export async function processArea(
 		if (x.closedBy) {
 			if (!el) continue;
 			type = "closure";
-			ops = closureOps(x.closedBy, el.tags, 0.8);
+			ops = closureOps(x.closedBy, el.tags, 0.8, mainOf(x)?.k);
 		} else if (el) {
 			type = "update";
 			const plan = planUpdate(x, el, fetched, refIndex, shared, byElement);

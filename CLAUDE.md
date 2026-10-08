@@ -181,8 +181,8 @@ server calls is configuration rather than code:
   closed and read back, and counts as uploaded when it holds changes. One that cannot be
   settled is parked (a `changesets` row with result `unknown` holding its decisions, so they
   are neither staged nor resent) until a later upload or composer load reads it back. A closure is
-  written as the `disused:` key its candidate carries, and the bare key it replaces is
-  dropped. A failed batch is a `changesets` row with a null `osm_id` and the error, and its
+  written as the `disused:` key its candidate carries, on the record's own main key, and the
+  bare key it replaces is dropped. A failed batch is a `changesets` row with a null `osm_id` and the error, and its
   decisions stay staged. The diagnostics page probes `/api/0.6/capabilities.json` only when a
   client id is set.
 - Links to `openstreetmap.org` on `/review` and `/history` are anchors; they fetch nothing

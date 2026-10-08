@@ -146,14 +146,19 @@ export function newOps(proposed: ProposedTag[]): TagOp[] {
 	return proposed.map((p) => ({ ...p, op: "add" as const, was: null }));
 }
 
-/** A closed place keeps its mapping as `disused:`, and loses the details that no longer apply. */
+/**
+ * A closed place keeps its mapping as `disused:`, and loses the details that no longer apply.
+ * `own` is the main key the record carries: an object tagged with another one besides is not
+ * disused as that other thing. A record with none falls back to the object's first main key.
+ */
 export function closureOps(
 	by: NonNullable<Extraction["closedBy"]>,
 	current: Record<string, string>,
 	conf: number,
+	own?: string,
 ): TagOp[] {
-	const key = mainKeys().find((k) => current[k]);
-	if (!key) return [];
+	const key = own ?? mainKeys().find((k) => current[k]);
+	if (!key || !current[key]) return [];
 	const ev = { conf, path: by.path, parts: by.parts, kind: by.kind };
 	const ops: TagOp[] = [
 		{ ...ev, op: "mod", k: `disused:${key}`, v: current[key], was: `${key}=${current[key]}` },
