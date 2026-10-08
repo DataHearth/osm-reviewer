@@ -158,6 +158,42 @@ describe("the registry the shipped mappings declare", () => {
 			"school:FR",
 		]);
 	});
+
+	it("appends what a mapping's context names after the pinned list and before the address", () => {
+		const tags = [
+			"addr:street",
+			"ref:FR:GeoDAE",
+			"website",
+			"defibrillator:location",
+			"emergency",
+			"name",
+		].map((k) => ({ k, v: "x" }));
+		expect(contextTags(tags).map((t) => t.k)).toEqual([
+			"emergency",
+			"name",
+			"website",
+			"defibrillator:location",
+			"ref:FR:GeoDAE",
+			"addr:street",
+		]);
+		useMappings([
+			mappingSchema.parse({
+				...mapping("XX:thing", { main: ["amenity"] }),
+				context: ["note", "name"],
+			}),
+		]);
+		expect(
+			contextTags(["note", "name", "amenity"].map((k) => ({ k, v: "x" }))).map((t) => t.k),
+		).toEqual(["amenity", "name", "note"]);
+	});
+
+	it("takes a context of keys, each a string", () => {
+		const parse = (context: unknown) =>
+			mappingSchema.safeParse({ ...mapping("XX:thing", { main: ["amenity"] }), context }).success;
+		expect(parse(["note"])).toBe(true);
+		expect(parse([1])).toBe(false);
+		expect(parse([])).toBe(false);
+	});
 });
 
 describe("the kit a record answers to", () => {

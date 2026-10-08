@@ -34,6 +34,8 @@ record:
 matching:
   main: [emergency]
 
+context: [defibrillator:location, ref:FR:GeoDAE]
+
 let:
   indoor: 'environment == "Intérieur"'
   etg: 'floor.trim()'

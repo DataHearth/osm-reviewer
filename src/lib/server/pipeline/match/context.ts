@@ -1,29 +1,33 @@
-import { mainKeys } from "./kinds";
+import { contextKeys as declared, mainKeys } from "./kinds";
 import { ADDRESS_HELD } from "./ops";
+
+const unique = (keys: string[]) => [...new Set(keys)];
 
 /**
  * What tells a reviewer this is the right object comes first: what kind of object it is, and
  * the identifiers and level it already carries. The address, which rarely settles it, comes last.
- * The order is pinned, not declared by the kinds: it is display, and a function because the main
- * keys come from the registry.
+ * The order is pinned, not declared by the kinds, so a kind's `context` only appends to it, and it
+ * is a function because the main keys and those appended come from the registry.
  */
-const contextKeys = () => [
-	...mainKeys(),
-	"name",
-	"ref:UAI",
-	"ref:EU:EVSE",
-	"ref:FR:SIRET",
-	"school:FR",
-	"operator",
-	"brand",
-	"opening_hours",
-	"phone",
-	"contact:phone",
-	"email",
-	"contact:email",
-	"website",
-	"contact:website",
-];
+const contextKeys = () =>
+	unique([
+		...mainKeys(),
+		"name",
+		"ref:UAI",
+		"ref:EU:EVSE",
+		"ref:FR:SIRET",
+		"school:FR",
+		"operator",
+		"brand",
+		"opening_hours",
+		"phone",
+		"contact:phone",
+		"email",
+		"contact:email",
+		"website",
+		"contact:website",
+		...declared(),
+	]);
 
 const contextRank = (k: string, keys: string[]) => {
 	const at = keys.indexOf(k);

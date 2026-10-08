@@ -235,7 +235,10 @@ scores against a named object, so a display name would stop an unnamed record ma
 "Défibrillateur" node 10 m away. `record.label` is its display name instead (the operator's location
 note, else the commune): the queue, the review title and the twin and "Also matched by" lines show
 `label || name`, while matching reads `name` only. The candidate's `name` column holds what is shown, as
-it does for every kind. Everything French is in `fr/`: the IRVE file's declarations (the
+it does for every kind. The reviewer's context list is pinned
+(`match/context.ts`) because it is display; a mapping's `context` only appends keys to it, so
+`defibrillator:location` and `ref:FR:GeoDAE` show for a defibrillator and no other kind's order moves.
+Everything French is in `fr/`: the IRVE file's declarations (the
 source's steps, registered in `functions.ts` beside the functions), the address base (`ban.ts`,
 reached only through `COUNTRIES` in `country.ts`, by the mapping's country code), the
 data.gouv.fr dataset pages (`datagouv.ts`), French spelling (`text.ts`, `school-name.ts`,

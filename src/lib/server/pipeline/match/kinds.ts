@@ -39,6 +39,7 @@ interface Registry {
 	lookalikes: Map<string, Selector[]>;
 	schemes: Map<string, Scheme>;
 	labelKeys: string[];
+	contextKeys: string[];
 	kitOf: Map<string, Kit>;
 	writes: Map<string, string[]>;
 	kits: Kit[];
@@ -119,6 +120,7 @@ function buildRegistry(
 		lookalikes,
 		schemes,
 		labelKeys: unique([...mainKeys, ...lookalikeKeys, ...(shell ? [shell.k] : [])]),
+		contextKeys: unique(all.flatMap((m) => m.context ?? [])),
 		kitOf,
 		writes,
 		kits,
@@ -156,6 +158,7 @@ export function useMappings(all: Mapping[] | null, factories: Record<string, Kit
 export const mainKeys = () => registry().mainKeys;
 export const selectorKeys = () => registry().selectorKeys;
 export const labelKeys = () => registry().labelKeys;
+export const contextKeys = () => registry().contextKeys;
 
 export const kinValues = (k: string, v: string) => registry().kin.get(`${k}=${v}`) ?? [v];
 

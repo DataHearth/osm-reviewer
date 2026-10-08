@@ -126,6 +126,8 @@ export const mappingSchema = z.strictObject({
 		withheld: z.array(name).min(1).optional(),
 	}),
 	matching,
+	/** Keys of an object the reviewer sees after the pinned ones, when they hold a value. */
+	context: z.array(z.string().min(1)).min(1).optional(),
 	let: z
 		.record(
 			z.string().regex(/^[a-z][A-Za-z0-9_]*$/, "a CEL identifier starting lower-case"),
