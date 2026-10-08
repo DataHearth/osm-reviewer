@@ -28,8 +28,9 @@ record:
   label: 'location != "" ? location : commune != "" ? commune : "Defibrillator " + id'
   skip: >-
     duplicate == "t" || itinerant == "t" || lat == "" || lon == "" || double(lat) == 0.0
-    || state in ["Hors service", "Absent momentanément", "Inconnu", "Supprimé définitivement"]
+    || state in ["Hors service", "Absent momentanément", "Inconnu"]
     || (access_note + " " + availability_note).imatches("(appartement|domicile|chez) .{0,20}particulier")
+  closed: 'state == "Supprimé définitivement"'
 
 matching:
   main: [emergency]
@@ -202,10 +203,10 @@ examples:
     rows:
       - { id: "4334", validation: validées, environment: Extérieur, free_access: t, access_note: sous le porche à droite de l'escalier, hours: "24/7", state: Hors service, duplicate: f, itinerant: f, lat: "45.2025", lon: "2.32464" }
     expect: null
-  - about: a record the operator deleted is skipped (c_gid 162087)
+  - about: a record the operator deleted still carries its tags; the closure is made against its match (c_gid 162087)
     rows:
       - { id: "162087", validation: validées, environment: Intérieur, free_access: t, floor: mur de gauche entree principale, hours: "Mo-Su off", state: Supprimé définitivement, duplicate: f, itinerant: f, edited_at: "2026-07-07 13:48:02.244629", lat: "48.5038", lon: "2.3725" }
-    expect: null
+    expect: { emergency: defibrillator, ref:FR:GeoDAE: "162087", indoor: "yes", access: "yes" }
   - about: no position (0, 0) is skipped (c_gid 5601)
     rows:
       - { id: "5601", validation: en attente de validation, environment: Intérieur, free_access: t, access_note: entrée de la salle des fêtes, hours: "Mo-Su off", state: En fonctionnement, duplicate: f, itinerant: f, lat: "0", lon: "0" }

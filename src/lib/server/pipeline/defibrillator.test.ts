@@ -129,6 +129,21 @@ REAL.push({
 	c_dispo_horaires: "Mo-Su off",
 });
 
+const DELETED = {
+	c_etat_valid: "validées",
+	c_acc: "Intérieur",
+	c_acc_lib: "t",
+	c_etat_fonct: "Supprimé définitivement",
+	c_doublon: "f",
+	c__edit_datemaj: "2026-07-07 13:48:02.244629",
+	c_dae_mobile: "f",
+	c_dispo_horaires: "Mo-Su off",
+};
+REAL.push(
+	{ ...DELETED, c_gid: "162087", c_lat_coor1: "48.5038", c_long_coor1: "2.3725" },
+	{ ...DELETED, c_gid: "162088", c_lat_coor1: "47.1234", c_long_coor1: "3.1234" },
+);
+
 const quote = (v: string) => `"${v.replaceAll('"', '""')}"`;
 const csv = [
 	COLUMNS.join(";"),
@@ -199,6 +214,7 @@ beforeEach(async () => {
 			node(2, 49.2695 + 10 * METRE, 6.30913, { name: "Défibrillateur" }),
 			node(3, 42.2995 + 200 * METRE, 9.15383, {}),
 			node(4, 43.53028 + 100 * METRE, 0.212806, { "ref:FR:GeoDAE": "70" }),
+			node(5, 48.5038, 2.3725, { "ref:FR:GeoDAE": "162087" }),
 		],
 	};
 	await runSource(db, "geodae");
@@ -223,7 +239,7 @@ const tagsOf = (key: string) =>
 
 describe("a defibrillator from Géo'DAE, with no code of its own on the record's path", () => {
 	it("reads the dataset, drops the record flagged as a duplicate and keeps the rest", () => {
-		expect(db.select().from(t.runs).get()).toMatchObject({ result: "ok", fetched: 7, cands: 6 });
+		expect(db.select().from(t.runs).get()).toMatchObject({ result: "ok", fetched: 9, cands: 7 });
 		expect(cand("4024")).toBeUndefined();
 	});
 
@@ -271,6 +287,12 @@ describe("a defibrillator from Géo'DAE, with no code of its own on the record's
 	it("proposes level 0 for a bare floor 0 of an indoor device, and none for an outdoor one", () => {
 		expect(tagsOf("132245")).toMatchObject({ indoor: "yes", level: "0" });
 		expect(tagsOf("1899")).not.toHaveProperty("level");
+	});
+
+	it("closes the node a deleted record matches, as disused, and proposes nothing for one that matches none", () => {
+		expect(cand("162087")).toMatchObject({ type: "closure", osmId: "node/5" });
+		expect(tagsOf("162087")).toEqual({ "disused:emergency": "defibrillator" });
+		expect(cand("162088")).toBeUndefined();
 	});
 
 	it("tells the reviewer a position is approximate where the registry has not validated it", () => {

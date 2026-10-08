@@ -236,7 +236,9 @@ scores against a named object, so a display name would stop an unnamed record ma
 "Défibrillateur" node 10 m away. `record.label` is its display name instead (the operator's location
 note, else the commune): the queue, the review title and the twin and "Also matched by" lines show
 `label || name`, while matching reads `name` only. The candidate's `name` column holds what is shown, as
-it does for every kind. The reviewer's context list is pinned
+it does for every kind. A device the register marks "Supprimé définitivement" is a closure
+(`record.closed`), not a skipped row: it writes `disused:emergency=defibrillator` on the node it
+matches, and nothing where it matches none. The reviewer's context list is pinned
 (`match/context.ts`) because it is display; a mapping's `context` only appends keys to it, so
 `defibrillator:location` and `ref:FR:GeoDAE` show for a defibrillator and no other kind's order moves.
 Everything French is in `fr/`: the IRVE file's declarations (the
