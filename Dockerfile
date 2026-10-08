@@ -29,7 +29,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --prod
 
-FROM node:${NODE_VERSION}-alpine@${NODE_DIGEST}
+FROM node:${NODE_VERSION}-alpine@${NODE_DIGEST} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
@@ -38,6 +38,10 @@ ENV NODE_ENV=production \
 # The digest pin holds the base layer steady; it must not hold back security fixes, so
 # what apk tracks (openssl among it) is upgraded on top. Node itself is not an apk
 # package — a node CVE means bumping NODE_VERSION and NODE_DIGEST.
+#
+# TRAP: this RUN is keyed by its text and the base digest, neither of which changes when
+# Alpine ships a fix, so a layer cache would serve the old packages forever. image.yml
+# therefore builds the `runtime` stage with no-cache-filters; the heavy stages stay cached.
 #
 # The server runs on node alone. The package managers the base image bundles are never
 # called at runtime, and their vendored dependencies are where the scanner finds fixable

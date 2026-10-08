@@ -105,6 +105,9 @@ jobs:
           build-args: OSM_REVIEWER_REV=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+          # The runtime stage runs `apk upgrade`; a cached copy of that layer would hold back
+          # every Alpine security fix (see the Dockerfile). Build and deps stay cached.
+          no-cache-filters: runtime
           provenance: true
           outputs: type=image,"name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}",push-by-digest=true,name-canonical=true,push=true
 
