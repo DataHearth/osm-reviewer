@@ -210,7 +210,7 @@ model extractor reads them. A read that returns no rows at all sweeps nothing. R
 while a source is read, which lets in a neighbour's corner of the box, and matching fetches
 OSM over that same box: cut by the exact `area` instead, a neighbour's records find nothing to
 match and all come out as duplicate "new" POIs. Only the "POIs watched" count uses the exact
-`area`.
+`area`, over the main keys: the legacy seven and each mapping's `matching.main`, the one list that also decides what a bare building is.
 
 The code is in three layers, and a country only adds to the last. The run (`runner.ts`,
 `process.ts`, the readers, `store.ts`) and matching (`match/`: `find.ts` picks the object,

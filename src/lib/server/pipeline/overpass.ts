@@ -1,6 +1,7 @@
 import { overpass } from "$lib/server/config";
 import { type AreaShape, areaBox, hasShape } from "./geo";
 import { request, sleep } from "./http";
+import { mainKeys } from "./match/kinds";
 import { overpassFilter, type Selector } from "./tagfilter";
 import { type OsmElement, PipelineError } from "./types";
 
@@ -137,7 +138,7 @@ export async function fetchElements(
 /** Every POI-ish feature in the area, which is what the area screen calls "POIs watched". */
 export async function countPois(a: OverpassArea): Promise<number | null> {
 	const { head, where } = scope(a);
-	const q = `[out:json][timeout:60];${head}nwr[~"^(amenity|shop|office|tourism|leisure|craft|healthcare)$"~"."]${where};out count;`;
+	const q = `[out:json][timeout:60];${head}nwr[~"^(${mainKeys().join("|")})$"~"."]${where};out count;`;
 	const body = (await post(q)) as { elements?: { tags?: { total?: string } }[] };
 	const total = Number(body.elements?.[0]?.tags?.total);
 	return Number.isFinite(total) ? total : null;

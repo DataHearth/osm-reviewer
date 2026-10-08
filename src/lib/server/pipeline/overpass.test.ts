@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { buildQuery, parseElements } from "./overpass";
+import { describe, expect, it, vi } from "vitest";
+import { mainKeys } from "./match/kinds";
+import { buildQuery, countPois, parseElements } from "./overpass";
 
 const base = { bbox: null, centerLat: 45.76, centerLon: 4.83, km: null };
 
@@ -85,5 +86,19 @@ describe("parseElements", () => {
 		expect(() => parseElements({ elements: [], remark: "runtime error: Query timed out" })).toThrow(
 			/timed out/,
 		);
+	});
+});
+
+describe("countPois", () => {
+	it("counts every main key the mappings declare, defibrillators included", async () => {
+		const fetch = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(new Response(JSON.stringify({ elements: [{ tags: { total: "7" } }] })));
+		const total = await countPois({ ...base, def: "radius", rel: null, radius: 100 });
+		const body = decodeURIComponent(String(fetch.mock.calls[0][1]?.body));
+		fetch.mockRestore();
+		expect(total).toBe(7);
+		expect(body).toContain(`^(${mainKeys().join("|")})$`);
+		expect(body).toContain("|emergency)");
 	});
 });

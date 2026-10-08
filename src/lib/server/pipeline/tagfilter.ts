@@ -1,4 +1,4 @@
-import { BARE_BUILDING_BLOCKERS, kinValues, registry, selectorKeys } from "./match/kinds";
+import { kinValues, registry, selectorKeys } from "./match/kinds";
 
 /** `phone:*` allows everything under the prefix; a bare key allows exactly that key. An empty list restricts nothing. */
 export function allowedBy(patterns: string[], key: string): boolean {
@@ -41,7 +41,7 @@ export function sameKind(k: string, v: string, tags: Record<string, string>): bo
 /** A place mapped as nothing but its building. */
 export function shell(tags: Record<string, string>): boolean {
 	const s = registry().shell;
-	return !!s && s.v.includes(tags[s.k]) && !BARE_BUILDING_BLOCKERS.some((k) => tags[k]);
+	return !!s && s.v.includes(tags[s.k]) && !selectorKeys().some((k) => tags[k]);
 }
 
 /** Whether a record of `k=v` stands for the place a shell is the building of. */

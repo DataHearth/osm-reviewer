@@ -69,7 +69,7 @@ describe("the registry the shipped mappings declare", () => {
 			"healthcare",
 			"emergency",
 		]);
-		expect(selectorKeys()).toEqual([...mainKeys().slice(0, 7), "public_transport", "emergency"]);
+		expect(selectorKeys()).toEqual([...mainKeys(), "public_transport"]);
 		expect(labelKeys()).toEqual([...mainKeys(), "man_made", "building"]);
 		const schools = ["school", "college", "university"];
 		for (const v of schools) expect(kinValues("amenity", v)).toEqual(schools);
@@ -103,7 +103,7 @@ describe("the registry the shipped mappings declare", () => {
 		expect(fresh.mainKeys()).toContain("amenity");
 	});
 
-	it("keeps public_transport selecting and blocking a bare building, and lets a new key select only", () => {
+	it("keeps public_transport selecting and blocking a bare building, and gives a new main key the same", () => {
 		expect(selectorsFromTags([{ k: "public_transport", v: "station" }])).toEqual([
 			{ k: "public_transport", v: ["station"] },
 		]);
@@ -118,11 +118,11 @@ describe("the registry the shipped mappings declare", () => {
 			],
 		]);
 		expect(mainKeys().at(-1)).toBe("emergency");
-		expect(selectorKeys().at(-1)).toBe("emergency");
+		expect(selectorKeys()).toEqual([...mainKeys(), "public_transport"]);
 		expect(selectorsFromTags([{ k: "emergency", v: "defibrillator" }])).toEqual([
 			{ k: "emergency", v: ["defibrillator"] },
 		]);
-		expect(shell({ building: "school", emergency: "defibrillator" })).toBe(true);
+		expect(shell({ building: "school", emergency: "defibrillator" })).toBe(false);
 	});
 
 	it("takes an unnamed shell for a lookalike of a school, college, university and institute only", () => {

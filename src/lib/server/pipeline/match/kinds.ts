@@ -12,8 +12,8 @@ import { sameValue } from "./values";
 /** The main keys every deployment has had since before the mappings declared them. */
 const BASE_MAIN = ["amenity", "shop", "office", "tourism", "leisure", "craft", "healthcare"];
 
-/** What makes a bare building a building and not a place: the base keys and `public_transport`. */
-export const BARE_BUILDING_BLOCKERS = [...BASE_MAIN, "public_transport"];
+/** Not a main key of any kind, but still selects an object and keeps a building from being bare. */
+const PLACE_KEYS = ["public_transport"];
 
 export interface Scheme extends RefHooks {
 	key: string;
@@ -68,9 +68,6 @@ export function buildRegistry(
 	factories: Record<string, KitFactory>,
 	forKits: Lib = lib(),
 ): Registry {
-	const extraMain = unique(all.flatMap((m) => m.matching.main)).filter(
-		(k) => !BASE_MAIN.includes(k),
-	);
 	const kin = new Map<string, string[]>();
 	const lookalikes = new Map<string, Selector[]>();
 	const schemes = new Map<string, Scheme>();
@@ -113,10 +110,10 @@ export function buildRegistry(
 	const lookalikeKeys = [...lookalikes.values()].flatMap((sels) =>
 		sels.filter((s) => s.v !== null).map((s) => s.k),
 	);
-	const mainKeys = [...BASE_MAIN, ...extraMain];
+	const mainKeys = unique([...BASE_MAIN, ...all.flatMap((m) => m.matching.main)]);
 	return {
 		mainKeys,
-		selectorKeys: [...BARE_BUILDING_BLOCKERS, ...extraMain],
+		selectorKeys: [...mainKeys, ...PLACE_KEYS],
 		kin,
 		shell,
 		lookalikes,
